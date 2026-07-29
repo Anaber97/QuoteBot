@@ -5,12 +5,20 @@ import React, { useState, useEffect, useRef } from 'react';
 // ==========================================
 const GOOGLE_MAPS_API_KEY = 'AIzaSyAsmRm2QdBoT55Oq6zDnWu4E33Q6ZpQ_9U';
 const HOME_BASE_ADDRESS = '120 Taylor St, Henderson, TX';
+
+// DFW Geofence Polygon Coordinates
+const DFW_BOUNDARY = [
+  { lat: 33.3000, lng: -97.5000 },
+  { lat: 33.3000, lng: -96.4000 },
+  { lat: 32.3000, lng: -96.4000 },
+  { lat: 32.3000, lng: -97.5000 },
+];
 // ==========================================
 
 export default function App() {
   const [puAddress, setPuAddress] = useState('');
   const [doAddress, setDoAddress] = useState('');
-  const [isAfterHours, setIsAfterHours] = useState(false); // After hours toggle state
+  const [isAfterHours, setIsAfterHours] = useState(false);
   const [mapUrl, setMapUrl] = useState('');
   const [customRate, setCustomRate] = useState('');
   const [isApiLoaded, setIsApiLoaded] = useState(false);
@@ -22,13 +30,13 @@ export default function App() {
   const doInputRef = useRef(null);
 
   useEffect(() => {
-    if (window.google && window.google.maps && window.google.maps.places) {
+    if (window.google && window.google.maps && window.google.maps.places && window.google.maps.geometry) {
       setIsApiLoaded(true);
       return;
     }
 
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry`;
     script.async = true;
     script.defer = true;
     script.onload = () => setIsApiLoaded(true);
@@ -95,6 +103,33 @@ export default function App() {
     });
   };
 
+  // Check if route passes through DFW polygon
+  const checkRouteCrossesDFW = (pu, doAddr) => {
+    return new Promise((resolve) => {
+      const directionsService = new window.google.maps.DirectionsService();
+      const dfwPolygon = new window.google.maps.Polygon({ paths: DFW_BOUNDARY });
+
+      directionsService.route(
+        {
+          origin: pu,
+          destination: doAddr,
+          travelMode: window.google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === 'OK' && result.routes[0]) {
+            const path = result.routes[0].overview_path;
+            const crossesDFW = path.some((point) =>
+              window.google.maps.geometry.poly.containsLocation(point, dfwPolygon)
+            );
+            resolve(crossesDFW);
+          } else {
+            resolve(false);
+          }
+        }
+      );
+    });
+  };
+
   const handleCalculate = async (e) => {
     if (e) e.preventDefault();
 
@@ -118,9 +153,10 @@ export default function App() {
     setMapUrl(embedUrl);
 
     try {
-      const [puCity, doCity] = await Promise.all([
+      const [puCity, doCity, passesThroughDFW] = await Promise.all([
         checkCityLocality(puAddress),
         checkCityLocality(doAddress),
+        checkRouteCrossesDFW(puAddress, doAddress),
       ]);
 
       const isHendersonLocal = puCity === 'Henderson' && doCity === 'Henderson';
@@ -153,12 +189,14 @@ export default function App() {
             const totalJobMinutes = adjustedDriveMin + 30;
             const totalHours = totalJobMinutes / 60;
 
-            // 25% multiplier for after hours
-            const multiplier = isAfterHours ? 1.25 : 1.0;
+            // Multipliers
+            const afterHoursMult = isAfterHours ? 1.25 : 1.0;
+            const dfwMult = passesThroughDFW ? 1.2857 : 1.0;
+            const totalMultiplier = afterHoursMult * dfwMult;
 
             if (isHendersonLocal || isKilgoreLocal) {
               const baseFlat = 100;
-              const finalFlat = roundToNearest25(baseFlat * multiplier);
+              const finalFlat = roundToNearest25(baseFlat * totalMultiplier);
 
               setQuoteData({
                 isFlatRate: true,
@@ -171,10 +209,12 @@ export default function App() {
                 rawTotalHours: totalHours,
                 totalHours: totalHours.toFixed(2),
                 afterHoursApplied: isAfterHours,
+                dfwSurchargeApplied: passesThroughDFW,
+                totalMultiplier,
               });
             } else {
-              const minQuote = roundToNearest25(totalHours * 125 * multiplier);
-              const maxQuote = roundToNearest25(totalHours * 135 * multiplier);
+              const minQuote = roundToNearest25(totalHours * 125 * totalMultiplier);
+              const maxQuote = roundToNearest25(totalHours * 135 * totalMultiplier);
 
               setQuoteData({
                 isFlatRate: false,
@@ -187,6 +227,8 @@ export default function App() {
                 minQuote,
                 maxQuote,
                 afterHoursApplied: isAfterHours,
+                dfwSurchargeApplied: passesThroughDFW,
+                totalMultiplier,
               });
             }
           } catch (err) {
@@ -196,15 +238,16 @@ export default function App() {
       );
     } catch (err) {
       setLoading(false);
-      setError('An error occurred checking city boundaries.');
+      setError('An error occurred checking city boundaries or DFW geofence.');
     }
   };
 
-  // Compute custom rate with after hours multiplier
-  const multiplier = isAfterHours ? 1.25 : 1.0;
+  // Compute custom rate with combined multipliers
   const customCalculatedQuote =
     quoteData && customRate && !isNaN(parseFloat(customRate))
-      ? roundToNearest25(quoteData.rawTotalHours * parseFloat(customRate) * multiplier)
+      ? roundToNearest25(
+          quoteData.rawTotalHours * parseFloat(customRate) * quoteData.totalMultiplier
+        )
       : null;
 
   return (
@@ -228,7 +271,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Inputs Form */}
+        {/* Form Inputs */}
         <form onSubmit={handleCalculate} className="space-y-6">
           <div>
             <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-2">
@@ -279,7 +322,7 @@ export default function App() {
               disabled={loading || !isApiLoaded}
               className="flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg shadow-blue-600/20 transition duration-200 disabled:bg-slate-800 disabled:text-slate-500 cursor-pointer text-base"
             >
-              {loading ? 'Calculating...' : 'Generate Quote'}
+              {loading ? 'Checking Geofence & Route...' : 'Generate Quote'}
             </button>
 
             {(puAddress || doAddress || quoteData) && (
@@ -294,11 +337,11 @@ export default function App() {
           </div>
         </form>
 
-        {/* Results */}
+        {/* Results Display */}
         {quoteData && (
           <div className="mt-8 border-t border-slate-800/80 pt-8">
             
-            {/* Embedded Map */}
+            {/* Embedded Route Map */}
             {mapUrl && (
               <div className="mb-6 rounded-2xl overflow-hidden border border-slate-800 shadow-xl bg-[#0b0f17]">
                 <iframe
@@ -313,13 +356,20 @@ export default function App() {
               </div>
             )}
 
-            {/* Main Quote Box */}
+            {/* Main Quote Card */}
             <div className="bg-gradient-to-b from-[#1c2436] to-[#121722] border border-blue-500/30 rounded-2xl p-6 text-center shadow-xl mb-6 relative">
-              {quoteData.afterHoursApplied && (
-                <span className="absolute top-3 right-3 bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
-                  +25% After Hours
-                </span>
-              )}
+              <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
+                {quoteData.afterHoursApplied && (
+                  <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                    +25% After Hours
+                  </span>
+                )}
+                {quoteData.dfwSurchargeApplied && (
+                  <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                    +28.57% DFW Zone
+                  </span>
+                )}
+              </div>
 
               {quoteData.isFlatRate ? (
                 <>
@@ -379,7 +429,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Breakdown List */}
+            {/* Trip Breakdown */}
             <div className="bg-[#0b0f17] border border-slate-800 rounded-xl p-5 space-y-3 text-sm">
               <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
                 <span>Base → Pick-up</span>
@@ -404,6 +454,13 @@ export default function App() {
               <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
                 <span>Load / Unload Flat Rate</span>
                 <span className="font-semibold text-slate-200">30 mins</span>
+              </div>
+
+              <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                <span>DFW Geofence Crossed</span>
+                <span className={`font-semibold ${quoteData.dfwSurchargeApplied ? 'text-purple-400' : 'text-slate-200'}`}>
+                  {quoteData.dfwSurchargeApplied ? 'Yes (+28.57%)' : 'No'}
+                </span>
               </div>
 
               <div className="flex justify-between items-center pt-1 text-base font-bold text-white">
