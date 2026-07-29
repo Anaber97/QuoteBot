@@ -103,32 +103,48 @@ export default function App() {
     });
   };
 
-  // Check if route passes through DFW polygon
-  const checkRouteCrossesDFW = (pu, doAddr) => {
-    return new Promise((resolve) => {
-      const directionsService = new window.google.maps.DirectionsService();
-      const dfwPolygon = new window.google.maps.Polygon({ paths: DFW_BOUNDARY });
+  // Check if route passes through or ends inside DFW
+const checkRouteCrossesDFW = (pu, doAddr) => {
+  return new Promise((resolve) => {
+    const directionsService = new window.google.maps.DirectionsService();
 
-      directionsService.route(
-        {
-          origin: pu,
-          destination: doAddr,
-          travelMode: window.google.maps.TravelMode.DRIVING,
-        },
-        (result, status) => {
-          if (status === 'OK' && result.routes[0]) {
-            const path = result.routes[0].overview_path;
-            const crossesDFW = path.some((point) =>
-              window.google.maps.geometry.poly.containsLocation(point, dfwPolygon)
-            );
-            resolve(crossesDFW);
-          } else {
-            resolve(false);
+    // Define DFW Bounding Box (SW Corner to NE Corner)
+    const dfwBounds = new window.google.maps.LatLngBounds(
+      new window.google.maps.LatLng(32.3000, -97.5000), // South-West (SW)
+      new window.google.maps.LatLng(33.3000, -96.4000)  // North-East (NE)
+    );
+
+    directionsService.route(
+      {
+        origin: pu,
+        destination: doAddr,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        if (status === 'OK' && result.routes[0]) {
+          const route = result.routes[0];
+
+          // 1. Check if Origin or Destination is in DFW
+          const originLoc = route.legs[0].start_location;
+          const destLoc = route.legs[0].end_location;
+
+          if (dfwBounds.contains(originLoc) || dfwBounds.contains(destLoc)) {
+            resolve(true);
+            return;
           }
+
+          // 2. Check all detailed path points along the route
+          const detailedPath = route.legs[0].steps.flatMap((step) => step.path);
+          const passesThrough = detailedPath.some((point) => dfwBounds.contains(point));
+
+          resolve(passesThrough);
+        } else {
+          resolve(false);
         }
-      );
-    });
-  };
+      }
+    );
+  });
+};
 
   const handleCalculate = async (e) => {
     if (e) e.preventDefault();
