@@ -6,12 +6,20 @@ import React, { useState, useEffect, useRef } from 'react';
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const HOME_BASE_ADDRESS = '120 Taylor St, Henderson, TX';
 
-// DFW Geofence Polygon Coordinates
-const DFW_BOUNDARY = [
-  { lat: 33.3000, lng: -97.5000 },
-  { lat: 33.3000, lng: -96.4000 },
-  { lat: 32.3000, lng: -96.4000 },
-  { lat: 32.3000, lng: -97.5000 },
+// DFW Lat/Lng Box Boundaries
+const DFW_BOX = {
+  minLat: 32.3000, // South (Waxahachie)
+  maxLat: 33.3500, // North (Denton / McKinney)
+  minLng: -97.5000, // West (Weatherford / Fort Worth)
+  maxLng: -96.3000, // East (Rockwall / Terrell)
+};
+
+// Major DFW area keywords for fail-safe fallback
+const DFW_CITIES = [
+  'dallas', 'fort worth', 'arlington', 'plano', 'irving', 'garland', 
+  'grand prairie', 'mckinney', 'frisco', 'carrollton', 'denton', 
+  'richardson', 'lewisville', 'mesquite', 'grapevine', 'euless', 
+  'bedford', 'hurst', 'rockwall', 'rowlett', 'desoto', 'cedar hill'
 ];
 // ==========================================
 
@@ -103,112 +111,87 @@ export default function App() {
     });
   };
 
-  // DFW Lat/Lng Box Boundaries
-const DFW_BOX = {
-  minLat: 32.3000, // South (Waxahachie / Ennis)
-  maxLat: 33.3000, // North (Denton / McKinney)
-  minLng: -97.5000, // West (Weatherford / Fort Worth)
-  maxLng: -96.4000, // East (Rockwall / Terrell)
-};
+  const checkRouteCrossesDFW = async (pu, doAddr) => {
+    const isPointInDFW = (lat, lng) => {
+      return (
+        lat >= DFW_BOX.minLat &&
+        lat <= DFW_BOX.maxLat &&
+        lng >= DFW_BOX.minLng &&
+        lng <= DFW_BOX.maxLng
+      );
+    };
 
-// DFW Lat/Lng Box Boundaries
-const DFW_BOX = {
-  minLat: 32.3000, // South (Waxahachie)
-  maxLat: 33.3500, // North (Denton / McKinney)
-  minLng: -97.5000, // West (Weatherford / Fort Worth)
-  maxLng: -96.3000, // East (Rockwall / Terrell)
-};
-
-// Known DFW area keywords for instant fallback detection
-const DFW_CITIES = [
-  'dallas', 'fort worth', 'arlington', 'plano', 'irving', 'garland', 
-  'grand prairie', 'mckinney', 'frisco', 'carrollton', 'denton', 
-  'richardson', 'lewisville', 'mesquite', 'grapevine', 'euless', 
-  'bedford', 'hurst', 'rockwall', 'rowlett', 'desoto', 'cedar hill'
-];
-
-const checkRouteCrossesDFW = async (pu, doAddr) => {
-  const isPointInDFW = (lat, lng) => {
-    return (
-      lat >= DFW_BOX.minLat &&
-      lat <= DFW_BOX.maxLat &&
-      lng >= DFW_BOX.minLng &&
-      lng <= DFW_BOX.maxLng
+    // 1. Text Keyword Check
+    const lowerPu = pu.toLowerCase();
+    const lowerDo = doAddr.toLowerCase();
+    const hasDfwKeyword = DFW_CITIES.some(
+      (city) => lowerPu.includes(city) || lowerDo.includes(city)
     );
-  };
+    if (hasDfwKeyword) return true;
 
-  // 1. Text Keyword Fail-safe (Instant check)
-  const lowerPu = pu.toLowerCase();
-  const lowerDo = doAddr.toLowerCase();
-  const hasDfwKeyword = DFW_CITIES.some(
-    (city) => lowerPu.includes(city) || lowerDo.includes(city)
-  );
-  if (hasDfwKeyword) return true;
-
-  // 2. Geocode Origin & Destination Coordinates
-  const geocoder = new window.google.maps.Geocoder();
-  const geocodeAddress = (addr) =>
-    new Promise((res) => {
-      geocoder.geocode({ address: addr }, (results, status) => {
-        if (status === 'OK' && results[0]) {
-          const loc = results[0].geometry.location;
-          res({ lat: loc.lat(), lng: loc.lng() });
-        } else {
-          res(null);
-        }
-      });
-    });
-
-  const [puCoords, doCoords] = await Promise.all([
-    geocodeAddress(pu),
-    geocodeAddress(doAddr),
-  ]);
-
-  if (
-    (puCoords && isPointInDFW(puCoords.lat, puCoords.lng)) ||
-    (doCoords && isPointInDFW(doCoords.lat, doCoords.lng))
-  ) {
-    return true;
-  }
-
-  // 3. Full Route Inspection via DirectionsService
-  return new Promise((resolve) => {
-    const directionsService = new window.google.maps.DirectionsService();
-
-    directionsService.route(
-      {
-        origin: pu,
-        destination: doAddr,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === 'OK' && result.routes[0]) {
-          const leg = result.routes[0].legs[0];
-
-          const startLat = leg.start_location.lat();
-          const startLng = leg.start_location.lng();
-          const endLat = leg.end_location.lat();
-          const endLng = leg.end_location.lng();
-
-          if (isPointInDFW(startLat, startLng) || isPointInDFW(endLat, endLng)) {
-            resolve(true);
-            return;
+    // 2. Geocode Check
+    const geocoder = new window.google.maps.Geocoder();
+    const geocodeAddress = (addr) =>
+      new Promise((res) => {
+        geocoder.geocode({ address: addr }, (results, status) => {
+          if (status === 'OK' && results[0]) {
+            const loc = results[0].geometry.location;
+            res({ lat: loc.lat(), lng: loc.lng() });
+          } else {
+            res(null);
           }
+        });
+      });
 
-          const steps = leg.steps || [];
-          const passesThrough = steps.some((step) =>
-            (step.path || []).some((pt) => isPointInDFW(pt.lat(), pt.lng()))
-          );
+    const [puCoords, doCoords] = await Promise.all([
+      geocodeAddress(pu),
+      geocodeAddress(doAddr),
+    ]);
 
-          resolve(passesThrough);
-        } else {
-          // If Directions API fails or is disabled, fallback to false
-          resolve(false);
+    if (
+      (puCoords && isPointInDFW(puCoords.lat, puCoords.lng)) ||
+      (doCoords && isPointInDFW(doCoords.lat, doCoords.lng))
+    ) {
+      return true;
+    }
+
+    // 3. DirectionsService Route Inspection
+    return new Promise((resolve) => {
+      const directionsService = new window.google.maps.DirectionsService();
+
+      directionsService.route(
+        {
+          origin: pu,
+          destination: doAddr,
+          travelMode: window.google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === 'OK' && result.routes[0]) {
+            const leg = result.routes[0].legs[0];
+
+            const startLat = leg.start_location.lat();
+            const startLng = leg.start_location.lng();
+            const endLat = leg.end_location.lat();
+            const endLng = leg.end_location.lng();
+
+            if (isPointInDFW(startLat, startLng) || isPointInDFW(endLat, endLng)) {
+              resolve(true);
+              return;
+            }
+
+            const steps = leg.steps || [];
+            const passesThrough = steps.some((step) =>
+              (step.path || []).some((pt) => isPointInDFW(pt.lat(), pt.lng()))
+            );
+
+            resolve(passesThrough);
+          } else {
+            resolve(false);
+          }
         }
-      }
-    );
-  });
-};
+      );
+    });
+  };
 
   const handleCalculate = async (e) => {
     if (e) e.preventDefault();
@@ -269,7 +252,6 @@ const checkRouteCrossesDFW = async (pu, doAddr) => {
             const totalJobMinutes = adjustedDriveMin + 30;
             const totalHours = totalJobMinutes / 60;
 
-            // Multipliers
             const afterHoursMult = isAfterHours ? 1.25 : 1.0;
             const dfwMult = passesThroughDFW ? 1.2857 : 1.0;
             const totalMultiplier = afterHoursMult * dfwMult;
@@ -282,6 +264,7 @@ const checkRouteCrossesDFW = async (pu, doAddr) => {
                 isFlatRate: true,
                 cityName: isHendersonLocal ? 'Henderson' : 'Kilgore',
                 flatRateAmount: finalFlat,
+                baseFlatRateAmount: baseFlat,
                 leg1Min: Math.round(leg1Sec / 60),
                 leg2Min: Math.round(leg2Sec / 60),
                 leg3Min: Math.round(leg3Sec / 60),
@@ -296,6 +279,10 @@ const checkRouteCrossesDFW = async (pu, doAddr) => {
               const minQuote = roundToNearest25(totalHours * 125 * totalMultiplier);
               const maxQuote = roundToNearest25(totalHours * 135 * totalMultiplier);
 
+              // Base price without surcharges
+              const baseMinQuote = roundToNearest25(totalHours * 125);
+              const baseMaxQuote = roundToNearest25(totalHours * 135);
+
               setQuoteData({
                 isFlatRate: false,
                 leg1Min: Math.round(leg1Sec / 60),
@@ -306,6 +293,8 @@ const checkRouteCrossesDFW = async (pu, doAddr) => {
                 totalHours: totalHours.toFixed(2),
                 minQuote,
                 maxQuote,
+                baseMinQuote,
+                baseMaxQuote,
                 afterHoursApplied: isAfterHours,
                 dfwSurchargeApplied: passesThroughDFW,
                 totalMultiplier,
@@ -322,7 +311,6 @@ const checkRouteCrossesDFW = async (pu, doAddr) => {
     }
   };
 
-  // Compute custom rate with combined multipliers
   const customCalculatedQuote =
     quoteData && customRate && !isNaN(parseFloat(customRate))
       ? roundToNearest25(
@@ -351,7 +339,7 @@ const checkRouteCrossesDFW = async (pu, doAddr) => {
           </div>
         )}
 
-        {/* Form Inputs */}
+        {/* Inputs Form */}
         <form onSubmit={handleCalculate} className="space-y-6">
           <div>
             <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-2">
@@ -540,6 +528,16 @@ const checkRouteCrossesDFW = async (pu, doAddr) => {
                 <span>DFW Geofence Crossed</span>
                 <span className={`font-semibold ${quoteData.dfwSurchargeApplied ? 'text-purple-400' : 'text-slate-200'}`}>
                   {quoteData.dfwSurchargeApplied ? 'Yes (+28.57%)' : 'No'}
+                </span>
+              </div>
+
+              {/* Base Price Without Surcharges */}
+              <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                <span>Base Price (No Surcharge)</span>
+                <span className="font-semibold text-emerald-400">
+                  {quoteData.isFlatRate
+                    ? `$${quoteData.baseFlatRateAmount}`
+                    : `$${quoteData.baseMinQuote} – $${quoteData.baseMaxQuote}`}
                 </span>
               </div>
 
