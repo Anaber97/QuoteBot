@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 // ==========================================
 // CONFIGURATION
 // ==========================================
-const GOOGLE_MAPS_API_KEY = 'AIzaSyAsmRm2QdBoT55Oq6zDnWu4E33Q6ZpQ_9U';
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const HOME_BASE_ADDRESS = '120 Taylor St, Henderson, TX';
 
 // DFW Geofence Polygon Coordinates
