@@ -103,16 +103,27 @@ export default function App() {
     });
   };
 
-  // Check if route passes through or ends inside DFW
+  // DFW Lat/Lng Box Boundaries
+const DFW_BOX = {
+  minLat: 32.3000, // South (Waxahachie / Ennis)
+  maxLat: 33.3000, // North (Denton / McKinney)
+  minLng: -97.5000, // West (Weatherford / Fort Worth)
+  maxLng: -96.4000, // East (Rockwall / Terrell)
+};
+
 const checkRouteCrossesDFW = (pu, doAddr) => {
   return new Promise((resolve) => {
     const directionsService = new window.google.maps.DirectionsService();
 
-    // Define DFW Bounding Box (SW Corner to NE Corner)
-    const dfwBounds = new window.google.maps.LatLngBounds(
-      new window.google.maps.LatLng(32.3000, -97.5000), // South-West (SW)
-      new window.google.maps.LatLng(33.3000, -96.4000)  // North-East (NE)
-    );
+    // Helper to check if a lat/lng point is inside DFW box
+    const isPointInDFW = (lat, lng) => {
+      return (
+        lat >= DFW_BOX.minLat &&
+        lat <= DFW_BOX.maxLat &&
+        lng >= DFW_BOX.minLng &&
+        lng <= DFW_BOX.maxLng
+      );
+    };
 
     directionsService.route(
       {
@@ -122,20 +133,26 @@ const checkRouteCrossesDFW = (pu, doAddr) => {
       },
       (result, status) => {
         if (status === 'OK' && result.routes[0]) {
-          const route = result.routes[0];
+          const leg = result.routes[0].legs[0];
 
-          // 1. Check if Origin or Destination is in DFW
-          const originLoc = route.legs[0].start_location;
-          const destLoc = route.legs[0].end_location;
+          // 1. Check Origin Lat/Lng
+          const startLat = leg.start_location.lat();
+          const startLng = leg.start_location.lng();
 
-          if (dfwBounds.contains(originLoc) || dfwBounds.contains(destLoc)) {
+          // 2. Check Destination Lat/Lng
+          const endLat = leg.end_location.lat();
+          const endLng = leg.end_location.lng();
+
+          if (isPointInDFW(startLat, startLng) || isPointInDFW(endLat, endLng)) {
             resolve(true);
             return;
           }
 
-          // 2. Check all detailed path points along the route
-          const detailedPath = route.legs[0].steps.flatMap((step) => step.path);
-          const passesThrough = detailedPath.some((point) => dfwBounds.contains(point));
+          // 3. Check points along the route
+          const steps = leg.steps || [];
+          const passesThrough = steps.some((step) =>
+            (step.path || []).some((pt) => isPointInDFW(pt.lat(), pt.lng()))
+          );
 
           resolve(passesThrough);
         } else {
