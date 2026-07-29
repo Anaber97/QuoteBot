@@ -111,19 +111,69 @@ const DFW_BOX = {
   maxLng: -96.4000, // East (Rockwall / Terrell)
 };
 
-const checkRouteCrossesDFW = (pu, doAddr) => {
+// DFW Lat/Lng Box Boundaries
+const DFW_BOX = {
+  minLat: 32.3000, // South (Waxahachie)
+  maxLat: 33.3500, // North (Denton / McKinney)
+  minLng: -97.5000, // West (Weatherford / Fort Worth)
+  maxLng: -96.3000, // East (Rockwall / Terrell)
+};
+
+// Known DFW area keywords for instant fallback detection
+const DFW_CITIES = [
+  'dallas', 'fort worth', 'arlington', 'plano', 'irving', 'garland', 
+  'grand prairie', 'mckinney', 'frisco', 'carrollton', 'denton', 
+  'richardson', 'lewisville', 'mesquite', 'grapevine', 'euless', 
+  'bedford', 'hurst', 'rockwall', 'rowlett', 'desoto', 'cedar hill'
+];
+
+const checkRouteCrossesDFW = async (pu, doAddr) => {
+  const isPointInDFW = (lat, lng) => {
+    return (
+      lat >= DFW_BOX.minLat &&
+      lat <= DFW_BOX.maxLat &&
+      lng >= DFW_BOX.minLng &&
+      lng <= DFW_BOX.maxLng
+    );
+  };
+
+  // 1. Text Keyword Fail-safe (Instant check)
+  const lowerPu = pu.toLowerCase();
+  const lowerDo = doAddr.toLowerCase();
+  const hasDfwKeyword = DFW_CITIES.some(
+    (city) => lowerPu.includes(city) || lowerDo.includes(city)
+  );
+  if (hasDfwKeyword) return true;
+
+  // 2. Geocode Origin & Destination Coordinates
+  const geocoder = new window.google.maps.Geocoder();
+  const geocodeAddress = (addr) =>
+    new Promise((res) => {
+      geocoder.geocode({ address: addr }, (results, status) => {
+        if (status === 'OK' && results[0]) {
+          const loc = results[0].geometry.location;
+          res({ lat: loc.lat(), lng: loc.lng() });
+        } else {
+          res(null);
+        }
+      });
+    });
+
+  const [puCoords, doCoords] = await Promise.all([
+    geocodeAddress(pu),
+    geocodeAddress(doAddr),
+  ]);
+
+  if (
+    (puCoords && isPointInDFW(puCoords.lat, puCoords.lng)) ||
+    (doCoords && isPointInDFW(doCoords.lat, doCoords.lng))
+  ) {
+    return true;
+  }
+
+  // 3. Full Route Inspection via DirectionsService
   return new Promise((resolve) => {
     const directionsService = new window.google.maps.DirectionsService();
-
-    // Helper to check if a lat/lng point is inside DFW box
-    const isPointInDFW = (lat, lng) => {
-      return (
-        lat >= DFW_BOX.minLat &&
-        lat <= DFW_BOX.maxLat &&
-        lng >= DFW_BOX.minLng &&
-        lng <= DFW_BOX.maxLng
-      );
-    };
 
     directionsService.route(
       {
@@ -135,11 +185,8 @@ const checkRouteCrossesDFW = (pu, doAddr) => {
         if (status === 'OK' && result.routes[0]) {
           const leg = result.routes[0].legs[0];
 
-          // 1. Check Origin Lat/Lng
           const startLat = leg.start_location.lat();
           const startLng = leg.start_location.lng();
-
-          // 2. Check Destination Lat/Lng
           const endLat = leg.end_location.lat();
           const endLng = leg.end_location.lng();
 
@@ -148,7 +195,6 @@ const checkRouteCrossesDFW = (pu, doAddr) => {
             return;
           }
 
-          // 3. Check points along the route
           const steps = leg.steps || [];
           const passesThrough = steps.some((step) =>
             (step.path || []).some((pt) => isPointInDFW(pt.lat(), pt.lng()))
@@ -156,6 +202,7 @@ const checkRouteCrossesDFW = (pu, doAddr) => {
 
           resolve(passesThrough);
         } else {
+          // If Directions API fails or is disabled, fallback to false
           resolve(false);
         }
       }
