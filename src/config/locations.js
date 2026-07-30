@@ -1,7 +1,7 @@
 export const SHOP_LOCATIONS = [
   {
     id: 'henderson',
-    name: 'Henderson Base',
+    name: 'Henderson Yard',
     address: '120 Taylor Dr, Henderson, TX',
     localCities: ['Henderson'],
   },

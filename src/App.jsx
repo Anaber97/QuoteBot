@@ -43,7 +43,7 @@ export default function App() {
     document.head.appendChild(script);
   }, []);
 
-  // Attach Places Autocomplete to all waypoint inputs
+  // Attach Places Autocomplete safely to all inputs
   useEffect(() => {
     if (!isApiLoaded) return;
 
@@ -58,8 +58,10 @@ export default function App() {
         const autocomplete = new window.google.maps.places.Autocomplete(ref, options);
         autocomplete.addListener('place_changed', () => {
           const place = autocomplete.getPlace();
-          if (place.formatted_address) {
+          if (place && place.formatted_address) {
             handleWaypointChange(index, place.formatted_address);
+          } else if (ref.value) {
+            handleWaypointChange(index, ref.value);
           }
         });
         ref.dataset.autocompleteAttached = 'true';
@@ -69,23 +71,29 @@ export default function App() {
 
   const roundToNearest25 = (value) => Math.round(value / 25) * 25;
 
-  // Waypoint Helpers
+  // Functional Waypoint State Helpers (Prevents address wiping)
   const handleWaypointChange = (index, value) => {
-    const updated = [...waypoints];
-    updated[index] = value;
-    setWaypoints(updated);
+    setWaypoints((prevWaypoints) => {
+      const updated = [...prevWaypoints];
+      updated[index] = value;
+      return updated;
+    });
   };
 
-  const addWaypoint = (index) => {
-    const updated = [...waypoints];
-    updated.splice(index + 1, 0, '');
-    setWaypoints(updated);
+  const addWaypoint = () => {
+    setWaypoints((prevWaypoints) => {
+      // Insert new stop right before the final Drop-off
+      const updated = [...prevWaypoints];
+      updated.splice(updated.length - 1, 0, '');
+      return updated;
+    });
   };
 
   const removeWaypoint = (index) => {
-    if (waypoints.length <= 2) return; // Keep at least PU & DO
-    const updated = waypoints.filter((_, i) => i !== index);
-    setWaypoints(updated);
+    setWaypoints((prevWaypoints) => {
+      if (prevWaypoints.length <= 2) return prevWaypoints; // Keep at least PU & DO
+      return prevWaypoints.filter((_, i) => i !== index);
+    });
   };
 
   const handleReset = () => {
@@ -99,7 +107,7 @@ export default function App() {
     setError(null);
   };
 
-  // Helper to check if any address/route hits a specific geofence zone
+  // Helper to check if addresses/routes cross a specific geofence zone
   const checkGeofenceZone = async (zoneConfig, addresses) => {
     const isPointInBox = (lat, lng) => {
       const { box } = zoneConfig;
@@ -201,7 +209,6 @@ export default function App() {
       const routePoints = [currentBase.address, ...cleanWaypoints, currentBase.address];
       const distanceService = new window.google.maps.DistanceMatrixService();
 
-      // Fetch travel durations for each leg sequentially
       let totalDriveSeconds = 0;
       const legsDetails = [];
 
@@ -245,7 +252,7 @@ export default function App() {
       // Multipliers
       const afterHoursMult = isAfterHours ? 1.25 : 1.0;
       const roadClubMult = isRoadClub ? 1.15 : 1.0;
-      const metroMult = isMetro ? 1.15 : 1.0;
+      const metroMult = isMetro ? 1.2857 : 1.0; // Updated to +28.57%
       const dfwMult = hitDFW ? GEOFENCES.dfw.multiplier : 1.0;
       const houstonMult = hitHouston ? GEOFENCES.houston.multiplier : 1.0;
 
@@ -360,16 +367,18 @@ export default function App() {
                 className="w-4 h-4 accent-blue-500 rounded cursor-pointer"
               />
               <label htmlFor="metro" className="text-xs font-medium text-slate-200 cursor-pointer flex-1">
-                Manual Metro Surcharge <span className="text-blue-400 font-bold">(+15%)</span>
+                Manual Metro Surcharge <span className="text-blue-400 font-bold">(+28.57%)</span>
               </label>
             </div>
           </div>
 
-          {/* Dynamic Waypoints Array */}
+          {/* Dynamic Waypoints List */}
           <div className="space-y-4">
             {waypoints.map((address, index) => {
               const isPickUp = index === 0;
               const isDropOff = index === waypoints.length - 1;
+              const isWaypoint = !isPickUp && !isDropOff;
+              
               const label = isPickUp
                 ? 'Pick-up Location'
                 : isDropOff
@@ -391,18 +400,8 @@ export default function App() {
                       className="flex-1 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-sm shadow-inner"
                     />
 
-                    {/* Add Waypoint Button */}
-                    <button
-                      type="button"
-                      onClick={() => addWaypoint(index)}
-                      title="Add Waypoint Stop"
-                      className="bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300 w-11 h-11 rounded-xl border border-slate-700/80 font-bold text-xl flex items-center justify-center transition"
-                    >
-                      +
-                    </button>
-
-                    {/* Remove Waypoint Button (Hidden if only PU and DO remain) */}
-                    {waypoints.length > 2 && (
+                    {/* Only show remove button on intermediate waypoints */}
+                    {isWaypoint && (
                       <button
                         type="button"
                         onClick={() => removeWaypoint(index)}
@@ -416,6 +415,15 @@ export default function App() {
                 </div>
               );
             })}
+
+            {/* Single "+ Add Stop" Button */}
+            <button
+              type="button"
+              onClick={addWaypoint}
+              className="w-full py-2.5 px-4 bg-[#1f2636] hover:bg-slate-700/70 border border-slate-700/80 text-blue-400 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span className="text-base font-bold">+</span> Add Waypoint Stop
+            </button>
           </div>
 
           {/* Action Buttons */}
@@ -472,7 +480,7 @@ export default function App() {
                 )}
                 {quoteData.metroApplied && (
                   <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
-                    +15% Metro
+                    +28.57% Metro Surcharge
                   </span>
                 )}
                 {quoteData.dfwApplied && (
