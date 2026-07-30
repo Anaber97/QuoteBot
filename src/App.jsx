@@ -60,31 +60,43 @@ export default function App() {
     document.head.appendChild(script);
   }, []);
 
-  // Attach Places Autocomplete
-  useEffect(() => {
-    if (!isApiLoaded) return;
+ // Attach Places Autocomplete safely (handles tab switching & dynamic stops)
+useEffect(() => {
+  if (!isApiLoaded || activeTab !== 'calculator') return;
 
-    const options = {
-      types: ['geocode', 'establishment'],
-      componentRestrictions: { country: 'us' },
-    };
+  const options = {
+    types: ['geocode', 'establishment'],
+    componentRestrictions: { country: 'us' },
+  };
 
+  // Small delay ensures React finishes mounting the inputs in the DOM
+  const timer = setTimeout(() => {
     waypoints.forEach((_, index) => {
       const ref = inputRefs.current[index];
-      if (ref && !ref.dataset.autocompleteAttached) {
-        const autocomplete = new window.google.maps.places.Autocomplete(ref, options);
-        autocomplete.addListener('place_changed', () => {
-          const place = autocomplete.getPlace();
-          if (place && place.formatted_address) {
-            handleWaypointChange(index, place.formatted_address);
-          } else if (ref.value) {
-            handleWaypointChange(index, ref.value);
-          }
-        });
-        ref.dataset.autocompleteAttached = 'true';
+      if (ref) {
+        // If switching tabs re-created the element, reset the dataset flag
+        if (!document.body.contains(ref.dataset.autocompleteAttachedElement)) {
+          ref.dataset.autocompleteAttached = '';
+        }
+
+        if (!ref.dataset.autocompleteAttached) {
+          const autocomplete = new window.google.maps.places.Autocomplete(ref, options);
+          autocomplete.addListener('place_changed', () => {
+            const place = autocomplete.getPlace();
+            if (place && place.formatted_address) {
+              handleWaypointChange(index, place.formatted_address);
+            } else if (ref.value) {
+              handleWaypointChange(index, ref.value);
+            }
+          });
+          ref.dataset.autocompleteAttached = 'true';
+        }
       }
     });
-  }, [isApiLoaded, waypoints.length]);
+  }, 50);
+
+  return () => clearTimeout(timer);
+}, [isApiLoaded, activeTab, waypoints.length]);
 
   const roundToNearest25 = (value) => Math.round(value / 25) * 25;
 
