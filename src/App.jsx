@@ -1,3 +1,4 @@
+// @ts-check
 import React, { useReducer, useEffect, useRef, useCallback } from 'react';
 import { SHOP_LOCATIONS } from './config/locations';
 import { GEOFENCES } from './config/geofences';
@@ -7,12 +8,32 @@ import QuoteLog from './components/QuoteLog';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-// Utility Helper
+/**
+ * @typedef {Object} LegDetail
+ * @property {string} label
+ * @property {number} minutes
+ */
+
+/**
+ * @typedef {Object} QuoteData
+ * @property {string[]} cleanWaypoints
+ * @property {LegDetail[]} legsDetails
+ * @property {number} adjustedDriveMin
+ * @property {number} loadUnloadTime
+ * @property {number} rawTotalHours
+ * @property {string} totalHours
+ * @property {boolean} isHeavy
+ * @property {number} baseMinQuote
+ * @property {number} baseMaxQuote
+ * @property {boolean} hasAfterHours
+ * @property {boolean} hasRoadClub
+ * @property {boolean} hasMetroZone
+ */
+
 const roundToNearest = (val, interval = RATES.ROUNDING_INTERVAL) => Math.round(val / interval) * interval;
 
-// Initial State for Reducer
 const initialState = {
-  activeTab: 'calculator', // 'calculator' | 'log'
+  activeTab: 'calculator',
   selectedBaseId: SHOP_LOCATIONS[0].id,
   waypoints: ['', ''],
   isAfterHours: false,
@@ -33,7 +54,6 @@ const initialState = {
   quoteData: null,
 };
 
-// Reducer Function
 function quoteReducer(state, action) {
   switch (action.type) {
     case 'SET_TAB':
@@ -98,14 +118,13 @@ function quoteReducer(state, action) {
     case 'RESET':
       return {
         ...initialState,
-        isApiLoaded: state.isApiLoaded, // retain loaded script state
+        isApiLoaded: state.isApiLoaded,
       };
     default:
       return state;
   }
 }
 
-// Memoized Individual Input Component
 const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRemove, inputRef }) => {
   const isPickUp = index === 0;
   const isDropOff = index === totalWaypoints - 1;
@@ -150,6 +169,7 @@ export default function App() {
     isAfterHours,
     isRoadClub,
     isMetro,
+    isHeavy,
     activeOverrides,
     showDetails,
     customerName,
@@ -167,9 +187,23 @@ export default function App() {
   const currentBase = SHOP_LOCATIONS.find((b) => b.id === selectedBaseId) || SHOP_LOCATIONS[0];
   const inputRefs = useRef([]);
   const autocompleteInstances = useRef(new Map());
+  const lastCalculationTime = useRef(0);
 
-  // Issue 1: Script Load Cleanup
+  // Startup Environment Checks
   useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY) {
+      console.error('Missing Google Maps API Key in environment variables.');
+      dispatch({
+        type: 'CALCULATE_ERROR',
+        payload: 'Google Maps API key is missing. Please check configuration.',
+      });
+    }
+  }, []);
+
+  // Google Script Injection
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY) return;
+
     if (window.google?.maps?.places?.geometry) {
       dispatch({ type: 'API_LOADED' });
       return;
@@ -189,7 +223,6 @@ export default function App() {
     };
   }, []);
 
-  // Issue 2 & 6: Autocomplete with Ref Map & Direct Binding
   const handleWaypointChange = useCallback((index, value) => {
     dispatch({ type: 'SET_WAYPOINT', payload: { index, value } });
   }, []);
@@ -198,6 +231,7 @@ export default function App() {
     dispatch({ type: 'REMOVE_WAYPOINT', payload: index });
   }, []);
 
+  // Autocomplete Setup & Cleanup
   useEffect(() => {
     if (!isApiLoaded || activeTab !== 'calculator') return;
 
@@ -223,16 +257,16 @@ export default function App() {
     });
 
     return () => {
-      // Clean up unmounted input references
-      autocompleteInstances.current.forEach((_, ref) => {
-        if (!document.body.contains(ref)) {
-          autocompleteInstances.current.delete(ref);
+      const instances = autocompleteInstances.current;
+      instances.forEach((_, ref) => {
+        if (ref && ref.dataset) {
+          ref.dataset.autocompleteAttached = 'false';
         }
       });
+      instances.clear();
     };
   }, [isApiLoaded, activeTab, waypoints, handleWaypointChange]);
 
-  // Issue 3: Batch Geocoding
   const geocodeAll = async (addresses) => {
     const geocoder = new window.google.maps.Geocoder();
     return Promise.all(
@@ -259,17 +293,14 @@ export default function App() {
       return lat >= box.minLat && lat <= box.maxLat && lng >= box.minLng && lng <= box.maxLng;
     };
 
-    // Keyword match
     const hasKeyword = addresses.some((addr) =>
       zoneConfig.cities.some((city) => addr.toLowerCase().includes(city))
     );
     if (hasKeyword) return true;
 
-    // Coordinate match using pre-geocoded batch
     const directHit = coordsList.some((c) => c && isPointInBox(c.lat, c.lng));
     if (directHit) return true;
 
-    // Route directions match
     return new Promise((resolve) => {
       const directionsService = new window.google.maps.DirectionsService();
       directionsService.route(
@@ -301,6 +332,17 @@ export default function App() {
   const handleCalculate = async (e) => {
     if (e) e.preventDefault();
 
+    // Prevent Rapid Calculations (2 second cooldown)
+    const now = Date.now();
+    if (now - lastCalculationTime.current < 2000) {
+      dispatch({
+        type: 'CALCULATE_ERROR',
+        payload: 'Please wait 2 seconds between calculation requests.',
+      });
+      return;
+    }
+    lastCalculationTime.current = now;
+
     const cleanWaypoints = waypoints.map((w) => w.trim()).filter(Boolean);
     if (cleanWaypoints.length < 2) {
       dispatch({ type: 'CALCULATE_ERROR', payload: 'Please enter at least a Pick-up and Drop-off location.' });
@@ -309,16 +351,19 @@ export default function App() {
 
     dispatch({ type: 'CALCULATE_START' });
 
-    const routeWaypoints = cleanWaypoints.slice(0, -1); // All points except final return to base
-const origin = encodeURIComponent(currentBase.address);
-const destination = encodeURIComponent(currentBase.address);
-const waypointsParam = routeWaypoints.map(addr => encodeURIComponent(addr)).join('|');
-
-const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_API_KEY}&origin=${origin}&destination=${destination}&waypoints=${waypointsParam}&mode=driving`;
+    // Embedded Map URL for full loop
+    const origin = encodeURIComponent(currentBase.address);
+    const destination = encodeURIComponent(currentBase.address);
+    const waypointsParam = cleanWaypoints.map((addr) => encodeURIComponent(addr)).join('|');
+    const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_API_KEY}&origin=${origin}&destination=${destination}&waypoints=${waypointsParam}&mode=driving`;
 
     try {
-      // Single Batch Geocode
       const coordsList = await geocodeAll(cleanWaypoints);
+
+      const validCoords = coordsList.filter((c) => c !== null);
+      if (validCoords.length === 0 && cleanWaypoints.length > 0) {
+        console.warn('⚠️ All geocoding attempts failed — falling back to keyword matching for geofences.');
+      }
 
       const [hitDFW, hitHouston] = await Promise.all([
         checkGeofenceZone(GEOFENCES.dfw, cleanWaypoints, coordsList),
@@ -328,25 +373,32 @@ const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${G
       const routePoints = [currentBase.address, ...cleanWaypoints, currentBase.address];
       const distanceService = new window.google.maps.DistanceMatrixService();
 
-      let totalDriveSeconds = 0;
-      const legsDetails = [];
-
-      for (let i = 0; i < routePoints.length - 1; i++) {
-        const response = await new Promise((res, rej) => {
+      // Parallel Matrix Requests
+      const matrixPromises = routePoints.slice(0, -1).map((originPt, i) => {
+        const destPt = routePoints[i + 1];
+        return new Promise((res, rej) => {
           distanceService.getDistanceMatrix(
             {
-              origins: [routePoints[i]],
-              destinations: [routePoints[i + 1]],
+              origins: [originPt],
+              destinations: [destPt],
               travelMode: window.google.maps.TravelMode.DRIVING,
             },
             (resData, status) => {
-              if (status === 'OK') res(resData);
+              if (status === 'OK') res({ index: i, data: resData });
               else rej(status);
             }
           );
         });
+      });
 
-        const legSec = response.rows[0].elements[0].duration.value;
+      const matrixResults = await Promise.all(matrixPromises);
+      let totalDriveSeconds = 0;
+      const legsDetails = [];
+
+      matrixResults.sort((a, b) => a.index - b.index);
+
+      matrixResults.forEach(({ index: i, data }) => {
+        const legSec = data.rows[0].elements[0].duration.value;
         totalDriveSeconds += legSec;
 
         let label = `Leg ${i + 1}`;
@@ -356,9 +408,8 @@ const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${G
         else label = `Stop ${i - 1} → Stop ${i}`;
 
         legsDetails.push({ label, minutes: Math.round(legSec / 60) });
-      }
+      });
 
-      // Issue 4: Using Extracted RATES Constants
       const totalDriveMinutes = totalDriveSeconds / 60;
       const adjustedDriveMinutes = totalDriveMinutes * RATES.DRIVE_TIME_BUFFER;
       const loadUnloadTime = RATES.LOAD_UNLOAD_BASE_MINS + (cleanWaypoints.length - 2) * RATES.EXTRA_STOP_MINS;
@@ -366,6 +417,8 @@ const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${G
       const totalHours = totalJobMinutes / 60;
 
       const hasAnyMetroZone = hitDFW || hitHouston || isMetro;
+      const minRate = isHeavy ? RATES.HEAVY_HOURLY_MIN : RATES.HOURLY_MIN;
+      const maxRate = isHeavy ? RATES.HEAVY_HOURLY_MAX : RATES.HOURLY_MAX;
 
       dispatch({
         type: 'CALCULATE_SUCCESS',
@@ -379,10 +432,8 @@ const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${G
             rawTotalHours: totalHours,
             totalHours: totalHours.toFixed(2),
             isHeavy,
-            minRate,
-            maxRate,
-            baseMinQuote: roundToNearest(totalHours * RATES.HOURLY_MIN),
-            baseMaxQuote: roundToNearest(totalHours * RATES.HOURLY_MAX),
+            baseMinQuote: roundToNearest(totalHours * minRate),
+            baseMaxQuote: roundToNearest(totalHours * maxRate),
             hasAfterHours: isAfterHours,
             hasRoadClub: isRoadClub,
             hasMetroZone: hasAnyMetroZone,
@@ -390,14 +441,35 @@ const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${G
         },
       });
     } catch (err) {
-      // Issue 8: Specific Error Catching
       console.error('Calculation error:', err);
-      const message = err?.message?.includes('OVER_QUERY_LIMIT') || err?.includes?.('OVER_QUERY_LIMIT')
+      const message = err?.message?.includes('OVER_QUERY_LIMIT')
         ? 'Google Maps API limit exceeded. Please try again later.'
         : err?.message || 'An error occurred calculating the quote.';
       dispatch({ type: 'CALCULATE_ERROR', payload: message });
     }
   };
+
+  // Keyboard Shortcuts (Ctrl + Enter & Escape)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (activeTab !== 'calculator') return;
+
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+
+      if (isCmdOrCtrl && e.key === 'Enter') {
+        e.preventDefault();
+        if (!loading && isApiLoaded) handleCalculate();
+      }
+
+      if ((isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'r') || e.key === 'Escape') {
+        e.preventDefault();
+        dispatch({ type: 'RESET' });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, loading, isApiLoaded]);
 
   // Recalculations
   let effectiveMultiplier = 1.0;
@@ -407,8 +479,11 @@ const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${G
     if (quoteData.hasMetroZone && activeOverrides.metro) effectiveMultiplier *= RATES.METRO_MULTIPLIER;
   }
 
-  const currentMinQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * RATES.HOURLY_MIN * effectiveMultiplier) : 0;
-  const currentMaxQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * RATES.HOURLY_MAX * effectiveMultiplier) : 0;
+  const baseMinRate = quoteData?.isHeavy ? RATES.HEAVY_HOURLY_MIN : RATES.HOURLY_MIN;
+  const baseMaxRate = quoteData?.isHeavy ? RATES.HEAVY_HOURLY_MAX : RATES.HOURLY_MAX;
+
+  const currentMinQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * baseMinRate * effectiveMultiplier) : 0;
+  const currentMaxQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * baseMaxRate * effectiveMultiplier) : 0;
 
   const customCalculatedQuote =
     quoteData && customRate && !isNaN(parseFloat(customRate))
@@ -420,6 +495,7 @@ const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${G
     dispatch({ type: 'SAVE_START' });
 
     const activeModifiers = [];
+    if (quoteData.isHeavy) activeModifiers.push('Heavy Duty Rate');
     if (quoteData.hasAfterHours && activeOverrides.afterHours) activeModifiers.push('+25% After Hours');
     if (quoteData.hasRoadClub && activeOverrides.roadClub) activeModifiers.push('+15% Road Club');
     if (quoteData.hasMetroZone && activeOverrides.metro) activeModifiers.push('+28.57% Metro');
@@ -444,13 +520,6 @@ const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${G
       dispatch({ type: 'SAVE_SUCCESS' });
     }
   };
-
-  // Dynamic base rates
-const baseMinRate = quoteData?.isHeavy ? RATES.HEAVY_HOURLY_MIN : RATES.HOURLY_MIN;
-const baseMaxRate = quoteData?.isHeavy ? RATES.HEAVY_HOURLY_MAX : RATES.HOURLY_MAX;
-
-const currentMinQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * baseMinRate * effectiveMultiplier) : 0;
-const currentMaxQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * baseMaxRate * effectiveMultiplier) : 0;
 
   return (
     <div className="min-h-screen bg-[#0b0f17] flex items-center justify-center p-6 text-slate-200">
@@ -510,17 +579,18 @@ const currentMaxQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * bas
             <form onSubmit={handleCalculate} className="space-y-6">
               <div className="grid grid-cols-1 gap-2.5">
                 <div className="flex items-center gap-3 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-2.5 cursor-pointer select-none">
-      <input
-        type="checkbox"
-        id="heavy"
-        checked={isHeavy}
-        onChange={() => dispatch({ type: 'TOGGLE_SURCHARGE', payload: 'isHeavy' })}
-        className="w-4 h-4 accent-blue-500 rounded cursor-pointer"
-      />
-      <label htmlFor="heavy" className="text-xs font-medium text-slate-200 cursor-pointer flex-1">
-        Heavy Duty Towing <span className="text-amber-400 font-bold">($200 – $250/hr)</span>
-      </label>
-    </div>
+                  <input
+                    type="checkbox"
+                    id="heavy"
+                    checked={isHeavy}
+                    onChange={() => dispatch({ type: 'TOGGLE_SURCHARGE', payload: 'isHeavy' })}
+                    className="w-4 h-4 accent-blue-500 rounded cursor-pointer"
+                  />
+                  <label htmlFor="heavy" className="text-xs font-medium text-slate-200 cursor-pointer flex-1">
+                    Heavy Duty Towing <span className="text-amber-400 font-bold">($200 – $250/hr)</span>
+                  </label>
+                </div>
+
                 <div className="flex items-center gap-3 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -561,7 +631,7 @@ const currentMaxQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * bas
                 </div>
               </div>
 
-              {/* Dynamic Memoized Waypoints */}
+              {/* Waypoint Inputs */}
               <div className="space-y-4">
                 {waypoints.map((address, index) => (
                   <WaypointInput
@@ -588,9 +658,10 @@ const currentMaxQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * bas
                 <button
                   type="submit"
                   disabled={loading || !isApiLoaded}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg shadow-blue-600/20 transition duration-200 disabled:bg-slate-800 disabled:text-slate-500 cursor-pointer text-base"
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg shadow-blue-600/20 transition duration-200 disabled:bg-slate-800 disabled:text-slate-500 cursor-pointer text-base flex items-center justify-center gap-2"
                 >
                   {loading ? 'Checking Routes & Geofences...' : 'Generate Quote'}
+                  <span className="text-[10px] bg-blue-800/60 text-blue-200 px-1.5 py-0.5 rounded font-mono hidden sm:inline">Ctrl+Enter</span>
                 </button>
 
                 <button
@@ -603,7 +674,7 @@ const currentMaxQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * bas
               </div>
             </form>
 
-            {/* Results Display */}
+            {/* Results Section */}
             {quoteData && (
               <div className="mt-8 border-t border-slate-800/80 pt-8">
                 {mapUrl && (
@@ -615,9 +686,12 @@ const currentMaxQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * bas
                 <div className="bg-gradient-to-b from-[#1c2436] to-[#121722] border border-blue-500/30 rounded-2xl p-6 text-center shadow-xl mb-6 relative">
                   <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
                     {quoteData.hasAfterHours && (
-                      <span className="text-xs uppercase tracking-widest font-bold text-blue-400">
-  Estimated Quote Range (${quoteData.isHeavy ? `${RATES.HEAVY_HOURLY_MIN} – $${RATES.HEAVY_HOURLY_MAX}` : `${RATES.HOURLY_MIN} – $${RATES.HOURLY_MAX}`}/hr)
-</span>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition ${activeOverrides.afterHours ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'}`}>
+                        +25% After Hours
+                        <button type="button" onClick={() => dispatch({ type: 'TOGGLE_OVERRIDE', payload: 'afterHours' })} className="hover:text-white font-bold ml-0.5 cursor-pointer">
+                          {activeOverrides.afterHours ? '✕' : '↺'}
+                        </button>
+                      </span>
                     )}
 
                     {quoteData.hasRoadClub && (
@@ -640,7 +714,7 @@ const currentMaxQuote = quoteData ? roundToNearest(quoteData.rawTotalHours * bas
                   </div>
 
                   <span className="text-xs uppercase tracking-widest font-bold text-blue-400">
-                    Estimated Quote Range (${RATES.HOURLY_MIN} – ${RATES.HOURLY_MAX}/hr)
+                    Estimated Quote Range (${quoteData.isHeavy ? `${RATES.HEAVY_HOURLY_MIN} – $${RATES.HEAVY_HOURLY_MAX}` : `${RATES.HOURLY_MIN} – $${RATES.HOURLY_MAX}`}/hr)
                   </span>
                   <p className="text-4xl font-black text-white mt-2 tracking-tight">${currentMinQuote} – ${currentMaxQuote}</p>
                   <p className="text-xs text-slate-400 mt-2">Rounded to nearest $25</p>
