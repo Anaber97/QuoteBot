@@ -70,6 +70,14 @@ export default function QuoteLog() {
             <p><strong className="text-slate-300">Hours:</strong> {log.estimated_hours} hrs</p>
           </div>
 
+          <button
+  type="button"
+  onClick={() => onSelectQuote(log)}
+  className="mt-2 w-full py-1.5 bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 rounded-lg font-semibold text-[11px] transition cursor-pointer"
+>
+  📂 Open in Calculator
+</button>
+
           {log.surcharges_applied?.length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1">
               {log.surcharges_applied.map((s, i) => (

@@ -56,6 +56,14 @@ const initialState = {
 
 function quoteReducer(state, action) {
   switch (action.type) {
+    case 'LOAD_QUOTE_INTO_CALCULATOR':
+  return {
+    ...state,
+    activeTab: 'calculator',
+    waypoints: action.payload.waypoints || ['', ''],
+    // Reset quote output until they hit calculate again or show old values
+    quoteData: null,
+  };
     case 'SET_TAB':
       return { ...state, activeTab: action.payload };
     case 'SET_BASE':
@@ -450,26 +458,38 @@ export default function App() {
   };
 
   // Keyboard Shortcuts (Ctrl + Enter & Escape)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (activeTab !== 'calculator') return;
+  // Add a ref to always hold fresh state for key listeners
+const stateRef = useRef(state);
+useEffect(() => {
+  stateRef.current = state;
+}, [state]);
 
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+// Updated Keyboard Shortcut Listener
+useEffect(() => {
+  const handleKeyDown = (e) => {
+    if (stateRef.current.activeTab !== 'calculator') return;
 
-      if (isCmdOrCtrl && e.key === 'Enter') {
-        e.preventDefault();
-        if (!loading && isApiLoaded) handleCalculate();
+    const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+
+    if (isCmdOrCtrl && e.key === 'Enter') {
+      e.preventDefault();
+      // Only trigger if we aren't already loading and API is ready
+      if (!stateRef.current.loading && stateRef.current.isApiLoaded) {
+        // Grab form element or call calculate
+        const form = document.querySelector('form');
+        if (form) form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
       }
+    }
 
-      if ((isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'r') || e.key === 'Escape') {
-        e.preventDefault();
-        dispatch({ type: 'RESET' });
-      }
-    };
+    if ((isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'r') || e.key === 'Escape') {
+      e.preventDefault();
+      dispatch({ type: 'RESET' });
+    }
+  };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab, loading, isApiLoaded]);
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, []);
 
   // Recalculations
   let effectiveMultiplier = 1.0;
