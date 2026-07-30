@@ -28,6 +28,9 @@ export default function App() {
     metro: true,
   });
 
+  // UI Toggle States
+  const [showDetails, setShowDetails] = useState(false);
+
   // Logging Customer Fields
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -60,43 +63,41 @@ export default function App() {
     document.head.appendChild(script);
   }, []);
 
- // Attach Places Autocomplete safely (handles tab switching & dynamic stops)
-useEffect(() => {
-  if (!isApiLoaded || activeTab !== 'calculator') return;
+  // Attach Places Autocomplete safely (handles tab switching & dynamic stops)
+  useEffect(() => {
+    if (!isApiLoaded || activeTab !== 'calculator') return;
 
-  const options = {
-    types: ['geocode', 'establishment'],
-    componentRestrictions: { country: 'us' },
-  };
+    const options = {
+      types: ['geocode', 'establishment'],
+      componentRestrictions: { country: 'us' },
+    };
 
-  // Small delay ensures React finishes mounting the inputs in the DOM
-  const timer = setTimeout(() => {
-    waypoints.forEach((_, index) => {
-      const ref = inputRefs.current[index];
-      if (ref) {
-        // If switching tabs re-created the element, reset the dataset flag
-        if (!document.body.contains(ref.dataset.autocompleteAttachedElement)) {
-          ref.dataset.autocompleteAttached = '';
+    const timer = setTimeout(() => {
+      waypoints.forEach((_, index) => {
+        const ref = inputRefs.current[index];
+        if (ref) {
+          if (!document.body.contains(ref.dataset.autocompleteAttachedElement)) {
+            ref.dataset.autocompleteAttached = '';
+          }
+
+          if (!ref.dataset.autocompleteAttached) {
+            const autocomplete = new window.google.maps.places.Autocomplete(ref, options);
+            autocomplete.addListener('place_changed', () => {
+              const place = autocomplete.getPlace();
+              if (place && place.formatted_address) {
+                handleWaypointChange(index, place.formatted_address);
+              } else if (ref.value) {
+                handleWaypointChange(index, ref.value);
+              }
+            });
+            ref.dataset.autocompleteAttached = 'true';
+          }
         }
+      });
+    }, 50);
 
-        if (!ref.dataset.autocompleteAttached) {
-          const autocomplete = new window.google.maps.places.Autocomplete(ref, options);
-          autocomplete.addListener('place_changed', () => {
-            const place = autocomplete.getPlace();
-            if (place && place.formatted_address) {
-              handleWaypointChange(index, place.formatted_address);
-            } else if (ref.value) {
-              handleWaypointChange(index, ref.value);
-            }
-          });
-          ref.dataset.autocompleteAttached = 'true';
-        }
-      }
-    });
-  }, 50);
-
-  return () => clearTimeout(timer);
-}, [isApiLoaded, activeTab, waypoints.length]);
+    return () => clearTimeout(timer);
+  }, [isApiLoaded, activeTab, waypoints.length]);
 
   const roundToNearest25 = (value) => Math.round(value / 25) * 25;
 
@@ -129,6 +130,7 @@ useEffect(() => {
     setIsRoadClub(false);
     setIsMetro(false);
     setActiveOverrides({ afterHours: true, roadClub: true, metro: true });
+    setShowDetails(false);
     setCustomerName('');
     setCustomerPhone('');
     setSaveStatus(null);
@@ -312,6 +314,11 @@ useEffect(() => {
   const currentMinQuote = quoteData ? roundToNearest25(quoteData.rawTotalHours * 125 * effectiveMultiplier) : 0;
   const currentMaxQuote = quoteData ? roundToNearest25(quoteData.rawTotalHours * 135 * effectiveMultiplier) : 0;
 
+  const customCalculatedQuote =
+    quoteData && customRate && !isNaN(parseFloat(customRate))
+      ? roundToNearest25(quoteData.rawTotalHours * parseFloat(customRate) * effectiveMultiplier)
+      : null;
+
   // Supabase Save Handler
   const handleLogQuote = async () => {
     if (!quoteData) return;
@@ -319,7 +326,6 @@ useEffect(() => {
     setIsSaving(true);
     setSaveStatus(null);
 
-    // Build array of active modifier labels
     const activeModifiers = [];
     if (quoteData.hasAfterHours && activeOverrides.afterHours) activeModifiers.push('+25% After Hours');
     if (quoteData.hasRoadClub && activeOverrides.roadClub) activeModifiers.push('+15% Road Club');
@@ -335,7 +341,7 @@ useEffect(() => {
         quote_min: currentMinQuote,
         quote_max: currentMaxQuote,
         custom_rate: customRate ? parseFloat(customRate) : null,
-        surcharges_applied: activeModifiers, // Saved as array/JSON
+        surcharges_applied: activeModifiers,
       },
     ]);
 
@@ -355,7 +361,7 @@ useEffect(() => {
         <div className="flex bg-[#0b0f17] border border-slate-800 rounded-xl p-1 mb-8">
           <button
             onClick={() => setActiveTab('calculator')}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition ${
+            className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition cursor-pointer ${
               activeTab === 'calculator'
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white'
@@ -365,7 +371,7 @@ useEffect(() => {
           </button>
           <button
             onClick={() => setActiveTab('log')}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition ${
+            className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition cursor-pointer ${
               activeTab === 'log'
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white'
@@ -477,7 +483,7 @@ useEffect(() => {
                           <button
                             type="button"
                             onClick={() => removeWaypoint(index)}
-                            className="bg-red-950/40 hover:bg-red-900/50 text-red-400 w-11 h-11 rounded-xl border border-red-800/50 font-bold text-lg flex items-center justify-center transition"
+                            className="bg-red-950/40 hover:bg-red-900/50 text-red-400 w-11 h-11 rounded-xl border border-red-800/50 font-bold text-lg flex items-center justify-center transition cursor-pointer"
                           >
                             ✕
                           </button>
@@ -516,229 +522,213 @@ useEffect(() => {
               </div>
             </form>
 
-           {/* Results Display */}
-{quoteData && (
-  <div className="mt-8 border-t border-slate-800/80 pt-8">
-    
-    {/* Embedded Route Map */}
-    {mapUrl && (
-      <div className="mb-6 rounded-2xl overflow-hidden border border-slate-800 shadow-xl bg-[#0b0f17]">
-        <iframe
-          title="Route Map"
-          width="100%"
-          height="260"
-          style={{ border: 0 }}
-          loading="lazy"
-          allowFullScreen
-          src={mapUrl}
-        ></iframe>
-      </div>
-    )}
+            {/* Results Display */}
+            {quoteData && (
+              <div className="mt-8 border-t border-slate-800/80 pt-8">
+                
+                {mapUrl && (
+                  <div className="mb-6 rounded-2xl overflow-hidden border border-slate-800 shadow-xl bg-[#0b0f17]">
+                    <iframe
+                      title="Route Map"
+                      width="100%"
+                      height="260"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      allowFullScreen
+                      src={mapUrl}
+                    ></iframe>
+                  </div>
+                )}
 
-    {/* Main Quote Card with Interactive Surcharge Badges */}
-    <div className="bg-gradient-to-b from-[#1c2436] to-[#121722] border border-blue-500/30 rounded-2xl p-6 text-center shadow-xl mb-6 relative">
-      
-      {/* Dismissable Surcharge Tags */}
-      <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
-        {quoteData.hasAfterHours && (
-          <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition ${
-              activeOverrides.afterHours
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'
-            }`}
-          >
-            +25% After Hours
-            <button
-              type="button"
-              onClick={() => toggleOverride('afterHours')}
-              className="hover:text-white font-bold ml-0.5 cursor-pointer"
-            >
-              {activeOverrides.afterHours ? '✕' : '↺'}
-            </button>
-          </span>
-        )}
+                {/* Main Quote Card */}
+                <div className="bg-gradient-to-b from-[#1c2436] to-[#121722] border border-blue-500/30 rounded-2xl p-6 text-center shadow-xl mb-6 relative">
+                  <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
+                    {quoteData.hasAfterHours && (
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition ${
+                          activeOverrides.afterHours
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                            : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'
+                        }`}
+                      >
+                        +25% After Hours
+                        <button type="button" onClick={() => toggleOverride('afterHours')} className="hover:text-white font-bold ml-0.5 cursor-pointer">
+                          {activeOverrides.afterHours ? '✕' : '↺'}
+                        </button>
+                      </span>
+                    )}
 
-        {quoteData.hasRoadClub && (
-          <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition ${
-              activeOverrides.roadClub
-                ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'
-            }`}
-          >
-            +15% Road Club
-            <button
-              type="button"
-              onClick={() => toggleOverride('roadClub')}
-              className="hover:text-white font-bold ml-0.5 cursor-pointer"
-            >
-              {activeOverrides.roadClub ? '✕' : '↺'}
-            </button>
-          </span>
-        )}
+                    {quoteData.hasRoadClub && (
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition ${
+                          activeOverrides.roadClub
+                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                            : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'
+                        }`}
+                      >
+                        +15% Road Club
+                        <button type="button" onClick={() => toggleOverride('roadClub')} className="hover:text-white font-bold ml-0.5 cursor-pointer">
+                          {activeOverrides.roadClub ? '✕' : '↺'}
+                        </button>
+                      </span>
+                    )}
 
-        {quoteData.hasMetroZone && (
-          <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition ${
-              activeOverrides.metro
-                ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'
-            }`}
-          >
-            +28.57% Metro
-            <button
-              type="button"
-              onClick={() => toggleOverride('metro')}
-              className="hover:text-white font-bold ml-0.5 cursor-pointer"
-            >
-              {activeOverrides.metro ? '✕' : '↺'}
-            </button>
-          </span>
-        )}
-      </div>
+                    {quoteData.hasMetroZone && (
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition ${
+                          activeOverrides.metro
+                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                            : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'
+                        }`}
+                      >
+                        +28.57% Metro
+                        <button type="button" onClick={() => toggleOverride('metro')} className="hover:text-white font-bold ml-0.5 cursor-pointer">
+                          {activeOverrides.metro ? '✕' : '↺'}
+                        </button>
+                      </span>
+                    )}
+                  </div>
 
-      <span className="text-xs uppercase tracking-widest font-bold text-blue-400">
-        Estimated Quote Range ($125 – $135/hr)
-      </span>
-      <p className="text-4xl font-black text-white mt-2 tracking-tight">
-        ${currentMinQuote} – ${currentMaxQuote}
-      </p>
-      <p className="text-xs text-slate-400 mt-2">
-        Rounded to nearest $25
-      </p>
+                  <span className="text-xs uppercase tracking-widest font-bold text-blue-400">
+                    Estimated Quote Range ($125 – $135/hr)
+                  </span>
+                  <p className="text-4xl font-black text-white mt-2 tracking-tight">
+                    ${currentMinQuote} – ${currentMaxQuote}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-2">
+                    Rounded to nearest $25
+                  </p>
 
-      {/* Show / Hide Details Toggle Button */}
-      <button
-        type="button"
-        onClick={() => setShowDetails(!showDetails)}
-        className="mt-4 text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-4 cursor-pointer transition"
-      >
-        {showDetails ? '▲ Hide Trip Breakdown' : '▼ Show Trip Breakdown'}
-      </button>
-    </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDetails(!showDetails)}
+                    className="mt-4 text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-4 cursor-pointer transition"
+                  >
+                    {showDetails ? '▲ Hide Trip Breakdown' : '▼ Show Trip Breakdown'}
+                  </button>
+                </div>
 
-    {/* Collapsible Trip Breakdown Panel */}
-    {showDetails && (
-      <div className="bg-[#0b0f17] border border-slate-800 rounded-xl p-5 space-y-3 text-sm mb-6 shadow-inner">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-          Route & Time Breakdown
-        </h3>
+                {/* Collapsible Trip Breakdown */}
+                {showDetails && (
+                  <div className="bg-[#0b0f17] border border-slate-800 rounded-xl p-5 space-y-3 text-sm mb-6 shadow-inner">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                      Route & Time Breakdown
+                    </h3>
 
-        {quoteData.legsDetails.map((leg, i) => (
-          <div key={i} className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
-            <span>{leg.label}</span>
-            <span className="font-semibold text-slate-200">{leg.minutes} mins</span>
-          </div>
-        ))}
+                    {quoteData.legsDetails.map((leg, i) => (
+                      <div key={i} className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                        <span>{leg.label}</span>
+                        <span className="font-semibold text-slate-200">{leg.minutes} mins</span>
+                      </div>
+                    ))}
 
-        <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
-          <span>Adjusted Drive Time (+10%)</span>
-          <span className="font-semibold text-slate-200">{quoteData.adjustedDriveMin} mins</span>
-        </div>
+                    <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                      <span>Adjusted Drive Time (+10%)</span>
+                      <span className="font-semibold text-slate-200">{quoteData.adjustedDriveMin} mins</span>
+                    </div>
 
-        <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
-          <span>Load / Unload Flat Rate</span>
-          <span className="font-semibold text-slate-200">{quoteData.loadUnloadTime} mins</span>
-        </div>
+                    <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                      <span>Load / Unload Flat Rate</span>
+                      <span className="font-semibold text-slate-200">{quoteData.loadUnloadTime} mins</span>
+                    </div>
 
-        <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
-          <span>Metro / Geofence Status</span>
-          <span className={`font-semibold ${quoteData.hasMetroZone && activeOverrides.metro ? 'text-purple-400' : 'text-slate-200'}`}>
-            {quoteData.hasMetroZone ? (activeOverrides.metro ? 'Applied (+28.57%)' : 'Removed (0%)') : 'No'}
-          </span>
-        </div>
+                    <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                      <span>Metro / Geofence Status</span>
+                      <span className={`font-semibold ${quoteData.hasMetroZone && activeOverrides.metro ? 'text-purple-400' : 'text-slate-200'}`}>
+                        {quoteData.hasMetroZone ? (activeOverrides.metro ? 'Applied (+28.57%)' : 'Removed (0%)') : 'No'}
+                      </span>
+                    </div>
 
-        <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
-          <span>Base Price Range (No Surcharges)</span>
-          <span className="font-semibold text-emerald-400">
-            ${quoteData.baseMinQuote} – ${quoteData.baseMaxQuote}
-          </span>
-        </div>
+                    <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                      <span>Base Price Range (No Surcharges)</span>
+                      <span className="font-semibold text-emerald-400">
+                        ${quoteData.baseMinQuote} – ${quoteData.baseMaxQuote}
+                      </span>
+                    </div>
 
-        <div className="flex justify-between items-center pt-1 text-base font-bold text-white">
-          <span>Total Billable Hours</span>
-          <span className="text-blue-400">{quoteData.totalHours} hrs</span>
-        </div>
-      </div>
-    )}
+                    <div className="flex justify-between items-center pt-1 text-base font-bold text-white">
+                      <span>Total Billable Hours</span>
+                      <span className="text-blue-400">{quoteData.totalHours} hrs</span>
+                    </div>
+                  </div>
+                )}
 
-    {/* Custom Hourly Rate Input */}
-    <div className="bg-[#1f2636]/60 border border-slate-700/80 rounded-xl p-4 mb-6 shadow-md">
-      <label className="block text-xs uppercase tracking-wider font-semibold text-slate-300 mb-2">
-        Custom Hourly Rate
-      </label>
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1">
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-semibold text-base">
-            $
-          </span>
-          <input
-            type="number"
-            placeholder="Enter rate (e.g. 150)"
-            value={customRate}
-            onChange={(e) => setCustomRate(e.target.value)}
-            className="w-full bg-[#0b0f17] border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-base"
-          />
-        </div>
-        {customCalculatedQuote !== null && (
-          <div className="bg-blue-600/20 border border-blue-500/40 rounded-lg px-4 py-2 text-right">
-            <span className="text-[10px] uppercase tracking-wider block text-blue-300 font-bold">
-              Custom Quote
-            </span>
-            <span className="text-xl font-extrabold text-white">
-              ${customCalculatedQuote}
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
+                {/* Custom Rate Input */}
+                <div className="bg-[#1f2636]/60 border border-slate-700/80 rounded-xl p-4 mb-6 shadow-md">
+                  <label className="block text-xs uppercase tracking-wider font-semibold text-slate-300 mb-2">
+                    Custom Hourly Rate
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-semibold text-base">
+                        $
+                      </span>
+                      <input
+                        type="number"
+                        placeholder="Enter rate (e.g. 150)"
+                        value={customRate}
+                        onChange={(e) => setCustomRate(e.target.value)}
+                        className="w-full bg-[#0b0f17] border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-base"
+                      />
+                    </div>
+                    {customCalculatedQuote !== null && (
+                      <div className="bg-blue-600/20 border border-blue-500/40 rounded-lg px-4 py-2 text-right">
+                        <span className="text-[10px] uppercase tracking-wider block text-blue-300 font-bold">
+                          Custom Quote
+                        </span>
+                        <span className="text-xl font-extrabold text-white">
+                          ${customCalculatedQuote}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-    {/* Quote Logging Panel */}
-    <div className="bg-[#1f2636]/60 border border-slate-700/80 rounded-xl p-4 mb-6 space-y-3">
-      <span className="block text-xs uppercase tracking-wider font-semibold text-slate-300">
-        Log Quote to Database (Optional)
-      </span>
+                {/* Optional Quote Logging */}
+                <div className="bg-[#1f2636]/60 border border-slate-700/80 rounded-xl p-4 mb-6 space-y-3">
+                  <span className="block text-xs uppercase tracking-wider font-semibold text-slate-300">
+                    Log Quote to Database (Optional)
+                  </span>
 
-      <div className="grid grid-cols-2 gap-2">
-        <input
-          type="text"
-          placeholder="Customer Name"
-          value={customerName}
-          onChange={(e) => setCustomerName(e.target.value)}
-          className="bg-[#0b0f17] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        <input
-          type="text"
-          placeholder="Phone Number"
-          value={customerPhone}
-          onChange={(e) => setCustomerPhone(e.target.value)}
-          className="bg-[#0b0f17] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-      </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Customer Name"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      className="bg-[#0b0f17] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Phone Number"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      className="bg-[#0b0f17] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
 
-      <button
-        type="button"
-        onClick={handleLogQuote}
-        disabled={isSaving}
-        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-lg transition disabled:bg-slate-800 cursor-pointer"
-      >
-        {isSaving ? 'Saving Quote...' : '💾 Log Quote'}
-      </button>
+                  <button
+                    type="button"
+                    onClick={handleLogQuote}
+                    disabled={isSaving}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-lg transition disabled:bg-slate-800 cursor-pointer"
+                  >
+                    {isSaving ? 'Saving Quote...' : '💾 Log Quote'}
+                  </button>
 
-      {saveStatus && (
-        <p
-          className={`text-xs text-center font-medium ${
-            saveStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'
-          }`}
-        >
-          {saveStatus.message}
-        </p>
-      )}
-    </div>
+                  {saveStatus && (
+                    <p
+                      className={`text-xs text-center font-medium ${
+                        saveStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'
+                      }`}
+                    >
+                      {saveStatus.message}
+                    </p>
+                  )}
+                </div>
 
-  </div>
-)}
+              </div>
+            )}
           </>
         )}
 
