@@ -319,6 +319,12 @@ useEffect(() => {
     setIsSaving(true);
     setSaveStatus(null);
 
+    // Build array of active modifier labels
+    const activeModifiers = [];
+    if (quoteData.hasAfterHours && activeOverrides.afterHours) activeModifiers.push('+25% After Hours');
+    if (quoteData.hasRoadClub && activeOverrides.roadClub) activeModifiers.push('+15% Road Club');
+    if (quoteData.hasMetroZone && activeOverrides.metro) activeModifiers.push('+28.57% Metro');
+
     const { error } = await supabase.from('quotes').insert([
       {
         base_location: currentBase.name,
@@ -329,11 +335,7 @@ useEffect(() => {
         quote_min: currentMinQuote,
         quote_max: currentMaxQuote,
         custom_rate: customRate ? parseFloat(customRate) : null,
-        surcharges_applied: {
-          afterHours: quoteData.hasAfterHours && activeOverrides.afterHours,
-          roadClub: quoteData.hasRoadClub && activeOverrides.roadClub,
-          metro: quoteData.hasMetroZone && activeOverrides.metro,
-        },
+        surcharges_applied: activeModifiers, // Saved as array/JSON
       },
     ]);
 
