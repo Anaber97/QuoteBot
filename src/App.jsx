@@ -9,13 +9,20 @@ export default function App() {
   const [selectedBaseId, setSelectedBaseId] = useState(SHOP_LOCATIONS[0].id);
   const currentBase = SHOP_LOCATIONS.find((b) => b.id === selectedBaseId) || SHOP_LOCATIONS[0];
 
-  // Dynamic Waypoints Array: [0] = Pick-up, [last] = Drop-off, middle = Stops
+  // Dynamic Waypoints Array
   const [waypoints, setWaypoints] = useState(['', '']);
 
-  // Surcharge Options
+  // Surcharge Checkbox Options
   const [isAfterHours, setIsAfterHours] = useState(false);
   const [isRoadClub, setIsRoadClub] = useState(false);
   const [isMetro, setIsMetro] = useState(false);
+
+  // Manual Override States for Quote Card Badges (Dismissing via 'X')
+  const [activeOverrides, setActiveOverrides] = useState({
+    afterHours: true,
+    roadClub: true,
+    metro: true,
+  });
 
   // Results & UI States
   const [mapUrl, setMapUrl] = useState('');
@@ -43,7 +50,7 @@ export default function App() {
     document.head.appendChild(script);
   }, []);
 
-  // Attach Places Autocomplete safely to all inputs
+  // Attach Places Autocomplete to all inputs
   useEffect(() => {
     if (!isApiLoaded) return;
 
@@ -71,28 +78,26 @@ export default function App() {
 
   const roundToNearest25 = (value) => Math.round(value / 25) * 25;
 
-  // Functional Waypoint State Helpers (Prevents address wiping)
   const handleWaypointChange = (index, value) => {
-    setWaypoints((prevWaypoints) => {
-      const updated = [...prevWaypoints];
+    setWaypoints((prev) => {
+      const updated = [...prev];
       updated[index] = value;
       return updated;
     });
   };
 
   const addWaypoint = () => {
-    setWaypoints((prevWaypoints) => {
-      // Insert new stop right before the final Drop-off
-      const updated = [...prevWaypoints];
+    setWaypoints((prev) => {
+      const updated = [...prev];
       updated.splice(updated.length - 1, 0, '');
       return updated;
     });
   };
 
   const removeWaypoint = (index) => {
-    setWaypoints((prevWaypoints) => {
-      if (prevWaypoints.length <= 2) return prevWaypoints; // Keep at least PU & DO
-      return prevWaypoints.filter((_, i) => i !== index);
+    setWaypoints((prev) => {
+      if (prev.length <= 2) return prev;
+      return prev.filter((_, i) => i !== index);
     });
   };
 
@@ -101,26 +106,30 @@ export default function App() {
     setIsAfterHours(false);
     setIsRoadClub(false);
     setIsMetro(false);
+    setActiveOverrides({ afterHours: true, roadClub: true, metro: true });
     setMapUrl('');
     setCustomRate('');
     setQuoteData(null);
     setError(null);
   };
 
-  // Helper to check if addresses/routes cross a specific geofence zone
+  // Dismiss a surcharge tag directly on the quote card
+  const toggleOverride = (key) => {
+    setActiveOverrides((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Geofence Route Checker
   const checkGeofenceZone = async (zoneConfig, addresses) => {
     const isPointInBox = (lat, lng) => {
       const { box } = zoneConfig;
       return lat >= box.minLat && lat <= box.maxLat && lng >= box.minLng && lng <= box.maxLng;
     };
 
-    // 1. Keyword check across all stops
     const hasKeyword = addresses.some((addr) =>
       zoneConfig.cities.some((city) => addr.toLowerCase().includes(city))
     );
     if (hasKeyword) return true;
 
-    // 2. Geocode coordinates check
     const geocoder = new window.google.maps.Geocoder();
     const geocodeAddress = (addr) =>
       new Promise((res) => {
@@ -139,7 +148,6 @@ export default function App() {
     const directHit = coordsList.some((c) => c && isPointInBox(c.lat, c.lng));
     if (directHit) return true;
 
-    // 3. Directions route inspection
     return new Promise((resolve) => {
       const directionsService = new window.google.maps.DirectionsService();
       const origin = addresses[0];
@@ -188,24 +196,22 @@ export default function App() {
 
     setLoading(true);
     setError(null);
+    setActiveOverrides({ afterHours: true, roadClub: true, metro: true });
 
     const puAddress = cleanWaypoints[0];
     const doAddress = cleanWaypoints[cleanWaypoints.length - 1];
 
-    // Build embed map URL
     const embedUrl = `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_API_KEY}&origin=${encodeURIComponent(
       puAddress
     )}&destination=${encodeURIComponent(doAddress)}&mode=driving`;
     setMapUrl(embedUrl);
 
     try {
-      // Check DFW & Houston geofences in parallel
       const [hitDFW, hitHouston] = await Promise.all([
         checkGeofenceZone(GEOFENCES.dfw, cleanWaypoints),
         checkGeofenceZone(GEOFENCES.houston, cleanWaypoints),
       ]);
 
-      // Full route sequence: Base -> PU -> Intermediate Stops -> DO -> Base
       const routePoints = [currentBase.address, ...cleanWaypoints, currentBase.address];
       const distanceService = new window.google.maps.DistanceMatrixService();
 
@@ -242,27 +248,14 @@ export default function App() {
         legsDetails.push({ label, minutes: Math.round(legSec / 60) });
       }
 
-      // Time calculations
       const totalDriveMinutes = totalDriveSeconds / 60;
-      const adjustedDriveMinutes = totalDriveMinutes * 1.10; // +10% traffic buffer
-      const loadUnloadTime = 30 + (cleanWaypoints.length - 2) * 15; // 30 min base + 15 min per extra stop
+      const adjustedDriveMinutes = totalDriveMinutes * 1.10;
+      const loadUnloadTime = 30 + (cleanWaypoints.length - 2) * 15;
       const totalJobMinutes = adjustedDriveMinutes + loadUnloadTime;
       const totalHours = totalJobMinutes / 60;
 
-      // Multipliers
-      const afterHoursMult = isAfterHours ? 1.25 : 1.0;
-      const roadClubMult = isRoadClub ? 1.15 : 1.0;
-      const metroMult = isMetro ? 1.2857 : 1.0; // Updated to +28.57%
-      const dfwMult = hitDFW ? GEOFENCES.dfw.multiplier : 1.0;
-      const houstonMult = hitHouston ? GEOFENCES.houston.multiplier : 1.0;
-
-      const totalMultiplier = afterHoursMult * roadClubMult * metroMult * dfwMult * houstonMult;
-
-      const minQuote = roundToNearest25(totalHours * 125 * totalMultiplier);
-      const maxQuote = roundToNearest25(totalHours * 135 * totalMultiplier);
-
-      const baseMinQuote = roundToNearest25(totalHours * 125);
-      const baseMaxQuote = roundToNearest25(totalHours * 135);
+      // Prevent duplicate Metro charges: DFW, Houston, or Manual Metro counts as ONE Metro surcharge
+      const hasAnyMetroZone = hitDFW || hitHouston || isMetro;
 
       setQuoteData({
         legsDetails,
@@ -270,16 +263,14 @@ export default function App() {
         loadUnloadTime,
         rawTotalHours: totalHours,
         totalHours: totalHours.toFixed(2),
-        minQuote,
-        maxQuote,
-        baseMinQuote,
-        baseMaxQuote,
-        afterHoursApplied: isAfterHours,
-        roadClubApplied: isRoadClub,
-        metroApplied: isMetro,
-        dfwApplied: hitDFW,
-        houstonApplied: hitHouston,
-        totalMultiplier,
+        baseMinQuote: roundToNearest25(totalHours * 125),
+        baseMaxQuote: roundToNearest25(totalHours * 135),
+        hasAfterHours: isAfterHours,
+        hasRoadClub: isRoadClub,
+        hasMetroZone: hasAnyMetroZone,
+        dfwDetected: hitDFW,
+        houstonDetected: hitHouston,
+        manualMetroDetected: isMetro,
       });
 
       setLoading(false);
@@ -289,11 +280,20 @@ export default function App() {
     }
   };
 
+  // Recalculate effective quote based on active (non-dismissed) surcharges
+  let effectiveMultiplier = 1.0;
+  if (quoteData) {
+    if (quoteData.hasAfterHours && activeOverrides.afterHours) effectiveMultiplier *= 1.25;
+    if (quoteData.hasRoadClub && activeOverrides.roadClub) effectiveMultiplier *= 1.15;
+    if (quoteData.hasMetroZone && activeOverrides.metro) effectiveMultiplier *= 1.2857;
+  }
+
+  const currentMinQuote = quoteData ? roundToNearest25(quoteData.rawTotalHours * 125 * effectiveMultiplier) : 0;
+  const currentMaxQuote = quoteData ? roundToNearest25(quoteData.rawTotalHours * 135 * effectiveMultiplier) : 0;
+
   const customCalculatedQuote =
     quoteData && customRate && !isNaN(parseFloat(customRate))
-      ? roundToNearest25(
-          quoteData.rawTotalHours * parseFloat(customRate) * quoteData.totalMultiplier
-        )
+      ? roundToNearest25(quoteData.rawTotalHours * parseFloat(customRate) * effectiveMultiplier)
       : null;
 
   return (
@@ -400,7 +400,6 @@ export default function App() {
                       className="flex-1 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-sm shadow-inner"
                     />
 
-                    {/* Only show remove button on intermediate waypoints */}
                     {isWaypoint && (
                       <button
                         type="button"
@@ -416,7 +415,6 @@ export default function App() {
               );
             })}
 
-            {/* Single "+ Add Stop" Button */}
             <button
               type="button"
               onClick={addWaypoint}
@@ -465,32 +463,68 @@ export default function App() {
               </div>
             )}
 
-            {/* Main Quote Card */}
+            {/* Main Quote Card with Interactive Surcharge Badges */}
             <div className="bg-gradient-to-b from-[#1c2436] to-[#121722] border border-blue-500/30 rounded-2xl p-6 text-center shadow-xl mb-6 relative">
+              
+              {/* Dismissable Surcharge Tags */}
               <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
-                {quoteData.afterHoursApplied && (
-                  <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                {quoteData.hasAfterHours && (
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border transition ${
+                      activeOverrides.afterHours
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'
+                    }`}
+                  >
                     +25% After Hours
+                    <button
+                      type="button"
+                      onClick={() => toggleOverride('afterHours')}
+                      title={activeOverrides.afterHours ? 'Remove surcharge' : 'Re-apply surcharge'}
+                      className="hover:text-white font-bold ml-0.5 cursor-pointer"
+                    >
+                      {activeOverrides.afterHours ? '✕' : '↺'}
+                    </button>
                   </span>
                 )}
-                {quoteData.roadClubApplied && (
-                  <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+
+                {quoteData.hasRoadClub && (
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border transition ${
+                      activeOverrides.roadClub
+                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                        : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'
+                    }`}
+                  >
                     +15% Road Club
+                    <button
+                      type="button"
+                      onClick={() => toggleOverride('roadClub')}
+                      title={activeOverrides.roadClub ? 'Remove surcharge' : 'Re-apply surcharge'}
+                      className="hover:text-white font-bold ml-0.5 cursor-pointer"
+                    >
+                      {activeOverrides.roadClub ? '✕' : '↺'}
+                    </button>
                   </span>
                 )}
-                {quoteData.metroApplied && (
-                  <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
-                    +28.57% Metro Surcharge
-                  </span>
-                )}
-                {quoteData.dfwApplied && (
-                  <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
-                    +28.57% DFW Zone
-                  </span>
-                )}
-                {quoteData.houstonApplied && (
-                  <span className="bg-pink-500/20 text-pink-300 border border-pink-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
-                    +28.57% Houston Zone
+
+                {quoteData.hasMetroZone && (
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border transition ${
+                      activeOverrides.metro
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                        : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'
+                    }`}
+                  >
+                    +28.57% Metro
+                    <button
+                      type="button"
+                      onClick={() => toggleOverride('metro')}
+                      title={activeOverrides.metro ? 'Remove surcharge' : 'Re-apply surcharge'}
+                      className="hover:text-white font-bold ml-0.5 cursor-pointer"
+                    >
+                      {activeOverrides.metro ? '✕' : '↺'}
+                    </button>
                   </span>
                 )}
               </div>
@@ -499,7 +533,7 @@ export default function App() {
                 Estimated Quote Range ($125 – $135/hr)
               </span>
               <p className="text-4xl font-black text-white mt-2 tracking-tight">
-                ${quoteData.minQuote} – ${quoteData.maxQuote}
+                ${currentMinQuote} – ${currentMaxQuote}
               </p>
               <p className="text-xs text-slate-400 mt-2">
                 Rounded to nearest $25
@@ -557,16 +591,9 @@ export default function App() {
               </div>
 
               <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
-                <span>DFW Geofence Crossed</span>
-                <span className={`font-semibold ${quoteData.dfwApplied ? 'text-purple-400' : 'text-slate-200'}`}>
-                  {quoteData.dfwApplied ? 'Yes (+28.57%)' : 'No'}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
-                <span>Houston Geofence Crossed</span>
-                <span className={`font-semibold ${quoteData.houstonApplied ? 'text-pink-400' : 'text-slate-200'}`}>
-                  {quoteData.houstonApplied ? 'Yes (+28.57%)' : 'No'}
+                <span>Metro / Geofence Surcharge</span>
+                <span className={`font-semibold ${quoteData.hasMetroZone && activeOverrides.metro ? 'text-purple-400' : 'text-slate-200'}`}>
+                  {quoteData.hasMetroZone ? (activeOverrides.metro ? 'Applied (+28.57%)' : 'Removed (0%)') : 'No'}
                 </span>
               </div>
 
