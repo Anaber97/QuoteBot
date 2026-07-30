@@ -27,6 +27,7 @@ export default function App() {
   const [puAddress, setPuAddress] = useState('');
   const [doAddress, setDoAddress] = useState('');
   const [isAfterHours, setIsAfterHours] = useState(false);
+  const [isRoadClub, setIsRoadClub] = useState(false); // Road Club state
   const [mapUrl, setMapUrl] = useState('');
   const [customRate, setCustomRate] = useState('');
   const [isApiLoaded, setIsApiLoaded] = useState(false);
@@ -89,6 +90,7 @@ export default function App() {
     setPuAddress('');
     setDoAddress('');
     setIsAfterHours(false);
+    setIsRoadClub(false);
     setMapUrl('');
     setCustomRate('');
     setQuoteData(null);
@@ -253,8 +255,9 @@ export default function App() {
             const totalHours = totalJobMinutes / 60;
 
             const afterHoursMult = isAfterHours ? 1.25 : 1.0;
+            const roadClubMult = isRoadClub ? 1.15 : 1.0;
             const dfwMult = passesThroughDFW ? 1.2857 : 1.0;
-            const totalMultiplier = afterHoursMult * dfwMult;
+            const totalMultiplier = afterHoursMult * roadClubMult * dfwMult;
 
             if (isHendersonLocal || isKilgoreLocal) {
               const baseFlat = 100;
@@ -272,6 +275,7 @@ export default function App() {
                 rawTotalHours: totalHours,
                 totalHours: totalHours.toFixed(2),
                 afterHoursApplied: isAfterHours,
+                roadClubApplied: isRoadClub,
                 dfwSurchargeApplied: passesThroughDFW,
                 totalMultiplier,
               });
@@ -279,7 +283,6 @@ export default function App() {
               const minQuote = roundToNearest25(totalHours * 125 * totalMultiplier);
               const maxQuote = roundToNearest25(totalHours * 135 * totalMultiplier);
 
-              // Base price without surcharges
               const baseMinQuote = roundToNearest25(totalHours * 125);
               const baseMaxQuote = roundToNearest25(totalHours * 135);
 
@@ -296,6 +299,7 @@ export default function App() {
                 baseMinQuote,
                 baseMaxQuote,
                 afterHoursApplied: isAfterHours,
+                roadClubApplied: isRoadClub,
                 dfwSurchargeApplied: passesThroughDFW,
                 totalMultiplier,
               });
@@ -341,6 +345,36 @@ export default function App() {
 
         {/* Inputs Form */}
         <form onSubmit={handleCalculate} className="space-y-6">
+          
+          {/* Checkboxes Placed Above Location Fields for Tabbing Flow */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                id="afterHours"
+                checked={isAfterHours}
+                onChange={(e) => setIsAfterHours(e.target.checked)}
+                className="w-5 h-5 accent-blue-500 rounded cursor-pointer"
+              />
+              <label htmlFor="afterHours" className="text-sm font-medium text-slate-200 cursor-pointer flex-1">
+                After Hours / Weekend Callout <span className="text-xs text-blue-400 font-bold ml-1">(+25%)</span>
+              </label>
+            </div>
+
+            <div className="flex items-center gap-3 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                id="roadClub"
+                checked={isRoadClub}
+                onChange={(e) => setIsRoadClub(e.target.checked)}
+                className="w-5 h-5 accent-blue-500 rounded cursor-pointer"
+              />
+              <label htmlFor="roadClub" className="text-sm font-medium text-slate-200 cursor-pointer flex-1">
+                Road Club Account <span className="text-xs text-blue-400 font-bold ml-1">(+15%)</span>
+              </label>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-2">
               Pick-up Location
@@ -369,21 +403,7 @@ export default function App() {
             />
           </div>
 
-          {/* After Hours Checkbox */}
-          <div className="flex items-center gap-3 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-3 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              id="afterHours"
-              checked={isAfterHours}
-              onChange={(e) => setIsAfterHours(e.target.checked)}
-              className="w-5 h-5 accent-blue-500 rounded cursor-pointer"
-            />
-            <label htmlFor="afterHours" className="text-sm font-medium text-slate-200 cursor-pointer flex-1">
-              After Hours / Weekend Callout <span className="text-xs text-blue-400 font-bold ml-1">(+25%)</span>
-            </label>
-          </div>
-
-          {/* Buttons */}
+          {/* Action Buttons */}
           <div className="flex gap-3">
             <button
               type="submit"
@@ -430,6 +450,11 @@ export default function App() {
                 {quoteData.afterHoursApplied && (
                   <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
                     +25% After Hours
+                  </span>
+                )}
+                {quoteData.roadClubApplied && (
+                  <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                    +15% Road Club
                   </span>
                 )}
                 {quoteData.dfwSurchargeApplied && (
