@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-export default function QuoteLog() {
+export default function QuoteLog({ onSelectQuote }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -70,14 +70,6 @@ export default function QuoteLog() {
             <p><strong className="text-slate-300">Hours:</strong> {log.estimated_hours} hrs</p>
           </div>
 
-          <button
-  type="button"
-  onClick={() => onSelectQuote(log)}
-  className="mt-2 w-full py-1.5 bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 rounded-lg font-semibold text-[11px] transition cursor-pointer"
->
-  📂 Open in Calculator
-</button>
-
           {log.surcharges_applied?.length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1">
               {log.surcharges_applied.map((s, i) => (
@@ -87,6 +79,14 @@ export default function QuoteLog() {
               ))}
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => onSelectQuote && onSelectQuote(log)}
+            className="mt-2 w-full py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 rounded-lg font-semibold text-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            📂 Open in Calculator
+          </button>
         </div>
       ))}
     </div>

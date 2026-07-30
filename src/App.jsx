@@ -56,14 +56,6 @@ const initialState = {
 
 function quoteReducer(state, action) {
   switch (action.type) {
-    case 'LOAD_QUOTE_INTO_CALCULATOR':
-  return {
-    ...state,
-    activeTab: 'calculator',
-    waypoints: action.payload.waypoints || ['', ''],
-    // Reset quote output until they hit calculate again or show old values
-    quoteData: null,
-  };
     case 'SET_TAB':
       return { ...state, activeTab: action.payload };
     case 'SET_BASE':
@@ -123,6 +115,19 @@ function quoteReducer(state, action) {
       return { ...state, isSaving: false, saveStatus: { type: 'success', message: 'Quote logged successfully!' } };
     case 'SAVE_ERROR':
       return { ...state, isSaving: false, saveStatus: { type: 'error', message: action.payload } };
+    case 'LOAD_QUOTE_INTO_CALCULATOR': {
+      const matchingBase = SHOP_LOCATIONS.find((b) => b.name === action.payload.base_location);
+      return {
+        ...state,
+        activeTab: 'calculator',
+        waypoints: action.payload.waypoints?.length ? action.payload.waypoints : ['', ''],
+        selectedBaseId: matchingBase ? matchingBase.id : state.selectedBaseId,
+        customerName: action.payload.customer_name !== 'N/A' ? action.payload.customer_name || '' : '',
+        customerPhone: action.payload.customer_phone !== 'N/A' ? action.payload.customer_phone || '' : '',
+        quoteData: null,
+        error: null,
+      };
+    }
     case 'RESET':
       return {
         ...initialState,
@@ -196,6 +201,13 @@ export default function App() {
   const inputRefs = useRef([]);
   const autocompleteInstances = useRef(new Map());
   const lastCalculationTime = useRef(0);
+  const resultsRef = useRef(null);
+  
+  // Always maintain fresh state reference for keyboard shortcut listeners
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Startup Environment Checks
   useEffect(() => {
@@ -340,7 +352,7 @@ export default function App() {
   const handleCalculate = async (e) => {
     if (e) e.preventDefault();
 
-    // Prevent Rapid Calculations (2 second cooldown)
+    // Cooldown check
     const now = Date.now();
     if (now - lastCalculationTime.current < 2000) {
       dispatch({
@@ -359,7 +371,6 @@ export default function App() {
 
     dispatch({ type: 'CALCULATE_START' });
 
-    // Embedded Map URL for full loop
     const origin = encodeURIComponent(currentBase.address);
     const destination = encodeURIComponent(currentBase.address);
     const waypointsParam = cleanWaypoints.map((addr) => encodeURIComponent(addr)).join('|');
@@ -381,7 +392,6 @@ export default function App() {
       const routePoints = [currentBase.address, ...cleanWaypoints, currentBase.address];
       const distanceService = new window.google.maps.DistanceMatrixService();
 
-      // Parallel Matrix Requests
       const matrixPromises = routePoints.slice(0, -1).map((originPt, i) => {
         const destPt = routePoints[i + 1];
         return new Promise((res, rej) => {
@@ -457,41 +467,39 @@ export default function App() {
     }
   };
 
-  // Keyboard Shortcuts (Ctrl + Enter & Escape)
-  // Add a ref to always hold fresh state for key listeners
-const stateRef = useRef(state);
-useEffect(() => {
-  stateRef.current = state;
-}, [state]);
+  // Keyboard Shortcuts Listener using stateRef to avoid closure bugs
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (stateRef.current.activeTab !== 'calculator') return;
 
-// Updated Keyboard Shortcut Listener
-useEffect(() => {
-  const handleKeyDown = (e) => {
-    if (stateRef.current.activeTab !== 'calculator') return;
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
 
-    const isCmdOrCtrl = e.metaKey || e.ctrlKey;
-
-    if (isCmdOrCtrl && e.key === 'Enter') {
-      e.preventDefault();
-      // Only trigger if we aren't already loading and API is ready
-      if (!stateRef.current.loading && stateRef.current.isApiLoaded) {
-        // Grab form element or call calculate
-        const form = document.querySelector('form');
-        if (form) form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      if (isCmdOrCtrl && e.key === 'Enter') {
+        e.preventDefault();
+        if (!stateRef.current.loading && stateRef.current.isApiLoaded) {
+          const form = document.querySelector('form');
+          if (form) form.requestSubmit();
+        }
       }
+
+      if ((isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'r') || e.key === 'Escape') {
+        e.preventDefault();
+        dispatch({ type: 'RESET' });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Smooth scroll down to results on submit
+  useEffect(() => {
+    if (quoteData && resultsRef.current) {
+      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  }, [quoteData]);
 
-    if ((isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'r') || e.key === 'Escape') {
-      e.preventDefault();
-      dispatch({ type: 'RESET' });
-    }
-  };
-
-  window.addEventListener('keydown', handleKeyDown);
-  return () => window.removeEventListener('keydown', handleKeyDown);
-}, []);
-
-  // Recalculations
+  // Dynamic recalculations
   let effectiveMultiplier = 1.0;
   if (quoteData) {
     if (quoteData.hasAfterHours && activeOverrides.afterHours) effectiveMultiplier *= RATES.AFTER_HOURS_MULTIPLIER;
@@ -568,7 +576,11 @@ useEffect(() => {
         </div>
 
         {activeTab === 'log' ? (
-          <QuoteLog />
+          <QuoteLog
+            onSelectQuote={(log) =>
+              dispatch({ type: 'LOAD_QUOTE_INTO_CALCULATOR', payload: log })
+            }
+          />
         ) : (
           <>
             <div className="mb-8">
@@ -694,9 +706,9 @@ useEffect(() => {
               </div>
             </form>
 
-            {/* Results Section */}
+            {/* Quote Results Section */}
             {quoteData && (
-              <div className="mt-8 border-t border-slate-800/80 pt-8">
+              <div ref={resultsRef} className="mt-8 border-t border-slate-800/80 pt-8">
                 {mapUrl && (
                   <div className="mb-6 rounded-2xl overflow-hidden border border-slate-800 shadow-xl bg-[#0b0f17]">
                     <iframe title="Route Map" width="100%" height="260" style={{ border: 0 }} loading="lazy" allowFullScreen src={mapUrl}></iframe>
