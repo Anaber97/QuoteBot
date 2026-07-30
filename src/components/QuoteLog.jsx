@@ -6,6 +6,9 @@ export default function QuoteLog() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Search filter states
+  const [searchTerm, setSearchTerm] = useState('');
+
   const fetchLogs = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -25,16 +28,60 @@ export default function QuoteLog() {
     fetchLogs();
   }, []);
 
+  // Filter logs locally based on customer name, phone, or route addresses
+  const filteredLogs = logs.filter((log) => {
+    if (!searchTerm.trim()) return true;
+
+    const query = searchTerm.toLowerCase();
+    const nameMatch = (log.customer_name || '').toLowerCase().includes(query);
+    const phoneMatch = (log.customer_phone || '').toLowerCase().includes(query);
+    const baseMatch = (log.base_location || '').toLowerCase().includes(query);
+
+    let addressMatch = false;
+    if (Array.isArray(log.waypoints)) {
+      addressMatch = log.waypoints.some((wp) => wp.toLowerCase().includes(query));
+    } else if (typeof log.waypoints === 'string') {
+      addressMatch = log.waypoints.toLowerCase().includes(query);
+    }
+
+    return nameMatch || phoneMatch || baseMatch || addressMatch;
+  });
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-bold text-white">Saved Quotes History</h2>
-        <button
-          onClick={fetchLogs}
-          className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-3 py-1.5 rounded-lg border border-slate-700 transition"
-        >
-          Refresh Log
-        </button>
+      {/* Header & Search Bar Controls */}
+      <div className="space-y-3">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-bold text-white">Saved Quotes History</h2>
+          <button
+            onClick={fetchLogs}
+            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-3 py-1.5 rounded-lg border border-slate-700 transition"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {/* Search Input Field */}
+        <div className="relative">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs">
+            🔍
+          </span>
+          <input
+            type="text"
+            placeholder="Search by customer name, phone, or address..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-[#0b0f17] border border-slate-700/80 rounded-xl pl-9 pr-8 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white font-bold text-xs"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -45,12 +92,13 @@ export default function QuoteLog() {
 
       {loading ? (
         <p className="text-sm text-slate-400 text-center py-8">Loading history log...</p>
-      ) : logs.length === 0 ? (
-        <p className="text-sm text-slate-500 text-center py-8">No logged quotes found.</p>
+      ) : filteredLogs.length === 0 ? (
+        <p className="text-sm text-slate-500 text-center py-8">
+          {searchTerm ? `No quotes matching "${searchTerm}"` : 'No logged quotes found.'}
+        </p>
       ) : (
         <div className="space-y-3">
-          {logs.map((log) => {
-            // Handle parsing surcharges (whether stored as JSON string or Array)
+          {filteredLogs.map((log) => {
             let modifiers = [];
             if (Array.isArray(log.surcharges_applied)) {
               modifiers = log.surcharges_applied;
@@ -67,7 +115,7 @@ export default function QuoteLog() {
                 key={log.id}
                 className="bg-[#0b0f17] border border-slate-800 rounded-xl p-4 space-y-2.5 text-xs"
               >
-                {/* Header info */}
+                {/* Customer & Timestamp */}
                 <div className="flex justify-between items-start border-b border-slate-800 pb-2">
                   <div>
                     <span className="font-bold text-white text-sm">
@@ -82,7 +130,7 @@ export default function QuoteLog() {
                   </span>
                 </div>
 
-                {/* Details grid */}
+                {/* Base & Quote Details */}
                 <div className="grid grid-cols-2 gap-2 text-slate-400">
                   <div>
                     <span className="block text-[10px] text-slate-500 font-bold uppercase">Base</span>
@@ -94,7 +142,7 @@ export default function QuoteLog() {
                   </div>
                 </div>
 
-                {/* Modifiers / Surcharges Badges */}
+                {/* Modifiers / Surcharges */}
                 <div>
                   <span className="block text-[10px] text-slate-500 font-bold uppercase mb-1">
                     Applied Modifiers
@@ -115,7 +163,7 @@ export default function QuoteLog() {
                   )}
                 </div>
 
-                {/* Route */}
+                {/* Route Waypoints */}
                 <div className="text-slate-400 pt-1 border-t border-slate-800/60">
                   <span className="block text-[10px] text-slate-500 font-bold uppercase mb-0.5">Route</span>
                   <span className="text-slate-300">
