@@ -17,8 +17,9 @@ const initialState = {
   isAfterHours: false,
   isRoadClub: false,
   isMetro: false,
+  isHazard: false,
   isHeavy: false,
-  activeOverrides: { afterHours: true, roadClub: true, metro: true },
+  activeOverrides: { afterHours: true, roadClub: true, metro: true, hazard: true },
   showDetails: false,
   customerName: '',
   customerPhone: '',
@@ -76,7 +77,7 @@ function quoteReducer(state, action) {
         loading: true,
         error: null,
         saveStatus: null,
-        activeOverrides: { afterHours: true, roadClub: true, metro: true },
+        activeOverrides: { afterHours: true, roadClub: true, metro: true, hazard: true },
       };
     case 'CALCULATE_SUCCESS':
       return {
@@ -160,6 +161,7 @@ export default function App() {
     isAfterHours,
     isRoadClub,
     isMetro,
+    isHazard,
     isHeavy,
     activeOverrides,
     showDetails,
@@ -346,7 +348,7 @@ export default function App() {
     const origin = encodeURIComponent(currentBase.address);
     const destination = encodeURIComponent(currentBase.address);
     const waypointsParam = cleanWaypoints.map((addr) => encodeURIComponent(addr)).join('|');
-    const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_API_KEY}&origin=${origin}&destination=${destination}&waypoints=${waypointsParam}&mode=driving`;
+    const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=$${GOOGLE_MAPS_API_KEY}&origin=${origin}&destination=${destination}&waypoints=${waypointsParam}&mode=driving`;
 
     try {
       const coordsList = await geocodeAll(cleanWaypoints);
@@ -422,6 +424,7 @@ export default function App() {
             hasAfterHours: isAfterHours,
             hasRoadClub: isRoadClub,
             hasMetroZone: hasAnyMetroZone,
+            hasHazardZone: isHazard,
           },
         },
       });
@@ -469,6 +472,7 @@ export default function App() {
     if (quoteData.hasAfterHours && activeOverrides.afterHours) effectiveMultiplier *= RATES.AFTER_HOURS_MULTIPLIER;
     if (quoteData.hasRoadClub && activeOverrides.roadClub) effectiveMultiplier *= RATES.ROAD_CLUB_MULTIPLIER;
     if (quoteData.hasMetroZone && activeOverrides.metro) effectiveMultiplier *= RATES.METRO_MULTIPLIER;
+    if (quoteData.hasHazardZone && activeOverrides.hazard) effectiveMultiplier *= 1.40; // 40% Hazard multiplier
   }
 
   const baseMinRate = quoteData?.isHeavy ? RATES.HEAVY_HOURLY_MIN : RATES.HOURLY_MIN;
@@ -491,6 +495,7 @@ export default function App() {
     if (quoteData.hasAfterHours && activeOverrides.afterHours) activeModifiers.push('+25% After Hours');
     if (quoteData.hasRoadClub && activeOverrides.roadClub) activeModifiers.push('+15% Road Club');
     if (quoteData.hasMetroZone && activeOverrides.metro) activeModifiers.push('+28.57% Metro');
+    if (quoteData.hasHazardZone && activeOverrides.hazard) activeModifiers.push('+40% Hazard');
 
     const { error } = await supabase.from('quotes').insert([
       {
@@ -516,42 +521,42 @@ export default function App() {
   return (
     <div className="min-h-screen w-full bg-[#080c14] flex flex-col items-center justify-center p-4 sm:p-6 text-slate-200">
       
-     {/* Central Container Card */}
-<div className="w-full max-w-md sm:max-w-xl bg-[#121824] rounded-2xl shadow-2xl p-5 sm:p-8 border border-slate-800/80">
+      {/* Central Container Card */}
+      <div className="w-full max-w-md sm:max-w-xl bg-[#121824] rounded-2xl shadow-2xl p-5 sm:p-8 border border-slate-800/80">
 
-  {/* 1. Single Logo Header (Set to 400px) */}
-  <div className="flex flex-col items-center justify-center mb-6 px-2">
-    <img 
-      src="/logo-trn.png" 
-      alt="TowCalc Pro Logo" 
-      className="w-[400px] max-w-full h-auto object-contain block drop-shadow-[0_4px_12px_rgba(59,130,246,0.3)]" 
-    />
-    <span className="mt-2 text-[10px] uppercase font-mono tracking-widest text-blue-400/90 bg-blue-500/10 border border-blue-500/20 px-3 py-0.5 rounded-full">
-      Dispatch & Route Rate Engine
-    </span>
-  </div>
+        {/* 1. Single Logo Header */}
+        <div className="flex flex-col items-center justify-center mb-6 px-2">
+          <img 
+            src="/logo-trn.png" 
+            alt="TowCalc Pro Logo" 
+            className="w-[400px] max-w-full h-auto object-contain block drop-shadow-[0_4px_12px_rgba(59,130,246,0.3)]" 
+          />
+          <span className="mt-2 text-[10px] uppercase font-mono tracking-widest text-blue-400/90 bg-blue-500/10 border border-blue-500/20 px-3 py-0.5 rounded-full">
+            Dispatch & Route Rate Engine
+          </span>
+        </div>
 
-  {/* 2. Navigation Tabs */}
-  <div className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 mb-6">
-    <button
-      type="button"
-      onClick={() => dispatch({ type: 'SET_TAB', payload: 'calculator' })}
-      className={`flex-1 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
-        activeTab === 'calculator' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-      }`}
-    >
-      Calculator
-    </button>
-    <button
-      type="button"
-      onClick={() => dispatch({ type: 'SET_TAB', payload: 'log' })}
-      className={`flex-1 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
-        activeTab === 'log' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-      }`}
-    >
-      Quote Log
-    </button>
-  </div>
+        {/* 2. Navigation Tabs */}
+        <div className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 mb-6">
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'SET_TAB', payload: 'calculator' })}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+              activeTab === 'calculator' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Calculator
+          </button>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'SET_TAB', payload: 'log' })}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+              activeTab === 'log' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Quote Log
+          </button>
+        </div>
 
         {activeTab === 'log' ? (
           <QuoteLog
@@ -638,6 +643,20 @@ export default function App() {
                     Manual Metro Surcharge <span className="text-blue-400 font-bold">(+28.57%)</span>
                   </label>
                 </div>
+
+                {/* 40% Hazard, Mountain, Port Surcharge */}
+                <div className="flex items-center gap-3 bg-[#080c14] border border-amber-500/30 rounded-xl px-3.5 py-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    id="hazard"
+                    checked={isHazard}
+                    onChange={() => dispatch({ type: 'TOGGLE_SURCHARGE', payload: 'isHazard' })}
+                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                  />
+                  <label htmlFor="hazard" className="text-xs font-medium text-slate-200 cursor-pointer flex-1">
+                    Hazard / Mountain / Port Surcharge <span className="text-amber-400 font-bold">(+40%)</span>
+                  </label>
+                </div>
               </div>
 
               {/* Waypoint Inputs */}
@@ -720,6 +739,15 @@ export default function App() {
                         </button>
                       </span>
                     )}
+
+                    {quoteData.hasHazardZone && (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border transition ${activeOverrides.hazard ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'}`}>
+                        +40% Hazard
+                        <button type="button" onClick={() => dispatch({ type: 'TOGGLE_OVERRIDE', payload: 'hazard' })} className="hover:text-white font-bold ml-0.5 cursor-pointer">
+                          {activeOverrides.hazard ? '✕' : '↺'}
+                        </button>
+                      </span>
+                    )}
                   </div>
 
                   <span className="text-[11px] uppercase tracking-widest font-bold text-blue-400">
@@ -758,6 +786,12 @@ export default function App() {
                       <span>Metro / Geofence Status</span>
                       <span className={`font-semibold ${quoteData.hasMetroZone && activeOverrides.metro ? 'text-purple-400' : 'text-slate-200'}`}>
                         {quoteData.hasMetroZone ? (activeOverrides.metro ? 'Applied (+28.57%)' : 'Removed (0%)') : 'No'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
+                      <span>Hazard / Mountain Surcharge</span>
+                      <span className={`font-semibold ${quoteData.hasHazardZone && activeOverrides.hazard ? 'text-amber-400' : 'text-slate-200'}`}>
+                        {quoteData.hasHazardZone ? (activeOverrides.hazard ? 'Applied (+40%)' : 'Removed (0%)') : 'No'}
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
