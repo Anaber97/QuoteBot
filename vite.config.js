@@ -6,26 +6,24 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [
     react(),
-    tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pwa-512x512.png', 'logo-trn.png'],
       manifest: {
-        name: 'Towing Quote Calculator',
-        short_name: 'TowQuote',
-        description: 'Instant towing quotes and route calculator',
-        theme_color: '#0b0f17',
-        background_color: '#0b0f17',
+        name: 'TowCalc Pro',
+        short_name: 'TowCalc',
+        description: 'Dispatch & Route Rate Engine',
+        theme_color: '#080c14',
+        background_color: '#080c14',
         display: 'standalone',
+        orientation: 'portrait',
+        start_url: '/',
         icons: [
           {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: 'pwa-512x512.png',
+            src: '/pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
+            purpose: 'any maskable',
           },
         ],
       },
