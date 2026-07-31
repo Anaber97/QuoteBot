@@ -11,7 +11,7 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pwa-512x512.png', 'logo-trn.png'],
       manifest: {
         name: 'TowCalc Pro',
-        short_name: 'TowCalc',
+        short_name: 'TowCalc Pro',
         description: 'Dispatch & Route Rate Engine',
         theme_color: '#080c14',
         background_color: '#080c14',
