@@ -1,8 +1,8 @@
 // @ts-check
 import React, { useReducer, useEffect, useRef, useCallback } from 'react';
 import { SHOP_LOCATIONS } from './config/locations';
-import { GEOFENCES } from './config/geofences';
 import { RATES } from './config/rates';
+import { evaluateRouteGeofences } from './utils/geofenceEngine';
 import { supabase } from './lib/supabase';
 import QuoteLog from './components/QuoteLog';
 
@@ -17,9 +17,8 @@ const initialState = {
   isAfterHours: false,
   isRoadClub: false,
   isMetro: false,
-  isHazard: false,
   isHeavy: false,
-  activeOverrides: { afterHours: true, roadClub: true, metro: true, hazard: true },
+  activeOverrides: { afterHours: true, roadClub: true, metro: true },
   showDetails: false,
   customerName: '',
   customerPhone: '',
@@ -77,7 +76,7 @@ function quoteReducer(state, action) {
         loading: true,
         error: null,
         saveStatus: null,
-        activeOverrides: { afterHours: true, roadClub: true, metro: true, hazard: true },
+        activeOverrides: { afterHours: true, roadClub: true, metro: true },
       };
     case 'CALCULATE_SUCCESS':
       return {
@@ -161,7 +160,6 @@ export default function App() {
     isAfterHours,
     isRoadClub,
     isMetro,
-    isHazard,
     isHeavy,
     activeOverrides,
     showDetails,
@@ -282,48 +280,6 @@ export default function App() {
     );
   };
 
-  const checkGeofenceZone = async (zoneConfig, addresses, coordsList) => {
-    const isPointInBox = (lat, lng) => {
-      const { box } = zoneConfig;
-      return lat >= box.minLat && lat <= box.maxLat && lng >= box.minLng && lng <= box.maxLng;
-    };
-
-    const hasKeyword = addresses.some((addr) =>
-      zoneConfig.cities.some((city) => addr.toLowerCase().includes(city))
-    );
-    if (hasKeyword) return true;
-
-    const directHit = coordsList.some((c) => c && isPointInBox(c.lat, c.lng));
-    if (directHit) return true;
-
-    return new Promise((resolve) => {
-      const directionsService = new window.google.maps.DirectionsService();
-      directionsService.route(
-        {
-          origin: addresses[0],
-          destination: addresses[addresses.length - 1],
-          waypoints: addresses.slice(1, -1).map((addr) => ({ location: addr, stopover: true })),
-          travelMode: window.google.maps.TravelMode.DRIVING,
-        },
-        (result, status) => {
-          if (status === 'OK' && result.routes[0]) {
-            const passesThrough = result.routes[0].legs.some((leg) => {
-              const startIn = isPointInBox(leg.start_location.lat(), leg.start_location.lng());
-              const endIn = isPointInBox(leg.end_location.lat(), leg.end_location.lng());
-              if (startIn || endIn) return true;
-              return (leg.steps || []).some((step) =>
-                (step.path || []).some((pt) => isPointInBox(pt.lat(), pt.lng()))
-              );
-            });
-            resolve(passesThrough);
-          } else {
-            resolve(false);
-          }
-        }
-      );
-    });
-  };
-
   const handleCalculate = async (e) => {
     if (e) e.preventDefault();
 
@@ -348,15 +304,11 @@ export default function App() {
     const origin = encodeURIComponent(currentBase.address);
     const destination = encodeURIComponent(currentBase.address);
     const waypointsParam = cleanWaypoints.map((addr) => encodeURIComponent(addr)).join('|');
-    const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=$${GOOGLE_MAPS_API_KEY}&origin=${origin}&destination=${destination}&waypoints=${waypointsParam}&mode=driving`;
+    const generatedMapUrl = `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_API_KEY}&origin=${origin}&destination=${destination}&waypoints=${waypointsParam}&mode=driving`;
 
     try {
       const coordsList = await geocodeAll(cleanWaypoints);
-
-      const [hitDFW, hitHouston] = await Promise.all([
-        checkGeofenceZone(GEOFENCES.dfw, cleanWaypoints, coordsList),
-        checkGeofenceZone(GEOFENCES.houston, cleanWaypoints, coordsList),
-      ]);
+      const geofenceResult = await evaluateRouteGeofences(cleanWaypoints, coordsList);
 
       const routePoints = [currentBase.address, ...cleanWaypoints, currentBase.address];
       const distanceService = new window.google.maps.DistanceMatrixService();
@@ -403,7 +355,7 @@ export default function App() {
       const totalJobMinutes = adjustedDriveMinutes + loadUnloadTime;
       const totalHours = totalJobMinutes / 60;
 
-      const hasAnyMetroZone = hitDFW || hitHouston || isMetro;
+      const hasAnyMetroZone = geofenceResult.hasMetroHit || isMetro;
       const minRate = isHeavy ? RATES.HEAVY_HOURLY_MIN : RATES.HOURLY_MIN;
       const maxRate = isHeavy ? RATES.HEAVY_HOURLY_MAX : RATES.HOURLY_MAX;
 
@@ -424,7 +376,7 @@ export default function App() {
             hasAfterHours: isAfterHours,
             hasRoadClub: isRoadClub,
             hasMetroZone: hasAnyMetroZone,
-            hasHazardZone: isHazard,
+            matchedMetros: geofenceResult.matchedMetros || [],
           },
         },
       });
@@ -472,7 +424,6 @@ export default function App() {
     if (quoteData.hasAfterHours && activeOverrides.afterHours) effectiveMultiplier *= RATES.AFTER_HOURS_MULTIPLIER;
     if (quoteData.hasRoadClub && activeOverrides.roadClub) effectiveMultiplier *= RATES.ROAD_CLUB_MULTIPLIER;
     if (quoteData.hasMetroZone && activeOverrides.metro) effectiveMultiplier *= RATES.METRO_MULTIPLIER;
-    if (quoteData.hasHazardZone && activeOverrides.hazard) effectiveMultiplier *= 1.40; // 40% Hazard multiplier
   }
 
   const baseMinRate = quoteData?.isHeavy ? RATES.HEAVY_HOURLY_MIN : RATES.HOURLY_MIN;
@@ -495,7 +446,6 @@ export default function App() {
     if (quoteData.hasAfterHours && activeOverrides.afterHours) activeModifiers.push('+25% After Hours');
     if (quoteData.hasRoadClub && activeOverrides.roadClub) activeModifiers.push('+15% Road Club');
     if (quoteData.hasMetroZone && activeOverrides.metro) activeModifiers.push('+28.57% Metro');
-    if (quoteData.hasHazardZone && activeOverrides.hazard) activeModifiers.push('+40% Hazard');
 
     const { error } = await supabase.from('quotes').insert([
       {
@@ -520,11 +470,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full bg-[#080c14] flex flex-col items-center justify-center p-4 sm:p-6 text-slate-200">
-      
-      {/* Central Container Card */}
       <div className="w-full max-w-md sm:max-w-xl bg-[#121824] rounded-2xl shadow-2xl p-5 sm:p-8 border border-slate-800/80">
-
-        {/* 1. Single Logo Header */}
+        
+        {/* Header */}
         <div className="flex flex-col items-center justify-center mb-6 px-2">
           <img 
             src="/logo-trn.png" 
@@ -536,7 +484,7 @@ export default function App() {
           </span>
         </div>
 
-        {/* 2. Navigation Tabs */}
+        {/* Navigation Tabs */}
         <div className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 mb-6">
           <button
             type="button"
@@ -643,20 +591,6 @@ export default function App() {
                     Manual Metro Surcharge <span className="text-blue-400 font-bold">(+28.57%)</span>
                   </label>
                 </div>
-
-                {/* 40% Hazard, Mountain, Port Surcharge */}
-                <div className="flex items-center gap-3 bg-[#080c14] border border-amber-500/30 rounded-xl px-3.5 py-2.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    id="hazard"
-                    checked={isHazard}
-                    onChange={() => dispatch({ type: 'TOGGLE_SURCHARGE', payload: 'isHazard' })}
-                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-                  />
-                  <label htmlFor="hazard" className="text-xs font-medium text-slate-200 cursor-pointer flex-1">
-                    Hazard / Mountain / Port Surcharge <span className="text-amber-400 font-bold">(+40%)</span>
-                  </label>
-                </div>
               </div>
 
               {/* Waypoint Inputs */}
@@ -739,15 +673,6 @@ export default function App() {
                         </button>
                       </span>
                     )}
-
-                    {quoteData.hasHazardZone && (
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border transition ${activeOverrides.hazard ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'}`}>
-                        +40% Hazard
-                        <button type="button" onClick={() => dispatch({ type: 'TOGGLE_OVERRIDE', payload: 'hazard' })} className="hover:text-white font-bold ml-0.5 cursor-pointer">
-                          {activeOverrides.hazard ? '✕' : '↺'}
-                        </button>
-                      </span>
-                    )}
                   </div>
 
                   <span className="text-[11px] uppercase tracking-widest font-bold text-blue-400">
@@ -785,15 +710,15 @@ export default function App() {
                     <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                       <span>Metro / Geofence Status</span>
                       <span className={`font-semibold ${quoteData.hasMetroZone && activeOverrides.metro ? 'text-purple-400' : 'text-slate-200'}`}>
-                        {quoteData.hasMetroZone ? (activeOverrides.metro ? 'Applied (+28.57%)' : 'Removed (0%)') : 'No'}
+                        {quoteData.hasMetroZone ? (activeOverrides.metro ? `Applied (+28.57%)` : 'Removed (0%)') : 'No'}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                      <span>Hazard / Mountain Surcharge</span>
-                      <span className={`font-semibold ${quoteData.hasHazardZone && activeOverrides.hazard ? 'text-amber-400' : 'text-slate-200'}`}>
-                        {quoteData.hasHazardZone ? (activeOverrides.hazard ? 'Applied (+40%)' : 'Removed (0%)') : 'No'}
-                      </span>
-                    </div>
+                    {quoteData.matchedMetros?.length > 0 && (
+                      <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
+                        <span>Matched Metros</span>
+                        <span className="font-semibold text-purple-300 text-[11px]">{quoteData.matchedMetros.join(', ')}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                       <span>Base Price Range (No Surcharges)</span>
                       <span className="font-semibold text-emerald-400">${quoteData.baseMinQuote} – ${quoteData.baseMaxQuote}</span>
