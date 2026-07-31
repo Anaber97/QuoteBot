@@ -8,28 +8,6 @@ import QuoteLog from './components/QuoteLog';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-/**
- * @typedef {Object} LegDetail
- * @property {string} label
- * @property {number} minutes
- */
-
-/**
- * @typedef {Object} QuoteData
- * @property {string[]} cleanWaypoints
- * @property {LegDetail[]} legsDetails
- * @property {number} adjustedDriveMin
- * @property {number} loadUnloadTime
- * @property {number} rawTotalHours
- * @property {string} totalHours
- * @property {boolean} isHeavy
- * @property {number} baseMinQuote
- * @property {number} baseMaxQuote
- * @property {boolean} hasAfterHours
- * @property {boolean} hasRoadClub
- * @property {boolean} hasMetroZone
- */
-
 const roundToNearest = (val, interval = RATES.ROUNDING_INTERVAL) => Math.round(val / interval) * interval;
 
 const initialState = {
@@ -145,25 +123,25 @@ const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRe
   const label = isPickUp ? 'Pick-up Location' : isDropOff ? 'Drop-off Location' : `Stop ${index} (Waypoint)`;
 
   return (
-    <div>
-      <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">
+    <div className="w-full">
+      <label className="block text-[11px] uppercase tracking-wider font-semibold text-slate-400 mb-1.5">
         {label}
       </label>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 w-full">
         <input
           ref={inputRef}
           type="text"
           placeholder={`Enter ${label.toLowerCase()}...`}
           value={value}
           onChange={(e) => onChange(index, e.target.value)}
-          className="flex-1 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-sm shadow-inner"
+          className="w-full flex-1 bg-[#080c14] border border-slate-800 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-sm shadow-inner"
         />
         {isWaypoint && (
           <button
             type="button"
             onClick={() => onRemove(index)}
             aria-label={`Remove waypoint ${index}`}
-            className="bg-red-950/40 hover:bg-red-900/50 text-red-400 w-11 h-11 rounded-xl border border-red-800/50 font-bold text-lg flex items-center justify-center transition cursor-pointer"
+            className="bg-red-950/40 hover:bg-red-900/50 text-red-400 w-11 h-11 shrink-0 rounded-xl border border-red-800/50 font-bold text-lg flex items-center justify-center transition cursor-pointer"
           >
             ✕
           </button>
@@ -202,17 +180,14 @@ export default function App() {
   const autocompleteInstances = useRef(new Map());
   const lastCalculationTime = useRef(0);
   const resultsRef = useRef(null);
-  
-  // Always maintain fresh state reference for keyboard shortcut listeners
+
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
-  // Startup Environment Checks
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) {
-      console.error('Missing Google Maps API Key in environment variables.');
       dispatch({
         type: 'CALCULATE_ERROR',
         payload: 'Google Maps API key is missing. Please check configuration.',
@@ -220,7 +195,6 @@ export default function App() {
     }
   }, []);
 
-  // Google Script Injection
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) return;
 
@@ -251,7 +225,6 @@ export default function App() {
     dispatch({ type: 'REMOVE_WAYPOINT', payload: index });
   }, []);
 
-  // Autocomplete Setup & Cleanup
   useEffect(() => {
     if (!isApiLoaded || activeTab !== 'calculator') return;
 
@@ -352,7 +325,6 @@ export default function App() {
   const handleCalculate = async (e) => {
     if (e) e.preventDefault();
 
-    // Cooldown check
     const now = Date.now();
     if (now - lastCalculationTime.current < 2000) {
       dispatch({
@@ -378,11 +350,6 @@ export default function App() {
 
     try {
       const coordsList = await geocodeAll(cleanWaypoints);
-
-      const validCoords = coordsList.filter((c) => c !== null);
-      if (validCoords.length === 0 && cleanWaypoints.length > 0) {
-        console.warn('⚠️ All geocoding attempts failed — falling back to keyword matching for geofences.');
-      }
 
       const [hitDFW, hitHouston] = await Promise.all([
         checkGeofenceZone(GEOFENCES.dfw, cleanWaypoints, coordsList),
@@ -467,7 +434,6 @@ export default function App() {
     }
   };
 
-  // Keyboard Shortcuts Listener using stateRef to avoid closure bugs
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (stateRef.current.activeTab !== 'calculator') return;
@@ -492,14 +458,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Smooth scroll down to results on submit
   useEffect(() => {
     if (quoteData && resultsRef.current) {
       resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [quoteData]);
 
-  // Dynamic recalculations
   let effectiveMultiplier = 1.0;
   if (quoteData) {
     if (quoteData.hasAfterHours && activeOverrides.afterHours) effectiveMultiplier *= RATES.AFTER_HOURS_MULTIPLIER;
@@ -550,30 +514,44 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0f17] flex items-center justify-center p-6 text-slate-200">
-      <div className="max-w-xl w-full bg-[#161b26] rounded-2xl shadow-2xl p-8 border border-slate-800">
-        
-        {/* Navigation Tabs */}
-        <div className="flex bg-[#0b0f17] border border-slate-800 rounded-xl p-1 mb-8">
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'SET_TAB', payload: 'calculator' })}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition cursor-pointer ${
-              activeTab === 'calculator' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Calculator
-          </button>
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'SET_TAB', payload: 'log' })}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition cursor-pointer ${
-              activeTab === 'log' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Quote Log
-          </button>
-        </div>
+    <div className="min-h-screen w-full bg-[#080c14] flex flex-col items-center justify-center p-4 sm:p-6 text-slate-200">
+      
+     {/* Central Container Card */}
+<div className="w-full max-w-md sm:max-w-xl bg-[#121824] rounded-2xl shadow-2xl p-5 sm:p-8 border border-slate-800/80">
+
+  {/* 1. Single Logo Header (Set to 400px) */}
+  <div className="flex flex-col items-center justify-center mb-6 px-2">
+    <img 
+      src="/logo-trn.png" 
+      alt="TowCalc Pro Logo" 
+      className="w-[400px] max-w-full h-auto object-contain block drop-shadow-[0_4px_12px_rgba(59,130,246,0.3)]" 
+    />
+    <span className="mt-2 text-[10px] uppercase font-mono tracking-widest text-blue-400/90 bg-blue-500/10 border border-blue-500/20 px-3 py-0.5 rounded-full">
+      Dispatch & Route Rate Engine
+    </span>
+  </div>
+
+  {/* 2. Navigation Tabs */}
+  <div className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 mb-6">
+    <button
+      type="button"
+      onClick={() => dispatch({ type: 'SET_TAB', payload: 'calculator' })}
+      className={`flex-1 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+        activeTab === 'calculator' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+      }`}
+    >
+      Calculator
+    </button>
+    <button
+      type="button"
+      onClick={() => dispatch({ type: 'SET_TAB', payload: 'log' })}
+      className={`flex-1 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+        activeTab === 'log' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+      }`}
+    >
+      Quote Log
+    </button>
+  </div>
 
         {activeTab === 'log' ? (
           <QuoteLog
@@ -583,34 +561,33 @@ export default function App() {
           />
         ) : (
           <>
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold text-white tracking-tight mb-3">Towing Quote Calculator</h1>
-              <div className="flex items-center gap-2">
-                <label htmlFor="baseShopSelect" className="text-xs uppercase font-semibold text-slate-400">Base Location:</label>
-                <select
-                  id="baseShopSelect"
-                  value={selectedBaseId}
-                  onChange={(e) => dispatch({ type: 'SET_BASE', payload: e.target.value })}
-                  className="bg-[#1f2636] border border-slate-700 text-white text-xs font-semibold rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                >
-                  {SHOP_LOCATIONS.map((shop) => (
-                    <option key={shop.id} value={shop.id}>
-                      {shop.name} ({shop.address})
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label htmlFor="baseShopSelect" className="text-[11px] uppercase tracking-wider font-semibold text-slate-400">
+                Base Location
+              </label>
+              <select
+                id="baseShopSelect"
+                value={selectedBaseId}
+                onChange={(e) => dispatch({ type: 'SET_BASE', payload: e.target.value })}
+                className="bg-[#1a2130] border border-slate-700/80 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full sm:w-auto"
+              >
+                {SHOP_LOCATIONS.map((shop) => (
+                  <option key={shop.id} value={shop.id}>
+                    {shop.name} ({shop.address})
+                  </option>
+                ))}
+              </select>
             </div>
 
             {error && (
-              <div className="mb-6 p-4 bg-red-950/40 text-red-400 border border-red-800/50 rounded-xl text-sm font-medium">
+              <div className="mb-5 p-4 bg-red-950/40 text-red-400 border border-red-800/50 rounded-xl text-xs font-medium">
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleCalculate} className="space-y-6">
-              <div className="grid grid-cols-1 gap-2.5">
-                <div className="flex items-center gap-3 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-2.5 cursor-pointer select-none">
+            <form onSubmit={handleCalculate} className="space-y-5">
+              <div className="grid grid-cols-1 gap-2">
+                <div className="flex items-center gap-3 bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     id="heavy"
@@ -623,7 +600,7 @@ export default function App() {
                   </label>
                 </div>
 
-                <div className="flex items-center gap-3 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-2.5 cursor-pointer select-none">
+                <div className="flex items-center gap-3 bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     id="afterHours"
@@ -636,7 +613,7 @@ export default function App() {
                   </label>
                 </div>
 
-                <div className="flex items-center gap-3 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-2.5 cursor-pointer select-none">
+                <div className="flex items-center gap-3 bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     id="roadClub"
@@ -649,7 +626,7 @@ export default function App() {
                   </label>
                 </div>
 
-                <div className="flex items-center gap-3 bg-[#0b0f17] border border-slate-700/80 rounded-xl px-4 py-2.5 cursor-pointer select-none">
+                <div className="flex items-center gap-3 bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     id="metro"
@@ -664,7 +641,7 @@ export default function App() {
               </div>
 
               {/* Waypoint Inputs */}
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {waypoints.map((address, index) => (
                   <WaypointInput
                     key={index}
@@ -680,26 +657,26 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => dispatch({ type: 'ADD_WAYPOINT' })}
-                  className="w-full py-2.5 px-4 bg-[#1f2636] hover:bg-slate-700/70 border border-slate-700/80 text-blue-400 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-2 px-4 bg-[#1a2130] hover:bg-slate-700/60 border border-slate-700/80 text-blue-400 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <span className="text-base font-bold">+</span> Add Waypoint Stop
+                  <span className="text-sm font-bold">+</span> Add Waypoint Stop
                 </button>
               </div>
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-2.5 pt-1">
                 <button
                   type="submit"
                   disabled={loading || !isApiLoaded}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg shadow-blue-600/20 transition duration-200 disabled:bg-slate-800 disabled:text-slate-500 cursor-pointer text-base flex items-center justify-center gap-2"
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3 px-5 rounded-xl shadow-lg shadow-blue-600/25 transition duration-200 disabled:bg-slate-800 disabled:text-slate-500 cursor-pointer text-sm flex items-center justify-center gap-2"
                 >
-                  {loading ? 'Checking Routes & Geofences...' : 'Generate Quote'}
+                  {loading ? 'Checking Routes...' : 'Generate Quote'}
                   <span className="text-[10px] bg-blue-800/60 text-blue-200 px-1.5 py-0.5 rounded font-mono hidden sm:inline">Ctrl+Enter</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => dispatch({ type: 'RESET' })}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3.5 px-5 rounded-xl border border-slate-700 transition duration-200 cursor-pointer text-base"
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3 px-4 rounded-xl border border-slate-700 transition duration-200 cursor-pointer text-sm"
                 >
                   Reset
                 </button>
@@ -708,17 +685,17 @@ export default function App() {
 
             {/* Quote Results Section */}
             {quoteData && (
-              <div ref={resultsRef} className="mt-8 border-t border-slate-800/80 pt-8">
+              <div ref={resultsRef} className="mt-6 border-t border-slate-800/80 pt-6">
                 {mapUrl && (
-                  <div className="mb-6 rounded-2xl overflow-hidden border border-slate-800 shadow-xl bg-[#0b0f17]">
-                    <iframe title="Route Map" width="100%" height="260" style={{ border: 0 }} loading="lazy" allowFullScreen src={mapUrl}></iframe>
+                  <div className="mb-5 rounded-xl overflow-hidden border border-slate-800 shadow-xl bg-[#080c14]">
+                    <iframe title="Route Map" width="100%" height="220" style={{ border: 0 }} loading="lazy" allowFullScreen src={mapUrl}></iframe>
                   </div>
                 )}
 
-                <div className="bg-gradient-to-b from-[#1c2436] to-[#121722] border border-blue-500/30 rounded-2xl p-6 text-center shadow-xl mb-6 relative">
-                  <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
+                <div className="bg-gradient-to-b from-[#1a2233] to-[#101522] border border-blue-500/30 rounded-xl p-5 text-center shadow-xl mb-5 relative">
+                  <div className="flex flex-wrap justify-center sm:justify-end gap-1 mb-2 sm:mb-0 sm:absolute sm:top-3 sm:right-3">
                     {quoteData.hasAfterHours && (
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition ${activeOverrides.afterHours ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'}`}>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border transition ${activeOverrides.afterHours ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'}`}>
                         +25% After Hours
                         <button type="button" onClick={() => dispatch({ type: 'TOGGLE_OVERRIDE', payload: 'afterHours' })} className="hover:text-white font-bold ml-0.5 cursor-pointer">
                           {activeOverrides.afterHours ? '✕' : '↺'}
@@ -727,7 +704,7 @@ export default function App() {
                     )}
 
                     {quoteData.hasRoadClub && (
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition ${activeOverrides.roadClub ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'}`}>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border transition ${activeOverrides.roadClub ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'}`}>
                         +15% Road Club
                         <button type="button" onClick={() => dispatch({ type: 'TOGGLE_OVERRIDE', payload: 'roadClub' })} className="hover:text-white font-bold ml-0.5 cursor-pointer">
                           {activeOverrides.roadClub ? '✕' : '↺'}
@@ -736,7 +713,7 @@ export default function App() {
                     )}
 
                     {quoteData.hasMetroZone && (
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition ${activeOverrides.metro ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'}`}>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border transition ${activeOverrides.metro ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-slate-800/80 text-slate-500 border-slate-700 line-through'}`}>
                         +28.57% Metro
                         <button type="button" onClick={() => dispatch({ type: 'TOGGLE_OVERRIDE', payload: 'metro' })} className="hover:text-white font-bold ml-0.5 cursor-pointer">
                           {activeOverrides.metro ? '✕' : '↺'}
@@ -745,93 +722,93 @@ export default function App() {
                     )}
                   </div>
 
-                  <span className="text-xs uppercase tracking-widest font-bold text-blue-400">
+                  <span className="text-[11px] uppercase tracking-widest font-bold text-blue-400">
                     Estimated Quote Range (${quoteData.isHeavy ? `${RATES.HEAVY_HOURLY_MIN} – $${RATES.HEAVY_HOURLY_MAX}` : `${RATES.HOURLY_MIN} – $${RATES.HOURLY_MAX}`}/hr)
                   </span>
-                  <p className="text-4xl font-black text-white mt-2 tracking-tight">${currentMinQuote} – ${currentMaxQuote}</p>
-                  <p className="text-xs text-slate-400 mt-2">Rounded to nearest $25</p>
+                  <p className="text-3xl font-black text-white mt-1.5 tracking-tight">${currentMinQuote} – ${currentMaxQuote}</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Rounded to nearest $25</p>
 
                   <button
                     type="button"
                     onClick={() => dispatch({ type: 'TOGGLE_DETAILS' })}
-                    className="mt-4 text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-4 cursor-pointer transition"
+                    className="mt-3 text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-4 cursor-pointer transition"
                   >
                     {showDetails ? '▲ Hide Trip Breakdown' : '▼ Show Trip Breakdown'}
                   </button>
                 </div>
 
                 {showDetails && (
-                  <div className="bg-[#0b0f17] border border-slate-800 rounded-xl p-5 space-y-3 text-sm mb-6 shadow-inner">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Route & Time Breakdown</h3>
+                  <div className="bg-[#080c14] border border-slate-800 rounded-xl p-4 space-y-2.5 text-xs mb-5 shadow-inner">
+                    <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Route & Time Breakdown</h3>
                     {quoteData.legsDetails.map((leg, i) => (
-                      <div key={i} className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                      <div key={i} className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                         <span>{leg.label}</span>
                         <span className="font-semibold text-slate-200">{leg.minutes} mins</span>
                       </div>
                     ))}
-                    <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                    <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                       <span>Adjusted Drive Time (+10%)</span>
                       <span className="font-semibold text-slate-200">{quoteData.adjustedDriveMin} mins</span>
                     </div>
-                    <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                    <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                       <span>Load / Unload Flat Rate</span>
                       <span className="font-semibold text-slate-200">{quoteData.loadUnloadTime} mins</span>
                     </div>
-                    <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                    <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                       <span>Metro / Geofence Status</span>
                       <span className={`font-semibold ${quoteData.hasMetroZone && activeOverrides.metro ? 'text-purple-400' : 'text-slate-200'}`}>
                         {quoteData.hasMetroZone ? (activeOverrides.metro ? 'Applied (+28.57%)' : 'Removed (0%)') : 'No'}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800">
+                    <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                       <span>Base Price Range (No Surcharges)</span>
                       <span className="font-semibold text-emerald-400">${quoteData.baseMinQuote} – ${quoteData.baseMaxQuote}</span>
                     </div>
-                    <div className="flex justify-between items-center pt-1 text-base font-bold text-white">
+                    <div className="flex justify-between items-center pt-1 text-sm font-bold text-white">
                       <span>Total Billable Hours</span>
                       <span className="text-blue-400">{quoteData.totalHours} hrs</span>
                     </div>
                   </div>
                 )}
 
-                <div className="bg-[#1f2636]/60 border border-slate-700/80 rounded-xl p-4 mb-6 shadow-md">
-                  <label className="block text-xs uppercase tracking-wider font-semibold text-slate-300 mb-2">Custom Hourly Rate</label>
+                <div className="bg-[#1a2130]/60 border border-slate-700/80 rounded-xl p-3.5 mb-5 shadow-md">
+                  <label className="block text-[11px] uppercase tracking-wider font-semibold text-slate-300 mb-1.5">Custom Hourly Rate</label>
                   <div className="flex items-center gap-3">
                     <div className="relative flex-1">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-semibold text-base">$</span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold text-sm">$</span>
                       <input
                         type="number"
                         placeholder="Enter rate (e.g. 150)"
                         value={customRate}
                         onChange={(e) => dispatch({ type: 'SET_CUSTOM_RATE', payload: e.target.value })}
-                        className="w-full bg-[#0b0f17] border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-base"
+                        className="w-full bg-[#080c14] border border-slate-700 rounded-lg pl-7 pr-3 py-1.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-sm"
                       />
                     </div>
                     {customCalculatedQuote !== null && (
-                      <div className="bg-blue-600/20 border border-blue-500/40 rounded-lg px-4 py-2 text-right">
-                        <span className="text-[10px] uppercase tracking-wider block text-blue-300 font-bold">Custom Quote</span>
-                        <span className="text-xl font-extrabold text-white">${customCalculatedQuote}</span>
+                      <div className="bg-blue-600/20 border border-blue-500/40 rounded-lg px-3 py-1.5 text-right">
+                        <span className="text-[9px] uppercase tracking-wider block text-blue-300 font-bold">Custom Quote</span>
+                        <span className="text-lg font-extrabold text-white">${customCalculatedQuote}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="bg-[#1f2636]/60 border border-slate-700/80 rounded-xl p-4 mb-6 space-y-3">
-                  <span className="block text-xs uppercase tracking-wider font-semibold text-slate-300">Log Quote to Database (Optional)</span>
+                <div className="bg-[#1a2130]/60 border border-slate-700/80 rounded-xl p-3.5 mb-2 space-y-2.5">
+                  <span className="block text-[11px] uppercase tracking-wider font-semibold text-slate-300">Log Quote to Database (Optional)</span>
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
                       placeholder="Customer Name"
                       value={customerName}
                       onChange={(e) => dispatch({ type: 'SET_CUSTOMER_INFO', payload: { field: 'customerName', value: e.target.value } })}
-                      className="bg-[#0b0f17] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="bg-[#080c14] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                     <input
                       type="text"
                       placeholder="Phone Number"
                       value={customerPhone}
                       onChange={(e) => dispatch({ type: 'SET_CUSTOMER_INFO', payload: { field: 'customerPhone', value: e.target.value } })}
-                      className="bg-[#0b0f17] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="bg-[#080c14] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
 
@@ -839,7 +816,7 @@ export default function App() {
                     type="button"
                     onClick={handleLogQuote}
                     disabled={isSaving}
-                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-lg transition disabled:bg-slate-800 cursor-pointer"
+                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-lg transition disabled:bg-slate-800 cursor-pointer"
                   >
                     {isSaving ? 'Saving Quote...' : '💾 Log Quote'}
                   </button>

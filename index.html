@@ -1,14 +1,30 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Towing Quote Calculator</title>
+    <title>TowCalc Pro</title>
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              heading: ['Rajdhani', 'sans-serif'],
+            }
+          }
+        }
+      }
+    </script>
   </head>
-  <body class="bg-slate-100 antialiased font-['Hanken_Grotesk'] font-medium text-slate-800">
+  <body class="bg-[#080c14] font-sans antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
