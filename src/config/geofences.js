@@ -2,6 +2,45 @@
 // @ts-check
 
 export const METRO_MULTIPLIER = 1.2857; // +28.57% Metro Traffic Surcharge
+export const HAZARD_MULTIPLIER = 1.4;   // +35% Severe Hazard Surcharge (or customize per zone)
+
+export const HAZARD_ZONES = {
+  donner_pass: {
+    id: 'donner_pass',
+    name: 'Donner Pass / I-80 Winter Hazard (CA/NV)',
+    multiplier: 1.35,
+    box: { minLat: 39.2000, maxLat: 39.4500, minLng: -120.4500, maxLng: -120.1000 },
+    cities: ['truckee', 'donner lake', 'soda springs', 'kingvale', 'sierra nevada'],
+  },
+  snoqualmie_pass: {
+    id: 'snoqualmie_pass',
+    name: 'Snoqualmie Pass / I-90 Cascade Corridor (WA)',
+    multiplier: 1.30,
+    box: { minLat: 47.3000, maxLat: 47.5000, minLng: -121.5000, maxLng: -121.3000 },
+    cities: ['snoqualmie pass', 'north bend', 'cle elum', 'hyak'],
+  },
+  vail_pass: {
+    id: 'vail_pass',
+    name: 'Vail Pass / I-70 Mountain Corridor (CO)',
+    multiplier: 1.40,
+    box: { minLat: 39.5000, maxLat: 39.7500, minLng: -106.4000, maxLng: -105.8000 },
+    cities: ['vail', 'frisco', 'silverthorne', 'copper mountain', 'eisenhower tunnel'],
+  },
+  cajon_pass: {
+    id: 'cajon_pass',
+    name: 'Cajon Pass / I-15 High Wind & Grade Zone (CA)',
+    multiplier: 1.25,
+    box: { minLat: 34.2500, maxLat: 34.4500, minLng: -117.5000, maxLng: -117.3000 },
+    cities: ['cajon pass', 'hesperia', 'phelan', 'devore'],
+  },
+  allegheny_pass: {
+    id: 'allegheny_pass',
+    name: 'PA Turnpike / Allegheny Mountain Corridor (PA)',
+    multiplier: 1.25,
+    box: { minLat: 39.9000, maxLat: 40.1500, minLng: -78.9000, maxLng: -78.5000 },
+    cities: ['somerset', 'breezewood', 'bedford', 'allegheny tunnel'],
+  },
+};
 
 export const GEOFENCES = {
   // Top 60 US Metropolitan Statistical Areas (MSAs)
