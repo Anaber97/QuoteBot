@@ -96,7 +96,12 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     setIsSaving(true);
     setSaveStatus(null);
     try {
-      await onSaveConfig(formData);
+      // Ensure company_id from logged-in profile is included
+      const dataToSave = {
+        ...formData,
+        company_id: profile?.company_id || formData.company_id
+      };
+      await onSaveConfig(dataToSave);
       setSaveStatus({ type: 'success', message: 'Configuration saved successfully!' });
     } catch (err) {
       setSaveStatus({ type: 'error', message: err.message || 'Failed to save configuration.' });
