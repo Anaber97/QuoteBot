@@ -10,12 +10,14 @@ import SurchargeToggles from './components/SurchargeToggles';
 import WaypointList from './components/WaypointList';
 import QuoteResultsCard from './components/QuoteResultsCard';
 import QuoteLog from './components/QuoteLog';
+import Settings, { DEFAULT_CONFIG } from './components/Settings';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const initialState = {
   activeTab: 'calculator',
   selectedBaseId: SHOP_LOCATIONS[0].id,
+  selectedTruckClassId: '', // '' = Standard Rate
   waypoints: ['', ''],
   isAfterHours: false,
   isRoadClub: false,
@@ -42,6 +44,8 @@ function quoteReducer(state, action) {
       return { ...state, activeTab: action.payload };
     case 'SET_BASE':
       return { ...state, selectedBaseId: action.payload };
+    case 'SET_TRUCK_CLASS':
+      return { ...state, selectedTruckClassId: action.payload };
     case 'SET_WAYPOINT': {
       const updated = [...state.waypoints];
       updated[action.payload.index] = action.payload.value;
@@ -122,6 +126,7 @@ export default function App() {
   const {
     activeTab,
     selectedBaseId,
+    selectedTruckClassId,
     waypoints,
     isAfterHours,
     isRoadClub,
@@ -233,9 +238,14 @@ export default function App() {
     dispatch({ type: 'CALCULATE_START' });
 
     try {
+      const effectiveWaypoints = waypoints.filter(w => w.trim().length > 0);
+      if (effectiveWaypoints.length === 1) {
+        effectiveWaypoints.push(effectiveWaypoints[0]); // Optional Drop-off fallback
+      }
+
       const result = await calculateQuoteData({
         currentBase,
-        waypoints,
+        waypoints: effectiveWaypoints,
         isHeavy,
         isAfterHours,
         isRoadClub,
@@ -287,99 +297,124 @@ export default function App() {
     }
   };
 
-  // Keyboard Shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (stateRef.current.activeTab !== 'calculator') return;
-
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
-      if (isCmdOrCtrl && e.key === 'Enter') {
-        e.preventDefault();
-        if (!stateRef.current.loading && stateRef.current.isApiLoaded) {
-          const form = document.querySelector('form');
-          if (form) form.requestSubmit();
-        }
-      }
-
-      if ((isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'r') || e.key === 'Escape') {
-        e.preventDefault();
-        dispatch({ type: 'RESET' });
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  // Smooth Scroll to Results
-  useEffect(() => {
-    if (quoteData && resultsRef.current) {
-      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [quoteData]);
-
   return (
-    <div className="min-h-screen w-full bg-[#080c14] flex flex-col items-center justify-center p-4 sm:p-6 text-slate-200">
-      <div className="w-full max-w-md sm:max-w-xl bg-[#121824] rounded-2xl shadow-2xl p-5 sm:p-8 border border-slate-800/80">
+    // Fixed layout anchor: justify-start with top padding prevents header jump on tab changes
+    <div className="min-h-screen w-full bg-[#080c14] flex flex-col items-center justify-start pt-6 sm:pt-10 pb-12 p-4 sm:p-6 text-slate-200 transition-all">
+      <div className="w-full max-w-5xl bg-[#121824] rounded-2xl shadow-2xl p-5 sm:p-8 border border-slate-800/80 transition-all">
         
+        {/* Header remains anchored at top */}
         <Header activeTab={activeTab} onSelectTab={(tab) => dispatch({ type: 'SET_TAB', payload: tab })} />
 
-        {activeTab === 'log' ? (
+        {activeTab === 'log' && (
           <QuoteLog onSelectQuote={(log) => dispatch({ type: 'LOAD_QUOTE_INTO_CALCULATOR', payload: log })} />
-        ) : (
-          <>
-            <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <label htmlFor="baseShopSelect" className="text-[11px] uppercase tracking-wider font-semibold text-slate-400">
-                Base Location
-              </label>
-              <select
-                id="baseShopSelect"
-                value={selectedBaseId}
-                onChange={(e) => dispatch({ type: 'SET_BASE', payload: e.target.value })}
-                className="bg-[#1a2130] border border-slate-700/80 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full sm:w-auto"
-              >
-                {SHOP_LOCATIONS.map((shop) => (
-                  <option key={shop.id} value={shop.id}>
-                    {shop.name} ({shop.address})
-                  </option>
-                ))}
-              </select>
+        )}
+
+        {activeTab === 'settings' && (
+          <Settings
+            currentUserRole="dispatch"
+            onSaveConfig={async (newConfig) => {
+              const { error } = await supabase.from('app_config').upsert(newConfig);
+              if (error) throw error;
+            }}
+          />
+        )}
+
+        {activeTab === 'calculator' && (
+          <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-start">
+            
+            {/* Left Column: Input Form (7 columns on desktop) */}
+            <div className="lg:col-span-7 space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="baseShopSelect" className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">
+                    Base Location
+                  </label>
+                  <select
+                    id="baseShopSelect"
+                    value={selectedBaseId}
+                    onChange={(e) => dispatch({ type: 'SET_BASE', payload: e.target.value })}
+                    className="bg-[#1a2130] border border-slate-700/80 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full"
+                  >
+                    {SHOP_LOCATIONS.map((shop) => (
+                      <option key={shop.id} value={shop.id}>
+                        {shop.name} ({shop.address})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="truckClassSelect" className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">
+                    Truck / Equipment Class
+                  </label>
+                  <select
+                    id="truckClassSelect"
+                    value={selectedTruckClassId}
+                    onChange={(e) => dispatch({ type: 'SET_TRUCK_CLASS', payload: e.target.value })}
+                    className="bg-[#1a2130] border border-slate-700/80 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full"
+                  >
+                    <option value="">Standard Rate ($125 - $135/hr)</option>
+                    {DEFAULT_CONFIG.pricing.custom_truck_classes.map((tc) => (
+                      <option key={tc.id} value={tc.id}>
+                        {tc.name} (${tc.minRate} - ${tc.maxRate}/hr)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-4 bg-red-950/40 text-red-400 border border-red-800/50 rounded-xl text-xs font-medium">
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={handleCalculate} className="space-y-5">
+                <SurchargeToggles state={state} dispatch={dispatch} />
+
+                <WaypointList
+                  waypoints={waypoints}
+                  inputRefs={inputRefs}
+                  onChange={handleWaypointChange}
+                  onRemove={handleRemoveWaypoint}
+                  onAdd={() => dispatch({ type: 'ADD_WAYPOINT' })}
+                />
+
+                <button
+                  type="submit"
+                  disabled={loading || !isApiLoaded}
+                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-sm text-white rounded-xl transition shadow-lg disabled:bg-slate-800 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {loading ? 'Calculating Route...' : 'Calculate Quote'}
+                </button>
+              </form>
             </div>
 
-            {error && (
-              <div className="mb-5 p-4 bg-red-950/40 text-red-400 border border-red-800/50 rounded-xl text-xs font-medium">
-                {error}
-              </div>
-            )}
+            {/* Right Column: Quote Results Card (5 columns on desktop) */}
+            <div className="lg:col-span-5 mt-6 lg:mt-0">
+              {quoteData ? (
+                <QuoteResultsCard
+                  state={state}
+                  dispatch={dispatch}
+                  resultsRef={resultsRef}
+                  onLogQuote={handleLogQuote}
+                />
+              ) : (
+                <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
+                  <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">
+                    $
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-300">Quote Breakdown Preview</h4>
+                  <p className="text-xs max-w-xs">
+                    Enter pick-up/drop-off locations and click <strong className="text-blue-400">Calculate Quote</strong> to display live route estimates here.
+                  </p>
+                </div>
+              )}
+            </div>
 
-            <form onSubmit={handleCalculate} className="space-y-5">
-              <SurchargeToggles state={state} dispatch={dispatch} />
-
-              <WaypointList
-                waypoints={waypoints}
-                inputRefs={inputRefs}
-                onChange={handleWaypointChange}
-                onRemove={handleRemoveWaypoint}
-                onAdd={() => dispatch({ type: 'ADD_WAYPOINT' })}
-              />
-
-              <button
-                type="submit"
-                disabled={loading || !isApiLoaded}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-sm text-white rounded-xl transition shadow-lg disabled:bg-slate-800 cursor-pointer flex items-center justify-center gap-2"
-              >
-                {loading ? 'Calculating Route...' : 'Calculate Quote'}
-              </button>
-            </form>
-
-            <QuoteResultsCard
-              state={state}
-              dispatch={dispatch}
-              resultsRef={resultsRef}
-              onLogQuote={handleLogQuote}
-            />
-          </>
+          </div>
         )}
+
       </div>
     </div>
   );

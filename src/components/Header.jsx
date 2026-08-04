@@ -1,4 +1,3 @@
-// src/components/Header.jsx
 import React from 'react';
 
 export default function Header({ activeTab, onSelectTab }) {
@@ -37,6 +36,19 @@ export default function Header({ activeTab, onSelectTab }) {
           }`}
         >
           Quote Log
+        </button>
+        
+        {/* ADDED SETTINGS BUTTON */}
+        <button
+          type="button"
+          onClick={() => onSelectTab('settings')}
+          className={`flex-1 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+            activeTab === 'settings'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Settings
         </button>
       </div>
     </>
