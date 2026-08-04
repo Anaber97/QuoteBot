@@ -1,3 +1,4 @@
+// src/components/Settings.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Save, 
@@ -22,6 +23,7 @@ import {
 import { RATES } from '../config/rates';
 import { SHOP_LOCATIONS } from '../config/locations';
 import { GEOFENCES, HAZARD_ZONES } from '../config/geofences';
+import ManagerOnboarding from './ManagerOnboarding';
 
 export const DEFAULT_CONFIG = {
   company_id: '00000000-0000-0000-0000-000000000000',
@@ -61,7 +63,7 @@ export const DEFAULT_CONFIG = {
   ]
 };
 
-export default function Settings({ config, onSaveConfig, currentUserRole }) {
+export default function Settings({ config, onSaveConfig, currentUserRole, profile }) {
   const [activeSubTab, setActiveSubTab] = useState('pricing');
   const [formData, setFormData] = useState(config || DEFAULT_CONFIG);
   const [saveStatus, setSaveStatus] = useState(null);
@@ -76,7 +78,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
     if (config) setFormData(config);
   }, [config]);
 
-  const canEdit = currentUserRole === 'dispatch' || currentUserRole === 'office';
+  const canEdit = currentUserRole === 'manager' || currentUserRole === 'dispatch' || currentUserRole === 'office';
 
   if (!canEdit) {
     return (
@@ -84,7 +86,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
         <ShieldAlert className="w-12 h-12 text-red-400 mx-auto mb-3" />
         <h3 className="text-lg font-bold text-white mb-1">Access Restricted</h3>
         <p className="text-xs text-slate-400">
-          Settings & Configuration are only accessible to <span className="text-blue-400 font-semibold">Dispatch</span> and <span className="text-purple-400 font-semibold">Office</span> roles.
+          Settings & Configuration are restricted to authorized workspace roles.
         </p>
       </div>
     );
@@ -205,13 +207,14 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
   return (
     <div className="space-y-6">
       {/* Sub-navigation Tabs */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 border-b border-slate-800 pb-1">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 border-b border-slate-800 pb-1">
         {[
           { id: 'pricing', label: 'Pricing', icon: DollarSign },
           { id: 'surcharges', label: 'Surcharges', icon: Percent },
           { id: 'geofences', label: `Geofences (${allGeofences.length})`, icon: MapPin },
           { id: 'bases', label: 'Bases', icon: Truck },
           { id: 'users', label: 'Users & Roles', icon: Users },
+          ...(currentUserRole === 'manager' ? [{ id: 'clients', label: 'Client Accounts', icon: Building2 }] : []),
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeSubTab === tab.id;
@@ -232,10 +235,14 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
         })}
       </div>
 
+      {/* CLIENT SUB-ACCOUNTS TAB (Manager Only) */}
+      {activeSubTab === 'clients' && currentUserRole === 'manager' && (
+        <ManagerOnboarding profile={profile} />
+      )}
+
       {/* SUB TAB 1: PRICING */}
       {activeSubTab === 'pricing' && (
         <div className="space-y-5 text-xs">
-          {/* Standard Tow Rates */}
           <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
             <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
               <DollarSign className="w-4 h-4 text-emerald-400" /> Standard Tow Rates ($/hr)
@@ -262,7 +269,6 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
             </div>
           </div>
 
-          {/* Time & Calculation Defaults */}
           <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
             <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
               <Clock className="w-4 h-4 text-blue-400" /> Time & Calculation Defaults
@@ -304,7 +310,6 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
             </div>
           </div>
 
-          {/* Truck & Equipment Classes */}
           <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
             <div className="flex justify-between items-center">
               <div>
@@ -683,25 +688,27 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
         </div>
       )}
 
-      {/* Action Footer */}
-      <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
-        {saveStatus ? (
-          <p className={`text-xs font-medium flex items-center gap-1.5 ${saveStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
-            {saveStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-            {saveStatus.message}
-          </p>
-        ) : <span />}
+      {/* Action Footer (Only for pricing/surcharges/geofences/bases tabs) */}
+      {activeSubTab !== 'clients' && (
+        <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
+          {saveStatus ? (
+            <p className={`text-xs font-medium flex items-center gap-1.5 ${saveStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+              {saveStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+              {saveStatus.message}
+            </p>
+          ) : <span />}
 
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isSaving}
-          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition cursor-pointer shadow-lg disabled:opacity-50"
-        >
-          <Save className="w-4 h-4" />
-          {isSaving ? 'Saving Configuration...' : 'Save Configuration'}
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition cursor-pointer shadow-lg disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            {isSaving ? 'Saving Configuration...' : 'Save Configuration'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
