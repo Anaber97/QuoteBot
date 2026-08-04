@@ -96,7 +96,6 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     setIsSaving(true);
     setSaveStatus(null);
     try {
-      // Ensure company_id from logged-in profile is included
       const dataToSave = {
         ...formData,
         company_id: profile?.company_id || formData.company_id
@@ -693,7 +692,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
         </div>
       )}
 
-      {/* Action Footer (Only for pricing/surcharges/geofences/bases tabs) */}
+      {/* Action Footer */}
       {activeSubTab !== 'clients' && (
         <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
           {saveStatus ? (

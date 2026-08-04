@@ -388,8 +388,22 @@ export default function App() {
             {activeTab === 'settings' && userProfile.role === 'manager' && (
               <Settings
                 currentUserRole={userProfile.role}
+                profile={userProfile}
                 onSaveConfig={async (newConfig) => {
-                  const { error } = await supabase.from('app_config').upsert(newConfig);
+                  if (!userProfile?.company_id) {
+                    throw new Error('No company ID associated with your profile.');
+                  }
+
+                  const payload = {
+                    ...newConfig,
+                    company_id: userProfile.company_id,
+                    updated_at: new Date().toISOString()
+                  };
+
+                  const { error } = await supabase
+                    .from('app_config')
+                    .upsert(payload, { onConflict: 'company_id' });
+
                   if (error) throw error;
                 }}
               />
