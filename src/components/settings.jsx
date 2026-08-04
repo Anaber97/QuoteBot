@@ -15,7 +15,8 @@ import {
   Search,
   Check,
   AlertTriangle,
-  Building2
+  Building2,
+  Edit3
 } from 'lucide-react';
 
 import { RATES } from '../config/rates';
@@ -27,23 +28,21 @@ export const DEFAULT_CONFIG = {
   pricing: {
     hourly_min: RATES.HOURLY_MIN || 125,
     hourly_max: RATES.HOURLY_MAX || 135,
-    heavy_hourly_min: RATES.HEAVY_HOURLY_MIN || 200,
-    heavy_hourly_max: RATES.HEAVY_HOURLY_MAX || 250,
     rounding_interval: RATES.ROUNDING_INTERVAL || 25,
     drive_time_buffer: RATES.DRIVE_TIME_BUFFER || 1.10,
     load_unload_base_mins: RATES.LOAD_UNLOAD_BASE_MINS || 30,
     extra_stop_mins: RATES.EXTRA_STOP_MINS || 15,
     custom_truck_classes: [
-      { id: '1', name: 'Standard Tow / Flatbed', minRate: RATES.HOURLY_MIN, maxRate: RATES.HOURLY_MAX },
+      { id: '1', name: 'Standard Tow / Flatbed', minRate: RATES.HOURLY_MIN || 125, maxRate: RATES.HOURLY_MAX || 135 },
       { id: '2', name: 'Medium Duty Flatbed', minRate: 150, maxRate: 180 },
-      { id: '3', name: 'Heavy Duty Towing', minRate: RATES.HEAVY_HOURLY_MIN, maxRate: RATES.HEAVY_HOURLY_MAX },
+      { id: '3', name: 'Heavy Duty Towing', minRate: 200, maxRate: 250 },
       { id: '4', name: 'Rotator / Heavy Recovery', minRate: 350, maxRate: 450 }
     ]
   },
   surcharges: {
     after_hours_multiplier: (RATES.AFTER_HOURS_MULTIPLIER - 1) * 100 || 25,
     road_club_multiplier: (RATES.ROAD_CLUB_MULTIPLIER - 1) * 100 || 15,
-    metro_multiplier: (RATES.METRO_MULTIPLIER - 1) * 100 || 28.57,
+    metro_multiplier: 28.57,
     hazard_multiplier: 40,
     custom_surcharges: [
       { id: '1', name: 'Winch Out / Off-Road', feeType: 'flat', value: 75, active: true },
@@ -51,7 +50,8 @@ export const DEFAULT_CONFIG = {
     ]
   },
   geofences: {
-    disabledZones: [] // IDs of geofences turned off by this company
+    disabledZones: [],
+    customZoneRates: {}
   },
   bases: SHOP_LOCATIONS,
   users: [
@@ -69,7 +69,8 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
 
   // Geofence Search & Filter State
   const [geofenceSearch, setGeofenceSearch] = useState('');
-  const [geofenceFilter, setGeofenceFilter] = useState('all'); // 'all', 'metro', 'hazard'
+  const [geofenceFilter, setGeofenceFilter] = useState('all');
+  const [editingZoneId, setEditingZoneId] = useState(null);
 
   useEffect(() => {
     if (config) setFormData(config);
@@ -151,7 +152,6 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
     setFormData(prev => ({ ...prev, users: [...prev.users, newUser] }));
   };
 
-  // Toggle individual geofence active state
   const toggleGeofence = (id) => {
     const currentDisabled = formData.geofences?.disabledZones || [];
     const updatedDisabled = currentDisabled.includes(id)
@@ -164,7 +164,19 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
     }));
   };
 
-  // Combine and memoize all 55+ geofences
+  const setCustomZoneRate = (id, percentValue) => {
+    setFormData(prev => ({
+      ...prev,
+      geofences: {
+        ...prev.geofences,
+        customZoneRates: {
+          ...(prev.geofences?.customZoneRates || {}),
+          [id]: percentValue
+        }
+      }
+    }));
+  };
+
   const allGeofences = useMemo(() => {
     const hazardList = Object.values(HAZARD_ZONES).map(z => ({ ...z, type: 'hazard' }));
     const metroList = Object.values(GEOFENCES).map(z => ({ ...z, type: 'metro' }));
@@ -192,7 +204,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
 
   return (
     <div className="space-y-6">
-      {/* Sub-navigation Tabs: Responsive Grid */}
+      {/* Sub-navigation Tabs */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 border-b border-slate-800 pb-1">
         {[
           { id: 'pricing', label: 'Pricing', icon: DollarSign },
@@ -223,60 +235,34 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
       {/* SUB TAB 1: PRICING */}
       {activeSubTab === 'pricing' && (
         <div className="space-y-5 text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-              <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
-                <DollarSign className="w-4 h-4 text-emerald-400" /> Standard Tow Rates ($/hr)
-              </h4>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Min Rate ($/hr)</label>
-                  <input
-                    type="number"
-                    value={formData.pricing.hourly_min}
-                    onChange={e => updatePricing('hourly_min', parseFloat(e.target.value) || 0)}
-                    className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Max Rate ($/hr)</label>
-                  <input
-                    type="number"
-                    value={formData.pricing.hourly_max}
-                    onChange={e => updatePricing('hourly_max', parseFloat(e.target.value) || 0)}
-                    className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                  />
-                </div>
+          {/* Standard Tow Rates */}
+          <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
+            <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
+              <DollarSign className="w-4 h-4 text-emerald-400" /> Standard Tow Rates ($/hr)
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-1">Min Rate ($/hr)</label>
+                <input
+                  type="number"
+                  value={formData.pricing.hourly_min}
+                  onChange={e => updatePricing('hourly_min', parseFloat(e.target.value) || 0)}
+                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
+                />
               </div>
-            </div>
-
-            <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-              <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
-                <Truck className="w-4 h-4 text-amber-400" /> Heavy Duty Rates ($/hr)
-              </h4>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Heavy Min ($/hr)</label>
-                  <input
-                    type="number"
-                    value={formData.pricing.heavy_hourly_min}
-                    onChange={e => updatePricing('heavy_hourly_min', parseFloat(e.target.value) || 0)}
-                    className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Heavy Max ($/hr)</label>
-                  <input
-                    type="number"
-                    value={formData.pricing.heavy_hourly_max}
-                    onChange={e => updatePricing('heavy_hourly_max', parseFloat(e.target.value) || 0)}
-                    className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                  />
-                </div>
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-1">Max Rate ($/hr)</label>
+                <input
+                  type="number"
+                  value={formData.pricing.hourly_max}
+                  onChange={e => updatePricing('hourly_max', parseFloat(e.target.value) || 0)}
+                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
+                />
               </div>
             </div>
           </div>
 
+          {/* Time & Calculation Defaults */}
           <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
             <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
               <Clock className="w-4 h-4 text-blue-400" /> Time & Calculation Defaults
@@ -318,6 +304,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
             </div>
           </div>
 
+          {/* Truck & Equipment Classes */}
           <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
             <div className="flex justify-between items-center">
               <div>
@@ -391,7 +378,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
       {activeSubTab === 'surcharges' && (
         <div className="space-y-4 text-xs">
           <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-            <h4 className="font-bold text-slate-200 text-xs">Standard Percentage Multipliers (%)</h4>
+            <h4 className="font-bold text-slate-200 text-xs">Global Flat Percentage Multipliers (%)</h4>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <label className="text-[10px] text-amber-300 block mb-1">After Hours (%)</label>
@@ -412,18 +399,20 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
                 />
               </div>
               <div>
-                <label className="text-[10px] text-cyan-300 block mb-1">Metro Zone (%)</label>
+                <label className="text-[10px] text-cyan-300 block mb-1">Default Metro (%)</label>
                 <input
                   type="number"
+                  step="0.01"
                   value={formData.surcharges.metro_multiplier}
                   onChange={e => updateSurcharges('metro_multiplier', parseFloat(e.target.value) || 0)}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-rose-300 block mb-1">Hazard Zone (%)</label>
+                <label className="text-[10px] text-rose-300 block mb-1">Default Hazard (%)</label>
                 <input
                   type="number"
+                  step="0.01"
                   value={formData.surcharges.hazard_multiplier}
                   onChange={e => updateSurcharges('hazard_multiplier', parseFloat(e.target.value) || 0)}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
@@ -434,10 +423,9 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
         </div>
       )}
 
-      {/* SUB TAB 3: GEOFENCES (55+ Interactive List) */}
+      {/* SUB TAB 3: GEOFENCES */}
       {activeSubTab === 'geofences' && (
         <div className="space-y-4 text-xs">
-          {/* Controls: Search and Filter Bar */}
           <div className="flex flex-col sm:flex-row gap-2 justify-between items-center bg-[#080c14] p-3 rounded-xl border border-slate-800">
             <div className="relative w-full sm:w-64">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
@@ -472,17 +460,26 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
             </div>
           </div>
 
-          {/* Search Results Count */}
           <div className="text-[11px] text-slate-400 flex justify-between items-center px-1">
             <span>Showing {filteredGeofences.length} geofences</span>
-            <span className="text-slate-500">Toggle switch to enable/disable zone auto-detection</span>
+            <span className="text-slate-500">Click percentage badge or edit button to adjust custom zone rate</span>
           </div>
 
-          {/* Scrollable List Container */}
           <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
             {filteredGeofences.map(zone => {
               const isDisabled = disabledSet.has(zone.id);
               const isHazard = zone.type === 'hazard';
+
+              const defaultTypeRate = isHazard
+                ? formData.surcharges.hazard_multiplier
+                : formData.surcharges.metro_multiplier;
+
+              const customRateOverride = formData.geofences?.customZoneRates?.[zone.id];
+              const effectivePercent = customRateOverride !== undefined 
+                ? customRateOverride 
+                : Math.round((zone.multiplier - 1) * 100) || defaultTypeRate;
+
+              const isEditingThisZone = editingZoneId === zone.id;
 
               return (
                 <div
@@ -503,11 +500,42 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
                         <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                       )}
                       <span className="font-bold text-white text-xs">{zone.name}</span>
-                      <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                        isHazard ? 'bg-rose-500/20 text-rose-300' : 'bg-cyan-500/20 text-cyan-300'
-                      }`}>
-                        +{Math.round((zone.multiplier - 1) * 100)}%
-                      </span>
+
+                      {isEditingThisZone ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={effectivePercent}
+                            onChange={e => setCustomZoneRate(zone.id, parseFloat(e.target.value) || 0)}
+                            className="w-16 bg-[#121824] border border-blue-500 rounded px-1.5 py-0.5 text-[10px] text-white font-mono"
+                          />
+                          <span className="text-[10px] text-slate-400">%</span>
+                          <button
+                            type="button"
+                            onClick={() => setEditingZoneId(null)}
+                            className="bg-blue-600 text-white px-1.5 py-0.5 rounded text-[9px] font-bold"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setEditingZoneId(zone.id)}
+                          title="Click to edit custom surcharge percentage"
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex items-center gap-1 transition cursor-pointer ${
+                            customRateOverride !== undefined
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                              : isHazard
+                              ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
+                              : 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30'
+                          }`}
+                        >
+                          +{effectivePercent}%
+                          <Edit3 className="w-2.5 h-2.5 opacity-70" />
+                        </button>
+                      )}
                     </div>
 
                     <p className="text-[10px] text-slate-400 line-clamp-1">
@@ -655,7 +683,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole }) {
         </div>
       )}
 
-      {/* Clean Cleaned-up Action Footer */}
+      {/* Action Footer */}
       <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
         {saveStatus ? (
           <p className={`text-xs font-medium flex items-center gap-1.5 ${saveStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>

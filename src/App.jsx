@@ -1,11 +1,12 @@
 // src/App.jsx
 // @ts-check
-import React, { useReducer, useEffect, useRef, useCallback } from 'react';
+import React, { useReducer, useEffect, useRef, useCallback, useState } from 'react';
 import { SHOP_LOCATIONS } from './config/locations';
 import { supabase } from './lib/supabase';
 import { calculateQuoteData, calculateFinalQuotes } from './services/quoteCalculator';
 
 import Header from './components/Header';
+import LoginCard from './components/LoginCard';
 import SurchargeToggles from './components/SurchargeToggles';
 import WaypointList from './components/WaypointList';
 import QuoteResultsCard from './components/QuoteResultsCard';
@@ -14,16 +15,24 @@ import Settings, { DEFAULT_CONFIG } from './components/Settings';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
+// Helper: Read personal default base from localStorage if saved
+const getInitialBaseId = () => {
+  const savedBase = localStorage.getItem('dispatch_default_base');
+  if (savedBase && SHOP_LOCATIONS.some((b) => b.id === savedBase)) {
+    return savedBase;
+  }
+  return SHOP_LOCATIONS[0].id;
+};
+
 const initialState = {
   activeTab: 'calculator',
-  selectedBaseId: SHOP_LOCATIONS[0].id,
-  selectedTruckClassId: '', // '' = Standard Rate
+  selectedBaseId: getInitialBaseId(),
+  selectedTruckClassId: '',
   waypoints: ['', ''],
   isAfterHours: false,
   isRoadClub: false,
   isMetro: false,
   isHazard: false,
-  isHeavy: false,
   activeOverrides: { afterHours: true, roadClub: true, metro: true, hazard: true },
   showDetails: false,
   customerName: '',
@@ -123,6 +132,9 @@ function quoteReducer(state, action) {
 
 export default function App() {
   const [state, dispatch] = useReducer(quoteReducer, initialState);
+  const [userProfile, setUserProfile] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+
   const {
     activeTab,
     selectedBaseId,
@@ -132,8 +144,6 @@ export default function App() {
     isRoadClub,
     isMetro,
     isHazard,
-    isHeavy,
-    activeOverrides,
     customerName,
     customerPhone,
     customRate,
@@ -143,24 +153,65 @@ export default function App() {
     quoteData,
   } = state;
 
+  // Check active Supabase Auth session on load
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          if (profile) setUserProfile(profile);
+        }
+      } catch (err) {
+        console.error('Auth verification error:', err);
+      } finally {
+        setAuthChecking(false);
+      }
+    }
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setUserProfile(null);
+      } else if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        if (profile) setUserProfile(profile);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Persistent Base Selection handler
+  const handleBaseChange = (baseId) => {
+    localStorage.setItem('dispatch_default_base', baseId);
+    dispatch({ type: 'SET_BASE', payload: baseId });
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUserProfile(null);
+  };
+
   const currentBase = SHOP_LOCATIONS.find((b) => b.id === selectedBaseId) || SHOP_LOCATIONS[0];
   const inputRefs = useRef([]);
   const autocompleteInstances = useRef(new Map());
   const lastCalculationTime = useRef(0);
   const resultsRef = useRef(null);
 
-  const stateRef = useRef(state);
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
-
   // Load Google Maps SDK
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) {
-      dispatch({
-        type: 'CALCULATE_ERROR',
-        payload: 'Google Maps API key is missing. Please check configuration.',
-      });
+      dispatch({ type: 'CALCULATE_ERROR', payload: 'Google Maps API key is missing.' });
       return;
     }
 
@@ -193,7 +244,7 @@ export default function App() {
 
   // Attach Autocomplete
   useEffect(() => {
-    if (!isApiLoaded || activeTab !== 'calculator') return;
+    if (!isApiLoaded || activeTab !== 'calculator' || !userProfile) return;
 
     const options = {
       types: ['geocode', 'establishment'],
@@ -223,7 +274,7 @@ export default function App() {
       });
       instances.clear();
     };
-  }, [isApiLoaded, activeTab, waypoints, handleWaypointChange]);
+  }, [isApiLoaded, activeTab, waypoints, userProfile, handleWaypointChange]);
 
   const handleCalculate = async (e) => {
     if (e) e.preventDefault();
@@ -238,28 +289,37 @@ export default function App() {
     dispatch({ type: 'CALCULATE_START' });
 
     try {
-      const effectiveWaypoints = waypoints.filter(w => w.trim().length > 0);
+      const effectiveWaypoints = waypoints.filter((w) => w.trim().length > 0);
       if (effectiveWaypoints.length === 1) {
-        effectiveWaypoints.push(effectiveWaypoints[0]); // Optional Drop-off fallback
+        effectiveWaypoints.push(effectiveWaypoints[0]);
+      }
+
+      // Dynamic rate resolution based on selected truck class
+      let selectedClassMinRate = null;
+      let selectedClassMaxRate = null;
+      if (selectedTruckClassId) {
+        const matchedClass = DEFAULT_CONFIG.pricing.custom_truck_classes.find(tc => tc.id === selectedTruckClassId);
+        if (matchedClass) {
+          selectedClassMinRate = matchedClass.minRate;
+          selectedClassMaxRate = matchedClass.maxRate;
+        }
       }
 
       const result = await calculateQuoteData({
         currentBase,
         waypoints: effectiveWaypoints,
-        isHeavy,
         isAfterHours,
         isRoadClub,
         isMetro,
         isHazard,
+        overrideMinRate: selectedClassMinRate,
+        overrideMaxRate: selectedClassMaxRate,
       });
 
       dispatch({ type: 'CALCULATE_SUCCESS', payload: result });
     } catch (err) {
       console.error('Calculation error:', err);
-      const message = err?.message?.includes('OVER_QUERY_LIMIT')
-        ? 'Google Maps API limit exceeded. Please try again later.'
-        : err?.message || 'An error occurred calculating the quote.';
-      dispatch({ type: 'CALCULATE_ERROR', payload: message });
+      dispatch({ type: 'CALCULATE_ERROR', payload: err?.message || 'Calculation error.' });
     }
   };
 
@@ -267,17 +327,17 @@ export default function App() {
     if (!quoteData) return;
     dispatch({ type: 'SAVE_START' });
 
-    const { currentMinQuote, currentMaxQuote } = calculateFinalQuotes(quoteData, activeOverrides, customRate);
+    const { currentMinQuote, currentMaxQuote } = calculateFinalQuotes(quoteData, state.activeOverrides, customRate);
 
     const activeModifiers = [];
-    if (quoteData.isHeavy) activeModifiers.push('Heavy Duty Rate');
-    if (quoteData.hasAfterHours && activeOverrides.afterHours) activeModifiers.push('+25% After Hours');
-    if (quoteData.hasRoadClub && activeOverrides.roadClub) activeModifiers.push('+15% Road Club');
-    if (quoteData.hasMetroZone && activeOverrides.metro) activeModifiers.push('+28.57% Metro');
-    if (quoteData.hasHazardZone && activeOverrides.hazard) activeModifiers.push('+40% Hazard Zone');
+    if (quoteData.hasAfterHours && state.activeOverrides.afterHours) activeModifiers.push('+25% After Hours');
+    if (quoteData.hasRoadClub && state.activeOverrides.roadClub) activeModifiers.push('+15% Road Club');
+    if (quoteData.hasMetroZone && state.activeOverrides.metro) activeModifiers.push('+28.57% Metro');
+    if (quoteData.hasHazardZone && state.activeOverrides.hazard) activeModifiers.push('+40% Hazard Zone');
 
     const { error } = await supabase.from('quotes').insert([
       {
+        company_id: userProfile?.company_id,
         base_location: currentBase.name,
         customer_name: customerName.trim() || 'N/A',
         customer_phone: customerPhone.trim() || 'N/A',
@@ -297,122 +357,136 @@ export default function App() {
     }
   };
 
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-[#080c14] flex flex-col items-center justify-center text-slate-400 text-xs">
+        <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mb-3" />
+        <p>Verifying Auth Workspace...</p>
+      </div>
+    );
+  }
+
   return (
-    // Fixed layout anchor: justify-start with top padding prevents header jump on tab changes
     <div className="min-h-screen w-full bg-[#080c14] flex flex-col items-center justify-start pt-6 sm:pt-10 pb-12 p-4 sm:p-6 text-slate-200 transition-all">
       <div className="w-full max-w-5xl bg-[#121824] rounded-2xl shadow-2xl p-5 sm:p-8 border border-slate-800/80 transition-all">
         
-        {/* Header remains anchored at top */}
-        <Header activeTab={activeTab} onSelectTab={(tab) => dispatch({ type: 'SET_TAB', payload: tab })} />
+        <Header
+          activeTab={activeTab}
+          onSelectTab={(tab) => dispatch({ type: 'SET_TAB', payload: tab })}
+          profile={userProfile}
+          onSignOut={handleSignOut}
+        />
 
-        {activeTab === 'log' && (
-          <QuoteLog onSelectQuote={(log) => dispatch({ type: 'LOAD_QUOTE_INTO_CALCULATOR', payload: log })} />
-        )}
+        {!userProfile ? (
+          <LoginCard onAuthSuccess={(profile) => setUserProfile(profile)} />
+        ) : (
+          <>
+            {activeTab === 'log' && userProfile.role !== 'client' && (
+              <QuoteLog onSelectQuote={(log) => dispatch({ type: 'LOAD_QUOTE_INTO_CALCULATOR', payload: log })} />
+            )}
 
-        {activeTab === 'settings' && (
-          <Settings
-            currentUserRole="dispatch"
-            onSaveConfig={async (newConfig) => {
-              const { error } = await supabase.from('app_config').upsert(newConfig);
-              if (error) throw error;
-            }}
-          />
-        )}
+            {activeTab === 'settings' && userProfile.role === 'manager' && (
+              <Settings
+                currentUserRole={userProfile.role}
+                onSaveConfig={async (newConfig) => {
+                  const { error } = await supabase.from('app_config').upsert(newConfig);
+                  if (error) throw error;
+                }}
+              />
+            )}
 
-        {activeTab === 'calculator' && (
-          <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-start">
-            
-            {/* Left Column: Input Form (7 columns on desktop) */}
-            <div className="lg:col-span-7 space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="baseShopSelect" className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">
-                    Base Location
-                  </label>
-                  <select
-                    id="baseShopSelect"
-                    value={selectedBaseId}
-                    onChange={(e) => dispatch({ type: 'SET_BASE', payload: e.target.value })}
-                    className="bg-[#1a2130] border border-slate-700/80 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full"
-                  >
-                    {SHOP_LOCATIONS.map((shop) => (
-                      <option key={shop.id} value={shop.id}>
-                        {shop.name} ({shop.address})
-                      </option>
-                    ))}
-                  </select>
+            {activeTab === 'calculator' && (
+              <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-start">
+                <div className="lg:col-span-7 space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="baseShopSelect" className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">
+                        Base Location
+                      </label>
+                      <select
+                        id="baseShopSelect"
+                        value={selectedBaseId}
+                        onChange={(e) => handleBaseChange(e.target.value)}
+                        className="bg-[#1a2130] border border-slate-700/80 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full"
+                      >
+                        {SHOP_LOCATIONS.map((shop) => (
+                          <option key={shop.id} value={shop.id}>
+                            {shop.name} ({shop.address})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="truckClassSelect" className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">
+                        Truck / Equipment Class
+                      </label>
+                      <select
+                        id="truckClassSelect"
+                        value={selectedTruckClassId}
+                        onChange={(e) => dispatch({ type: 'SET_TRUCK_CLASS', payload: e.target.value })}
+                        className="bg-[#1a2130] border border-slate-700/80 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full"
+                      >
+                        <option value="">Standard Rate ($125 - $135/hr)</option>
+                        {DEFAULT_CONFIG.pricing.custom_truck_classes.map((tc) => (
+                          <option key={tc.id} value={tc.id}>
+                            {tc.name} (${tc.minRate} - ${tc.maxRate}/hr)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="p-4 bg-red-950/40 text-red-400 border border-red-800/50 rounded-xl text-xs font-medium">
+                      {error}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleCalculate} className="space-y-5">
+                    <SurchargeToggles state={state} dispatch={dispatch} />
+
+                    <WaypointList
+                      waypoints={waypoints}
+                      inputRefs={inputRefs}
+                      onChange={handleWaypointChange}
+                      onRemove={handleRemoveWaypoint}
+                      onAdd={() => dispatch({ type: 'ADD_WAYPOINT' })}
+                    />
+
+                    <button
+                      type="submit"
+                      disabled={loading || !isApiLoaded}
+                      className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-sm text-white rounded-xl transition shadow-lg disabled:bg-slate-800 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {loading ? 'Calculating Route...' : 'Calculate Quote'}
+                    </button>
+                  </form>
                 </div>
 
-                <div>
-                  <label htmlFor="truckClassSelect" className="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">
-                    Truck / Equipment Class
-                  </label>
-                  <select
-                    id="truckClassSelect"
-                    value={selectedTruckClassId}
-                    onChange={(e) => dispatch({ type: 'SET_TRUCK_CLASS', payload: e.target.value })}
-                    className="bg-[#1a2130] border border-slate-700/80 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full"
-                  >
-                    <option value="">Standard Rate ($125 - $135/hr)</option>
-                    {DEFAULT_CONFIG.pricing.custom_truck_classes.map((tc) => (
-                      <option key={tc.id} value={tc.id}>
-                        {tc.name} (${tc.minRate} - ${tc.maxRate}/hr)
-                      </option>
-                    ))}
-                  </select>
+                <div className="lg:col-span-5 mt-6 lg:mt-0">
+                  {quoteData ? (
+                    <QuoteResultsCard
+                      state={state}
+                      dispatch={dispatch}
+                      resultsRef={resultsRef}
+                      onLogQuote={handleLogQuote}
+                    />
+                  ) : (
+                    <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
+                      <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">
+                        $
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-300">Quote Breakdown Preview</h4>
+                      <p className="text-xs max-w-xs">
+                        Enter pick-up/drop-off locations and click <strong className="text-blue-400">Calculate Quote</strong> to display live route estimates here.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {error && (
-                <div className="p-4 bg-red-950/40 text-red-400 border border-red-800/50 rounded-xl text-xs font-medium">
-                  {error}
-                </div>
-              )}
-
-              <form onSubmit={handleCalculate} className="space-y-5">
-                <SurchargeToggles state={state} dispatch={dispatch} />
-
-                <WaypointList
-                  waypoints={waypoints}
-                  inputRefs={inputRefs}
-                  onChange={handleWaypointChange}
-                  onRemove={handleRemoveWaypoint}
-                  onAdd={() => dispatch({ type: 'ADD_WAYPOINT' })}
-                />
-
-                <button
-                  type="submit"
-                  disabled={loading || !isApiLoaded}
-                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-sm text-white rounded-xl transition shadow-lg disabled:bg-slate-800 cursor-pointer flex items-center justify-center gap-2"
-                >
-                  {loading ? 'Calculating Route...' : 'Calculate Quote'}
-                </button>
-              </form>
-            </div>
-
-            {/* Right Column: Quote Results Card (5 columns on desktop) */}
-            <div className="lg:col-span-5 mt-6 lg:mt-0">
-              {quoteData ? (
-                <QuoteResultsCard
-                  state={state}
-                  dispatch={dispatch}
-                  resultsRef={resultsRef}
-                  onLogQuote={handleLogQuote}
-                />
-              ) : (
-                <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
-                  <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">
-                    $
-                  </div>
-                  <h4 className="text-sm font-bold text-slate-300">Quote Breakdown Preview</h4>
-                  <p className="text-xs max-w-xs">
-                    Enter pick-up/drop-off locations and click <strong className="text-blue-400">Calculate Quote</strong> to display live route estimates here.
-                  </p>
-                </div>
-              )}
-            </div>
-
-          </div>
+            )}
+          </>
         )}
 
       </div>
