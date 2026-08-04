@@ -16,7 +16,7 @@ export default function LoginCard() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
 
-  // 1. Existing User Magic Link Login (Email Only)
+  // 1. Existing User Magic Link Login (Email Only with Profile Check)
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -29,7 +29,23 @@ export default function LoginCard() {
         throw new Error('Please enter your email address.');
       }
 
-      // Trigger Magic Link OTP (Supabase identifies the user/company automatically)
+      // Check if the email exists in your profiles table first
+      const { data: profileMatch, error: profileErr } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .eq('email', cleanedEmail)
+        .maybeSingle();
+
+      if (profileErr) {
+        throw new Error('Database check failed. Please try again.');
+      }
+
+      // If no profile matches this email, block the login
+      if (!profileMatch) {
+        throw new Error('Access denied. This email is not registered under any company workspace.');
+      }
+
+      // If found, proceed with sending the Magic Link
       const { error: authErr } = await supabase.auth.signInWithOtp({
         email: cleanedEmail,
         options: { emailRedirectTo: window.location.origin },
@@ -39,7 +55,7 @@ export default function LoginCard() {
 
       setSuccessMessage(`Magic link sent to ${cleanedEmail}! Check your inbox.`);
     } catch (err) {
-      setError(err.message || 'Failed to send login link.');
+      setError(err.message || 'Failed to sign in.');
     } finally {
       setLoading(false);
     }
@@ -134,7 +150,7 @@ export default function LoginCard() {
                 disabled={loading}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-white rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
               >
-                {loading ? 'Sending Link...' : <>Send Magic Link <Send className="w-4 h-4" /></>}
+                {loading ? 'Validating Email...' : <>Send Magic Link <Send className="w-4 h-4" /></>}
               </button>
             </form>
           )}
