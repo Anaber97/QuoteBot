@@ -1,4 +1,5 @@
 // src/App.jsx
+
 // @ts-check
 import React, { useReducer, useEffect, useRef, useState } from 'react';
 import { SHOP_LOCATIONS } from './config/locations';
