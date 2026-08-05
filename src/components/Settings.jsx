@@ -267,69 +267,74 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   };
 
   const handleInviteUser = async () => {
-    if (!profile?.company_id) {
-      setInviteStatus({ type: 'error', message: 'No company available for this invite.' });
-      return;
+  if (!profile?.company_id) {
+    setInviteStatus({ type: 'error', message: 'No company available for this invite.' });
+    return;
+  }
+
+  const trimmedEmail = inviteEmail.trim().toLowerCase();
+  if (!trimmedEmail) {
+    setInviteStatus({ type: 'error', message: 'Please enter an email address.' });
+    return;
+  }
+
+  setIsSaving(true);
+  setInviteStatus(null);
+
+  try {
+    const token = crypto.randomUUID();
+
+    // 1. Send API request to trigger Supabase Admin Invite
+    const response = await fetch("/api/inviteUser", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: trimmedEmail }), // Fixed: passing trimmedEmail
+    });
+
+    // Check if the endpoint returned valid JSON before parsing
+    const contentType = response.headers.get("content-type");
+    if (!response.ok || !contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      throw new Error(`API error (${response.status}): ${text.slice(0, 100) || 'Invalid server response'}`);
     }
 
-    const trimmedEmail = inviteEmail.trim().toLowerCase();
-    if (!trimmedEmail) {
-      setInviteStatus({ type: 'error', message: 'Please enter an email address.' });
-      return;
-    }
+    const apiResult = await response.json();
+    if (apiResult.error) throw new Error(apiResult.error);
 
-    setIsSaving(true);
-    setInviteStatus(null);
-
+    // 2. Optionally trigger custom email template function via Supabase Edge Function
     try {
-      const token = crypto.randomUUID();
-      const invitePayload = {
-        company_id: profile.company_id,
-        email: trimmedEmail,
-        full_name: inviteName.trim() || null,
-        role: inviteRole,
-        status: 'pending',
+      const emailPayload = buildInviteEmailPayload({
         token,
-        invited_by: profile.id,
-        created_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase.from('company_invites').insert([invitePayload]);
-      if (error) throw error;
-
-      try {
-        const emailPayload = buildInviteEmailPayload({
-          token,
-          recipientEmail: trimmedEmail,
-          recipientName: inviteName.trim(),
-          inviterName: profile?.full_name || 'Your workspace manager',
-          companyName: profile?.company_name || 'your workspace',
-          origin: typeof window !== 'undefined' ? window.location.origin : '',
-        });
-
-        const { error: emailError } = await supabase.functions.invoke('send-invite-email', {
-          body: emailPayload,
-        });
-
-        if (emailError) throw emailError;
-      } catch (emailError) {
-        console.warn('Invite email could not be sent:', emailError);
-      }
-
-      setInviteStatus({
-        type: 'success',
-        message: `Invite created for ${trimmedEmail}.`,
+        recipientEmail: trimmedEmail,
+        recipientName: inviteName.trim(),
+        inviterName: profile?.full_name || 'Your workspace manager',
+        companyName: profile?.company_name || 'your workspace',
+        origin: typeof window !== 'undefined' ? window.location.origin : '',
       });
-      setInviteName('');
-      setInviteEmail('');
-      setInviteRole('client');
-    } catch (err) {
-      console.error('Error sending invite:', err);
-      setInviteStatus({ type: 'error', message: err.message || 'Failed to send invite.' });
-    } finally {
-      setIsSaving(false);
+
+      const { error: emailError } = await supabase.functions.invoke('send-invite-email', {
+        body: emailPayload,
+      });
+
+      if (emailError) console.warn('Supabase edge function warning:', emailError);
+    } catch (emailErr) {
+      console.warn('Invite custom email could not be sent:', emailErr);
     }
-  };
+
+    setInviteStatus({
+      type: 'success',
+      message: `Invite sent to ${trimmedEmail}.`,
+    });
+    setInviteName('');
+    setInviteEmail('');
+    setInviteRole('client');
+  } catch (err) {
+    console.error('Error sending invite:', err);
+    setInviteStatus({ type: 'error', message: err.message || 'Failed to send invite.' });
+  } finally {
+    setIsSaving(false);
+  }
+};
 
   const handleEditUser = async (userId) => {
     if (editingUserIds[userId]) {
