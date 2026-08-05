@@ -1,11 +1,88 @@
 // src/components/WaypointList.jsx
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import { loadGoogleMaps } from '../lib/googleMaps';
 
 const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRemove, inputRef }) => {
   const isPickUp = index === 0;
   const isDropOff = index === totalWaypoints - 1;
   const isWaypoint = !isPickUp && !isDropOff;
   const label = isPickUp ? 'Pick-up Location' : isDropOff ? 'Drop-off Location' : `Stop ${index} (Waypoint)`;
+
+  const internalInputRef = useRef(null);
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  // Initialize Google Places Autocomplete on this input field
+  useEffect(() => {
+    const el = internalInputRef.current;
+    if (!el || typeof window === 'undefined') {
+      return;
+    }
+
+    let cancelled = false;
+
+    const setupAutocomplete = async () => {
+      try {
+        await loadGoogleMaps();
+        if (cancelled || !el.isConnected) {
+          return;
+        }
+
+        if (!window.google?.maps?.places) {
+          return;
+        }
+
+        const autocomplete = new window.google.maps.places.Autocomplete(el, {
+          types: ['geocode', 'establishment'],
+          componentRestrictions: { country: 'us' },
+        });
+
+        const handleKeyDown = (e) => {
+          if (e.key === 'Enter' && document.querySelector('.pac-container:hover')) {
+            e.preventDefault();
+          }
+        };
+        el.addEventListener('keydown', handleKeyDown);
+
+        const listener = autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          const formattedAddress = place.formatted_address || place.name || el.value;
+          if (formattedAddress) {
+            onChangeRef.current(index, formattedAddress);
+          }
+        });
+
+        return () => {
+          el.removeEventListener('keydown', handleKeyDown);
+          if (window.google?.maps?.event && listener) {
+            window.google.maps.event.removeListener(listener);
+          }
+        };
+      } catch (error) {
+        console.error('Google Maps autocomplete failed to initialize:', error);
+      }
+    };
+
+    const cleanupPromise = setupAutocomplete();
+
+    return () => {
+      cancelled = true;
+      cleanupPromise.then((cleanup) => cleanup?.());
+    };
+  }, [index]);
+
+  // Combine parent inputRef callback with internalInputRef
+  const setRef = (element) => {
+    internalInputRef.current = element;
+    if (typeof inputRef === 'function') {
+      inputRef(element);
+    } else if (inputRef) {
+      inputRef.current = element;
+    }
+  };
 
   return (
     <div className="w-full">
@@ -14,7 +91,7 @@ const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRe
       </label>
       <div className="flex items-center gap-2 w-full">
         <input
-          ref={inputRef}
+          ref={setRef}
           type="text"
           placeholder={`Enter ${label.toLowerCase()}...`}
           value={value}
@@ -50,6 +127,7 @@ export default function WaypointList({ waypoints, inputRefs, onChange, onRemove,
           inputRef={(el) => (inputRefs.current[index] = el)}
         />
       ))}
+
       <button
         type="button"
         onClick={onAdd}

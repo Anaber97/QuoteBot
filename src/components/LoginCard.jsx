@@ -1,11 +1,12 @@
 // src/components/LoginCard.jsx
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Mail, Send, CheckCircle2, UserPlus, HelpCircle } from 'lucide-react';
+import { Mail, Lock, LogIn, CheckCircle2, UserPlus, HelpCircle } from 'lucide-react';
 
 export default function LoginCard() {
   const [mode, setMode] = useState('login'); // 'login' | 'request'
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState(''); // 1. Added Password state
   
   // Account Request Form State
   const [requestName, setRequestName] = useState('');
@@ -16,7 +17,7 @@ export default function LoginCard() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
 
-  // 1. Existing User Magic Link Login (Email Only with Profile Check)
+  // 1. Password Login (with Profile Check)
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -25,8 +26,8 @@ export default function LoginCard() {
     try {
       const cleanedEmail = email.trim().toLowerCase();
 
-      if (!cleanedEmail) {
-        throw new Error('Please enter your email address.');
+      if (!cleanedEmail || !password) {
+        throw new Error('Please enter both your email and password.');
       }
 
       // Check if the email exists in your profiles table first
@@ -45,15 +46,15 @@ export default function LoginCard() {
         throw new Error('Access denied. This email is not registered under any company workspace.');
       }
 
-      // If found, proceed with sending the Magic Link
-      const { error: authErr } = await supabase.auth.signInWithOtp({
+      // 2. Changed from signInWithOtp to signInWithPassword
+      const { error: authErr } = await supabase.auth.signInWithPassword({
         email: cleanedEmail,
-        options: { emailRedirectTo: window.location.origin },
+        password: password,
       });
 
       if (authErr) throw authErr;
 
-      setSuccessMessage(`Magic link sent to ${cleanedEmail}! Check your inbox.`);
+      // Supabase handles the session automatically on success!
     } catch (err) {
       setError(err.message || 'Failed to sign in.');
     } finally {
@@ -91,15 +92,15 @@ export default function LoginCard() {
     <div className="w-full max-w-md mx-auto bg-[#121824] border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
       <div className="text-center space-y-2">
         <div className="w-12 h-12 bg-blue-600/10 border border-blue-500/20 rounded-full flex items-center justify-center mx-auto text-blue-400">
-          {mode === 'request' ? <UserPlus className="w-6 h-6" /> : <Mail className="w-6 h-6" />}
+          {mode === 'request' ? <UserPlus className="w-6 h-6" /> : <LogIn className="w-6 h-6" />}
         </div>
         <h2 className="text-xl font-bold text-white">
-          {mode === 'request' ? 'Request Access' : 'Sign In via Magic Link'}
+          {mode === 'request' ? 'Request Access' : 'Sign In'}
         </h2>
         <p className="text-xs text-slate-400">
           {mode === 'request'
             ? 'Fill out the form below to request a managed company workspace.'
-            : 'Enter your email address to receive an instant sign-in link.'}
+            : 'Enter your credentials to access your company dashboard.'}
         </p>
       </div>
 
@@ -127,7 +128,7 @@ export default function LoginCard() {
             </div>
           )}
 
-          {/* VIEW 1: Existing User Login (Email Only) */}
+          {/* VIEW 1: Existing User Login */}
           {mode === 'login' && (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
@@ -145,12 +146,28 @@ export default function LoginCard() {
                 </div>
               </div>
 
+              {/* 3. Password Input Field */}
+              <div>
+                <label className="text-[11px] font-semibold uppercase text-slate-400 block mb-1">Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-[#080c14] border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
               <button
                 type="submit"
                 disabled={loading}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-white rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
               >
-                {loading ? 'Validating Email...' : <>Send Magic Link <Send className="w-4 h-4" /></>}
+                {loading ? 'Authenticating...' : <>Sign In <LogIn className="w-4 h-4" /></>}
               </button>
             </form>
           )}

@@ -69,7 +69,7 @@ export default function ManagerOnboarding({ profile }) {
             Client Sub-Accounts Management
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Manage external corporate clients (e.g., RomCo) who utilize your company's quoting portal.
+            Manage external corporate clients who utilize your company's quoting portal.
           </p>
         </div>
         <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-lg">
@@ -90,7 +90,7 @@ export default function ManagerOnboarding({ profile }) {
           <input
             type="text"
             required
-            placeholder="e.g. RomCo"
+            placeholder="e.g. ACME Corp."
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
             className="w-full bg-[#080c14] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -100,7 +100,7 @@ export default function ManagerOnboarding({ profile }) {
           <label className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">Contact Email</label>
           <input
             type="email"
-            placeholder="contact@romco.com"
+            placeholder="contact@acme.com"
             value={clientEmail}
             onChange={(e) => setClientEmail(e.target.value)}
             className="w-full bg-[#080c14] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -123,7 +123,7 @@ export default function ManagerOnboarding({ profile }) {
         <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Active Client Sub-Accounts</h4>
         {clients.length === 0 ? (
           <p className="text-xs text-slate-500 italic py-4 text-center bg-[#121824] rounded-xl border border-slate-800/60">
-            No client sub-accounts created yet. Add RomCo above to get started!
+            No client sub-accounts created yet. Add a client above to get started!
           </p>
         ) : (
           <div className="space-y-2">

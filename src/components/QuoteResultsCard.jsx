@@ -33,6 +33,7 @@ export default function QuoteResultsCard({
   dispatch,
   resultsRef,
   onLogQuote,
+  companyRates = {},
 }) {
   const {
     quoteData,
@@ -43,31 +44,35 @@ export default function QuoteResultsCard({
     customerPhone,
     isSaving,
     saveStatus,
-  } = state;
+  } = state || {};
 
   if (!quoteData) return null;
 
   const { currentMinQuote, currentMaxQuote, customCalculatedQuote } = calculateFinalQuotes(
     quoteData,
     activeOverrides,
-    customRate
+    customRate,
+    companyRates
   );
 
   const toggleOverride = (key) => {
-    dispatch({ type: 'TOGGLE_OVERRIDE', payload: key });
+    dispatch?.({ type: 'SET_OVERRIDE', payload: { key, value: !activeOverrides?.[key] } });
   };
 
-  // Build valid Google Maps Embed URL using clean waypoints
-  const waypoints = quoteData.cleanWaypoints || [];
-  const origin = encodeURIComponent(waypoints[0] || '');
-  const destination = encodeURIComponent(waypoints[waypoints.length - 1] || '');
-  const intermediateWaypoints = waypoints
+  // Build a Google Maps Embed URL for the full base-to-base route with intermediate stops.
+  const routeAddresses = Array.isArray(quoteData.routeAddresses) && quoteData.routeAddresses.length > 0
+    ? quoteData.routeAddresses
+    : [quoteData.baseAddress, ...(quoteData.cleanWaypoints || []), quoteData.baseAddress].filter(Boolean);
+
+  const origin = encodeURIComponent(routeAddresses[0] || '');
+  const destination = encodeURIComponent(routeAddresses[routeAddresses.length - 1] || '');
+  const intermediateWaypoints = routeAddresses
     .slice(1, -1)
     .map((wp) => encodeURIComponent(wp))
     .join('|');
 
   const mapEmbedUrl =
-    waypoints.length >= 2 && GOOGLE_MAPS_API_KEY
+    routeAddresses.length >= 2 && GOOGLE_MAPS_API_KEY
       ? `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_API_KEY}&origin=${origin}&destination=${destination}${
           intermediateWaypoints ? `&waypoints=${intermediateWaypoints}` : ''
         }&mode=driving`

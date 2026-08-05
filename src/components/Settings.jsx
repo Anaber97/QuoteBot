@@ -20,6 +20,8 @@ import {
   Edit3
 } from 'lucide-react';
 
+import { supabase } from '../lib/supabase';
+import { buildInviteEmailPayload } from '../lib/inviteEmail';
 import { RATES } from '../config/rates';
 import { SHOP_LOCATIONS } from '../config/locations';
 import { GEOFENCES, HAZARD_ZONES } from '../config/geofences';
@@ -56,29 +58,99 @@ export const DEFAULT_CONFIG = {
     customZoneRates: {}
   },
   bases: SHOP_LOCATIONS,
-  users: [
-    { id: 'u1', name: 'Dave Dispatcher', email: 'dave@towco.com', role: 'dispatch' },
-    { id: 'u2', name: 'Sarah Office', email: 'sarah@towco.com', role: 'office' },
-    { id: 'u3', name: 'External Client', email: 'client@acme.com', role: 'client' }
-  ]
+  users: []
+};
+
+const normalizeConfig = (value = {}) => ({
+  ...DEFAULT_CONFIG,
+  ...value,
+  company_id: value.company_id || DEFAULT_CONFIG.company_id,
+  pricing: {
+    ...(DEFAULT_CONFIG.pricing || {}),
+    ...(value.pricing || {}),
+    rounding_interval: Number(value.pricing?.rounding_interval ?? value.rounding_interval ?? DEFAULT_CONFIG.pricing.rounding_interval) || 25,
+    hourly_min: Number(value.pricing?.hourly_min ?? value.hourly_min ?? DEFAULT_CONFIG.pricing.hourly_min) || 125,
+    hourly_max: Number(value.pricing?.hourly_max ?? value.hourly_max ?? DEFAULT_CONFIG.pricing.hourly_max) || 135,
+    drive_time_buffer: Number(value.pricing?.drive_time_buffer ?? value.drive_time_buffer ?? DEFAULT_CONFIG.pricing.drive_time_buffer) || 1.1,
+    load_unload_base_mins: Number(value.pricing?.load_unload_base_mins ?? value.load_unload_base_mins ?? DEFAULT_CONFIG.pricing.load_unload_base_mins) || 30,
+    extra_stop_mins: Number(value.pricing?.extra_stop_mins ?? value.extra_stop_mins ?? DEFAULT_CONFIG.pricing.extra_stop_mins) || 15,
+  },
+  surcharges: {
+    ...(DEFAULT_CONFIG.surcharges || {}),
+    ...(value.surcharges || {}),
+  },
+  geofences: {
+    disabledZones: value.geofences?.disabledZones || [],
+    customZoneRates: value.geofences?.customZoneRates || {},
+  },
+  bases: Array.isArray(value.bases) && value.bases.length > 0 ? value.bases : DEFAULT_CONFIG.bases,
+  users: Array.isArray(value.users) ? value.users.filter(Boolean) : [],
+});
+
+const formatRole = (role) => {
+  const normalized = String(role || '').trim().toLowerCase();
+  if (normalized === 'manager') return 'Manager';
+  if (normalized === 'dispatch') return 'Dispatch';
+  if (normalized === 'client') return 'Client';
+  if (normalized === 'member') return 'Member';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
 export default function Settings({ config, onSaveConfig, currentUserRole, profile }) {
   const [activeSubTab, setActiveSubTab] = useState('pricing');
-  const [formData, setFormData] = useState(config || DEFAULT_CONFIG);
+  const [formData, setFormData] = useState(() => normalizeConfig(config));
+  const [companyUsers, setCompanyUsers] = useState([]);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('client');
+  const [inviteStatus, setInviteStatus] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [userEdits, setUserEdits] = useState({});
+  const [editingUserIds, setEditingUserIds] = useState({});
 
   // Geofence Search & Filter State
   const [geofenceSearch, setGeofenceSearch] = useState('');
   const [geofenceFilter, setGeofenceFilter] = useState('all');
-  const [editingZoneId, setEditingZoneId] = useState(null);
 
   useEffect(() => {
-    if (config) setFormData(config);
+    if (config) setFormData(normalizeConfig(config));
   }, [config]);
 
-  const canEdit = currentUserRole === 'manager' || currentUserRole === 'dispatch' || currentUserRole === 'office';
+  useEffect(() => {
+    if (!profile?.company_id) {
+      setCompanyUsers([]);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadCompanyUsers = async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role, company_id, created_at')
+        .eq('company_id', profile.company_id)
+        .order('created_at', { ascending: true });
+
+      if (!isMounted) return;
+
+      if (error) {
+        console.error('Error loading workspace members:', error);
+        setCompanyUsers([]);
+        return;
+      }
+
+      setCompanyUsers((data || []).filter(Boolean));
+    };
+
+    loadCompanyUsers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profile?.company_id]);
+
+  const canEdit = currentUserRole === 'manager';
 
   if (!canEdit) {
     return (
@@ -93,17 +165,58 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   }
 
   const handleSave = async () => {
+    const companyId = profile?.company_id || formData?.company_id;
+    if (!companyId) {
+      setSaveStatus({ type: 'error', message: 'No company ID found.' });
+      return;
+    }
+
     setIsSaving(true);
     setSaveStatus(null);
+
     try {
-      const dataToSave = {
-        ...formData,
-        company_id: profile?.company_id || formData.company_id
+      const normalizedConfig = {
+        company_id: companyId,
+        hourly_min: formData.pricing?.hourly_min || 125,
+        hourly_max: formData.pricing?.hourly_max || 135,
+        rounding_interval: formData.pricing?.rounding_interval || 25,
+        drive_time_buffer: formData.pricing?.drive_time_buffer || 1.10,
+        load_unload_base_mins: formData.pricing?.load_unload_base_mins || 30,
+        extra_stop_mins: formData.pricing?.extra_stop_mins || 15,
+        after_hours_multiplier: formData.surcharges?.after_hours_multiplier || 25,
+        road_club_multiplier: formData.surcharges?.road_club_multiplier || 15,
+        metro_multiplier: formData.surcharges?.metro_multiplier || 28.57,
+        hazard_multiplier: formData.surcharges?.hazard_multiplier || 40,
+        pricing: {
+          ...(DEFAULT_CONFIG.pricing || {}),
+          ...(formData.pricing || {})
+        },
+        surcharges: {
+          ...(DEFAULT_CONFIG.surcharges || {}),
+          ...(formData.surcharges || {})
+        },
+        geofences: {
+          disabledZones: formData.geofences?.disabledZones || [],
+          customZoneRates: formData.geofences?.customZoneRates || {}
+        },
+        bases: (formData.bases || []).filter(Boolean),
+        users: [],
+        updated_at: new Date().toISOString()
       };
-      await onSaveConfig(dataToSave);
+
+      const payload = normalizedConfig;
+
+      const { error } = await supabase
+        .from('app_config')
+        .upsert(payload, { onConflict: 'company_id' });
+
+      if (error) throw error;
+
       setSaveStatus({ type: 'success', message: 'Configuration saved successfully!' });
+      if (onSaveConfig) onSaveConfig(normalizedConfig);
     } catch (err) {
-      setSaveStatus({ type: 'error', message: err.message || 'Failed to save configuration.' });
+      console.error('Error saving app_config:', err);
+      setSaveStatus({ type: 'error', message: err.message || 'Failed to save settings.' });
     } finally {
       setIsSaving(false);
     }
@@ -129,7 +242,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       ...prev,
       pricing: {
         ...prev.pricing,
-        custom_truck_classes: [...(prev.pricing.custom_truck_classes || []), newClass]
+        custom_truck_classes: [...(prev.pricing?.custom_truck_classes || []), newClass]
       }
     }));
   };
@@ -139,23 +252,136 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       ...prev,
       pricing: {
         ...prev.pricing,
-        custom_truck_classes: prev.pricing.custom_truck_classes.filter(t => t.id !== id)
+        custom_truck_classes: (prev.pricing?.custom_truck_classes || []).filter(t => t.id !== id)
       }
     }));
   };
 
   const addBase = () => {
-    const newBase = { id: `b_${Date.now()}`, name: 'New Base Location', address: '', phone: '' };
-    setFormData(prev => ({ ...prev, bases: [...prev.bases, newBase] }));
+    const newBase = { id: `b_${Date.now()}`, name: 'New Base Yard', address: '', localCities: [] };
+    setFormData(prev => ({ ...prev, bases: [...(prev.bases || []), newBase] }));
   };
 
   const removeBase = (id) => {
-    setFormData(prev => ({ ...prev, bases: prev.bases.filter(b => b.id !== id) }));
+    setFormData(prev => ({ ...prev, bases: (prev.bases || []).filter(b => b.id !== id) }));
   };
 
-  const addUser = () => {
-    const newUser = { id: `u_${Date.now()}`, name: 'New Team Member', email: '', role: 'dispatch' };
-    setFormData(prev => ({ ...prev, users: [...prev.users, newUser] }));
+  const handleInviteUser = async () => {
+    if (!profile?.company_id) {
+      setInviteStatus({ type: 'error', message: 'No company available for this invite.' });
+      return;
+    }
+
+    const trimmedEmail = inviteEmail.trim().toLowerCase();
+    if (!trimmedEmail) {
+      setInviteStatus({ type: 'error', message: 'Please enter an email address.' });
+      return;
+    }
+
+    setIsSaving(true);
+    setInviteStatus(null);
+
+    try {
+      const token = crypto.randomUUID();
+      const invitePayload = {
+        company_id: profile.company_id,
+        email: trimmedEmail,
+        full_name: inviteName.trim() || null,
+        role: inviteRole,
+        status: 'pending',
+        token,
+        invited_by: profile.id,
+        created_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from('company_invites').insert([invitePayload]);
+      if (error) throw error;
+
+      try {
+        const emailPayload = buildInviteEmailPayload({
+          token,
+          recipientEmail: trimmedEmail,
+          recipientName: inviteName.trim(),
+          inviterName: profile?.full_name || 'Your workspace manager',
+          companyName: profile?.company_name || 'your workspace',
+          origin: typeof window !== 'undefined' ? window.location.origin : '',
+        });
+
+        const { error: emailError } = await supabase.functions.invoke('send-invite-email', {
+          body: emailPayload,
+        });
+
+        if (emailError) throw emailError;
+      } catch (emailError) {
+        console.warn('Invite email could not be sent:', emailError);
+      }
+
+      setInviteStatus({
+        type: 'success',
+        message: `Invite created for ${trimmedEmail}.`,
+      });
+      setInviteName('');
+      setInviteEmail('');
+      setInviteRole('client');
+    } catch (err) {
+      console.error('Error sending invite:', err);
+      setInviteStatus({ type: 'error', message: err.message || 'Failed to send invite.' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditUser = async (userId) => {
+    if (editingUserIds[userId]) {
+      const edits = userEdits[userId] || {};
+      const nextName = (edits.full_name || '').trim();
+      const nextRole = (edits.role || 'client').toLowerCase();
+
+      try {
+        setIsSaving(true);
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            full_name: nextName || null,
+            role: nextRole,
+          })
+          .eq('id', userId);
+
+        if (error) throw error;
+
+        setCompanyUsers((prev) =>
+          prev.map((user) =>
+            user.id === userId
+              ? { ...user, full_name: nextName || user.full_name || user.email || '', role: nextRole }
+              : user
+          )
+        );
+
+        setUserEdits((prev) => {
+          const next = { ...prev };
+          delete next[userId];
+          return next;
+        });
+        setEditingUserIds((prev) => ({ ...prev, [userId]: false }));
+        setInviteStatus({ type: 'success', message: 'User updated successfully.' });
+      } catch (err) {
+        console.error('Error updating user:', err);
+        setInviteStatus({ type: 'error', message: err.message || 'Failed to update user.' });
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+
+    const currentUser = companyUsers.find((user) => user.id === userId) || profile;
+    setUserEdits((prev) => ({
+      ...prev,
+      [userId]: {
+        full_name: currentUser?.full_name || currentUser?.name || '',
+        role: currentUser?.role || 'client',
+      },
+    }));
+    setEditingUserIds((prev) => ({ ...prev, [userId]: true }));
   };
 
   const toggleGeofence = (id) => {
@@ -167,19 +393,6 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     setFormData(prev => ({
       ...prev,
       geofences: { ...prev.geofences, disabledZones: updatedDisabled }
-    }));
-  };
-
-  const setCustomZoneRate = (id, percentValue) => {
-    setFormData(prev => ({
-      ...prev,
-      geofences: {
-        ...prev.geofences,
-        customZoneRates: {
-          ...(prev.geofences?.customZoneRates || {}),
-          [id]: percentValue
-        }
-      }
     }));
   };
 
@@ -256,7 +469,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
                 <label className="text-[10px] text-slate-400 block mb-1">Min Rate ($/hr)</label>
                 <input
                   type="number"
-                  value={formData.pricing.hourly_min}
+                  value={formData.pricing?.hourly_min ?? 125}
                   onChange={e => updatePricing('hourly_min', parseFloat(e.target.value) || 0)}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
                 />
@@ -265,7 +478,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
                 <label className="text-[10px] text-slate-400 block mb-1">Max Rate ($/hr)</label>
                 <input
                   type="number"
-                  value={formData.pricing.hourly_max}
+                  value={formData.pricing?.hourly_max ?? 135}
                   onChange={e => updatePricing('hourly_max', parseFloat(e.target.value) || 0)}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
                 />
@@ -281,7 +494,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
               <div>
                 <label className="text-[10px] text-slate-400 block mb-1">Rounding Interval ($)</label>
                 <select
-                  value={formData.pricing.rounding_interval}
+                  value={formData.pricing?.rounding_interval ?? 25}
                   onChange={e => updatePricing('rounding_interval', parseInt(e.target.value))}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white"
                 >
@@ -296,7 +509,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
                 <input
                   type="number"
                   step="0.05"
-                  value={formData.pricing.drive_time_buffer}
+                  value={formData.pricing?.drive_time_buffer ?? 1.10}
                   onChange={e => updatePricing('drive_time_buffer', parseFloat(e.target.value) || 1)}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
                 />
@@ -306,7 +519,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
                 <label className="text-[10px] text-slate-400 block mb-1">Load / Unload Flat (Mins)</label>
                 <input
                   type="number"
-                  value={formData.pricing.load_unload_base_mins}
+                  value={formData.pricing?.load_unload_base_mins ?? 30}
                   onChange={e => updatePricing('load_unload_base_mins', parseInt(e.target.value) || 0)}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
                 />
@@ -328,8 +541,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
                 <Plus className="w-3 h-3" /> Add Class
               </button>
             </div>
-
-            {formData.pricing.custom_truck_classes?.map((tc, idx) => (
+            {formData.pricing?.custom_truck_classes?.map((tc, idx) => (
               <div key={tc.id} className="flex flex-col sm:flex-row sm:items-center gap-2 bg-[#121824] p-2.5 rounded-lg border border-slate-800">
                 <input
                   type="text"
@@ -372,9 +584,9 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
                   <button
                     type="button"
                     onClick={() => removeTruckClass(tc.id)}
-                    className="text-red-400 hover:text-red-300 p-1 cursor-pointer ml-auto"
+                    className="p-1 text-slate-500 hover:text-red-400 transition"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -387,42 +599,40 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       {activeSubTab === 'surcharges' && (
         <div className="space-y-4 text-xs">
           <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-            <h4 className="font-bold text-slate-200 text-xs">Global Flat Percentage Multipliers (%)</h4>
+            <h4 className="font-bold text-slate-200 text-xs">Standard Percentage Multipliers (%)</h4>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
-                <label className="text-[10px] text-amber-300 block mb-1">After Hours (%)</label>
+                <label className="text-[10px] text-slate-400 block mb-1">After Hours (%)</label>
                 <input
                   type="number"
-                  value={formData.surcharges.after_hours_multiplier}
+                  value={formData.surcharges?.after_hours_multiplier ?? 25}
                   onChange={e => updateSurcharges('after_hours_multiplier', parseFloat(e.target.value) || 0)}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-indigo-300 block mb-1">Road Club (%)</label>
+                <label className="text-[10px] text-slate-400 block mb-1">Road Club (%)</label>
                 <input
                   type="number"
-                  value={formData.surcharges.road_club_multiplier}
+                  value={formData.surcharges?.road_club_multiplier ?? 15}
                   onChange={e => updateSurcharges('road_club_multiplier', parseFloat(e.target.value) || 0)}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-cyan-300 block mb-1">Default Metro (%)</label>
+                <label className="text-[10px] text-slate-400 block mb-1">Metro Traffic (%)</label>
                 <input
                   type="number"
-                  step="0.01"
-                  value={formData.surcharges.metro_multiplier}
+                  value={formData.surcharges?.metro_multiplier ?? 28.57}
                   onChange={e => updateSurcharges('metro_multiplier', parseFloat(e.target.value) || 0)}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-rose-300 block mb-1">Default Hazard (%)</label>
+                <label className="text-[10px] text-slate-400 block mb-1">Hazard Zone (%)</label>
                 <input
                   type="number"
-                  step="0.01"
-                  value={formData.surcharges.hazard_multiplier}
+                  value={formData.surcharges?.hazard_multiplier ?? 40}
                   onChange={e => updateSurcharges('hazard_multiplier', parseFloat(e.target.value) || 0)}
                   className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
                 />
@@ -435,134 +645,61 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       {/* SUB TAB 3: GEOFENCES */}
       {activeSubTab === 'geofences' && (
         <div className="space-y-4 text-xs">
-          <div className="flex flex-col sm:flex-row gap-2 justify-between items-center bg-[#080c14] p-3 rounded-xl border border-slate-800">
-            <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
+          <div className="flex flex-col sm:flex-row gap-2 justify-between">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
               <input
                 type="text"
-                placeholder="Search 50+ cities, states, passes..."
+                placeholder="Search geofences by name or city..."
                 value={geofenceSearch}
                 onChange={e => setGeofenceSearch(e.target.value)}
-                className="w-full bg-[#121824] border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full bg-[#080c14] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white"
               />
             </div>
-
-            <div className="flex items-center gap-1.5 w-full sm:w-auto">
-              {[
-                { id: 'all', label: `All (${allGeofences.length})` },
-                { id: 'metro', label: `Metro (${Object.keys(GEOFENCES).length})` },
-                { id: 'hazard', label: `Hazard (${Object.keys(HAZARD_ZONES).length})` },
-              ].map(f => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setGeofenceFilter(f.id)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
-                    geofenceFilter === f.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-[#121824] text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setGeofenceFilter('all')}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${geofenceFilter === 'all' ? 'bg-blue-600 border-blue-500 text-white' : 'border-slate-800 text-slate-400'}`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setGeofenceFilter('hazard')}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${geofenceFilter === 'hazard' ? 'bg-rose-600 border-rose-500 text-white' : 'border-slate-800 text-slate-400'}`}
+              >
+                Hazards
+              </button>
+              <button
+                type="button"
+                onClick={() => setGeofenceFilter('metro')}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${geofenceFilter === 'metro' ? 'bg-cyan-600 border-cyan-500 text-white' : 'border-slate-800 text-slate-400'}`}
+              >
+                Metro
+              </button>
             </div>
           </div>
 
-          <div className="text-[11px] text-slate-400 flex justify-between items-center px-1">
-            <span>Showing {filteredGeofences.length} geofences</span>
-            <span className="text-slate-500">Click percentage badge or edit button to adjust custom zone rate</span>
-          </div>
-
-          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
             {filteredGeofences.map(zone => {
               const isDisabled = disabledSet.has(zone.id);
-              const isHazard = zone.type === 'hazard';
-
-              const defaultTypeRate = isHazard
-                ? formData.surcharges.hazard_multiplier
-                : formData.surcharges.metro_multiplier;
-
-              const customRateOverride = formData.geofences?.customZoneRates?.[zone.id];
-              const effectivePercent = customRateOverride !== undefined 
-                ? customRateOverride 
-                : Math.round((zone.multiplier - 1) * 100) || defaultTypeRate;
-
-              const isEditingThisZone = editingZoneId === zone.id;
-
               return (
-                <div
-                  key={zone.id}
-                  className={`p-3 rounded-xl border transition flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 ${
-                    isDisabled
-                      ? 'bg-[#080c14]/50 border-slate-800/50 opacity-60'
-                      : isHazard
-                      ? 'bg-rose-950/20 border-rose-900/40'
-                      : 'bg-[#080c14] border-slate-800'
-                  }`}
-                >
-                  <div className="space-y-1 flex-1">
-                    <div className="flex items-center gap-2">
-                      {isHazard ? (
-                        <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                      ) : (
-                        <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                      )}
-                      <span className="font-bold text-white text-xs">{zone.name}</span>
-
-                      {isEditingThisZone ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            step="0.5"
-                            value={effectivePercent}
-                            onChange={e => setCustomZoneRate(zone.id, parseFloat(e.target.value) || 0)}
-                            className="w-16 bg-[#121824] border border-blue-500 rounded px-1.5 py-0.5 text-[10px] text-white font-mono"
-                          />
-                          <span className="text-[10px] text-slate-400">%</span>
-                          <button
-                            type="button"
-                            onClick={() => setEditingZoneId(null)}
-                            className="bg-blue-600 text-white px-1.5 py-0.5 rounded text-[9px] font-bold"
-                          >
-                            Done
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setEditingZoneId(zone.id)}
-                          title="Click to edit custom surcharge percentage"
-                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex items-center gap-1 transition cursor-pointer ${
-                            customRateOverride !== undefined
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                              : isHazard
-                              ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
-                              : 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30'
-                          }`}
-                        >
-                          +{effectivePercent}%
-                          <Edit3 className="w-2.5 h-2.5 opacity-70" />
-                        </button>
-                      )}
-                    </div>
-
-                    <p className="text-[10px] text-slate-400 line-clamp-1">
-                      <strong className="text-slate-300">Cities:</strong> {zone.cities.join(', ')}
-                    </p>
+                <div key={zone.id} className={`p-3 rounded-xl border transition ${isDisabled ? 'bg-[#080c14]/40 border-slate-800/50 opacity-60' : 'bg-[#080c14] border-slate-800'}`}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                      <MapPin className={`w-3.5 h-3.5 ${zone.type === 'hazard' ? 'text-rose-400' : 'text-cyan-400'}`} />
+                      {zone.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleGeofence(zone.id)}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded border ${isDisabled ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'}`}
+                    >
+                      {isDisabled ? 'Disabled' : 'Active'}
+                    </button>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => toggleGeofence(zone.id)}
-                    className={`px-3 py-1.5 rounded-lg font-bold text-[11px] flex items-center gap-1.5 transition cursor-pointer shrink-0 ${
-                      isDisabled
-                        ? 'bg-slate-800 text-slate-400 border border-slate-700'
-                        : 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                    }`}
-                  >
-                    {isDisabled ? 'Disabled' : <><Check className="w-3 h-3" /> Active</>}
-                  </button>
+                  <p className="text-[10px] text-slate-400 line-clamp-1">{zone.cities?.join(', ')}</p>
                 </div>
               );
             })}
@@ -574,126 +711,195 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       {activeSubTab === 'bases' && (
         <div className="space-y-3 text-xs">
           <div className="flex justify-between items-center">
-            <h4 className="font-bold text-slate-200 text-xs">Shop Base Locations</h4>
+            <h4 className="font-bold text-slate-200">Dispatch Base Yards</h4>
             <button
               type="button"
               onClick={addBase}
-              className="flex items-center gap-1 text-[11px] bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30 transition cursor-pointer"
+              className="flex items-center gap-1 text-[11px] bg-blue-600/20 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30"
             >
-              <Plus className="w-3 h-3" /> Add Base
+              <Plus className="w-3 h-3" /> Add Yard
             </button>
           </div>
-
-          {formData.bases?.map((base, idx) => (
-            <div key={base.id} className="bg-[#080c14] p-3 rounded-xl border border-slate-800 space-y-2">
-              <div className="flex justify-between items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Base Name"
-                  value={base.name}
-                  onChange={e => {
-                    const updated = [...formData.bases];
-                    updated[idx].name = e.target.value;
-                    setFormData(prev => ({ ...prev, bases: updated }));
-                  }}
-                  className="bg-[#121824] border border-slate-700 rounded px-2.5 py-1 text-white font-bold text-xs flex-1"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeBase(base.id)}
-                  className="text-red-400 hover:text-red-300 p-1 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+          {(formData.bases || []).map((base, idx) => (
+            <div key={base.id} className="flex flex-col sm:flex-row gap-2 bg-[#080c14] p-3 rounded-xl border border-slate-800">
               <input
                 type="text"
-                placeholder="Full Street Address"
+                placeholder="Yard Name"
+                value={base.name}
+                onChange={e => {
+                  const updated = [...formData.bases];
+                  updated[idx].name = e.target.value;
+                  setFormData(prev => ({ ...prev, bases: updated }));
+                }}
+                className="bg-[#121824] border border-slate-700 rounded px-2.5 py-1.5 text-white flex-1"
+              />
+              <input
+                type="text"
+                placeholder="Physical Address"
                 value={base.address}
                 onChange={e => {
                   const updated = [...formData.bases];
                   updated[idx].address = e.target.value;
                   setFormData(prev => ({ ...prev, bases: updated }));
                 }}
-                className="w-full bg-[#121824] border border-slate-700 rounded px-2.5 py-1 text-slate-200 text-xs"
+                className="bg-[#121824] border border-slate-700 rounded px-2.5 py-1.5 text-white flex-1"
               />
+              <button
+                type="button"
+                onClick={() => removeBase(base.id)}
+                className="p-1.5 text-slate-500 hover:text-red-400 transition"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           ))}
         </div>
       )}
 
-      {/* SUB TAB 5: USERS & ROLES */}
+      {/* SUB TAB 5: USERS */}
       {activeSubTab === 'users' && (
-        <div className="space-y-3 text-xs">
-          <div className="flex justify-between items-center">
-            <div>
-              <h4 className="font-bold text-slate-200 text-xs">Team Profiles & Permissions</h4>
-              <p className="text-[10px] text-slate-400">Users logging in with Magic Links receive these assigned roles.</p>
+        <div className="space-y-4 text-xs">
+          <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-slate-200">Invite User</h4>
+              <span className="text-[10px] text-slate-500">Invite-based access</span>
             </div>
-            <button
-              type="button"
-              onClick={addUser}
-              className="flex items-center gap-1 text-[11px] bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30 transition cursor-pointer"
-            >
-              <Plus className="w-3 h-3" /> Add User
-            </button>
+            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_0.7fr_auto]">
+              <input
+                type="text"
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                placeholder="Name"
+                className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
+              />
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="name@company.com"
+                className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
+              />
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
+              >
+                <option value="client">Client</option>
+                <option value="dispatch">Dispatch</option>
+                <option value="manager">Manager</option>
+              </select>
+              <button
+                type="button"
+                onClick={handleInviteUser}
+                disabled={isSaving}
+                className="rounded-lg bg-blue-600 px-3 py-2 font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+              >
+                {isSaving ? 'Sending...' : 'Send Invite'}
+              </button>
+            </div>
+            {inviteStatus && (
+              <p className={`text-[11px] ${inviteStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                {inviteStatus.message}
+              </p>
+            )}
           </div>
 
-          <div className="space-y-2">
-            {formData.users?.map((usr, idx) => (
-              <div key={usr.id} className="grid grid-cols-1 sm:grid-cols-12 gap-2 bg-[#080c14] p-3 rounded-xl border border-slate-800 items-center">
-                <div className="sm:col-span-4">
-                  <label className="text-[9px] text-slate-500 uppercase block sm:hidden">Name</label>
-                  <input
-                    type="text"
-                    placeholder="User Name"
-                    value={usr.name}
-                    onChange={e => {
-                      const updated = [...formData.users];
-                      updated[idx].name = e.target.value;
-                      setFormData(prev => ({ ...prev, users: updated }));
-                    }}
-                    className="w-full bg-[#121824] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
-                  />
-                </div>
-                <div className="sm:col-span-5">
-                  <label className="text-[9px] text-slate-500 uppercase block sm:hidden">Email</label>
-                  <input
-                    type="email"
-                    placeholder="Email Address"
-                    value={usr.email}
-                    onChange={e => {
-                      const updated = [...formData.users];
-                      updated[idx].email = e.target.value;
-                      setFormData(prev => ({ ...prev, users: updated }));
-                    }}
-                    className="w-full bg-[#121824] border border-slate-700 rounded px-2.5 py-1.5 text-slate-300 text-xs"
-                  />
-                </div>
-                <div className="sm:col-span-3">
-                  <label className="text-[9px] text-slate-500 uppercase block sm:hidden">Role</label>
-                  <select
-                    value={usr.role}
-                    onChange={e => {
-                      const updated = [...formData.users];
-                      updated[idx].role = e.target.value;
-                      setFormData(prev => ({ ...prev, users: updated }));
-                    }}
-                    className="w-full bg-[#121824] border border-slate-700 rounded px-2 py-1.5 text-xs font-semibold text-white"
-                  >
-                    <option value="dispatch">Dispatch (Full)</option>
-                    <option value="office">Office (Settings)</option>
-                    <option value="client">Client (Calc Only)</option>
-                  </select>
-                </div>
-              </div>
-            ))}
+          <div className="flex justify-between items-center">
+            <h4 className="font-bold text-slate-200">Workspace Members</h4>
+            <span className="text-[10px] text-slate-500">Loaded from Supabase</span>
           </div>
+
+          {companyUsers.length === 0 && !profile?.email && (
+            <div className="rounded-lg border border-dashed border-slate-800 bg-[#080c14] p-3 text-[11px] text-slate-500">
+              No workspace members found yet.
+            </div>
+          )}
+
+          {(companyUsers.length > 0 ? companyUsers : profile ? [profile] : []).map((user) => {
+            const draft = userEdits[user.id] || {};
+            const currentName = draft.full_name ?? user.full_name ?? user.name ?? '';
+            const currentRole = draft.role ?? user.role ?? 'client';
+            const isEditing = Boolean(editingUserIds[user.id]);
+
+            return (
+              <div key={user.id} className="flex flex-col gap-2 bg-[#080c14] p-3 rounded-xl border border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-semibold text-white">
+                        {isEditing ? currentName || 'Workspace Member' : user.full_name || user.name || user.email || 'Workspace Member'}
+                      </div>
+                      <div className="text-[11px] text-slate-400">{user.email || 'No email on file'}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-blue-300">
+                      {formatRole(isEditing ? currentRole : user.role || currentRole)}
+                    </span>
+                    {user.id === profile?.id && (
+                      <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+                        You
+                      </span>
+                    )}
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => handleEditUser(user.id)}
+                        disabled={isSaving}
+                        className="rounded-lg border border-slate-700 bg-[#121824] px-3 py-2 text-[11px] font-semibold text-slate-200 transition hover:border-blue-500/40 hover:text-white disabled:opacity-60"
+                      >
+                        Edit User
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {isEditing ? (
+                  <div className="grid gap-2 sm:grid-cols-[1fr_140px_auto]">
+                    <input
+                      type="text"
+                      value={currentName}
+                      onChange={(e) =>
+                        setUserEdits((prev) => ({
+                          ...prev,
+                          [user.id]: { ...prev[user.id], full_name: e.target.value },
+                        }))
+                      }
+                      placeholder="Name"
+                      className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
+                    />
+                    <select
+                      value={currentRole}
+                      onChange={(e) =>
+                        setUserEdits((prev) => ({
+                          ...prev,
+                          [user.id]: { ...prev[user.id], role: e.target.value },
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
+                    >
+                      <option value="client">Client</option>
+                      <option value="dispatch">Dispatch</option>
+                      <option value="manager">Manager</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => handleEditUser(user.id)}
+                      disabled={isSaving}
+                      className="rounded-lg border border-emerald-500/30 bg-emerald-600/20 px-3 py-2 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-600/30 disabled:opacity-60"
+                    >
+                      Save
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       )}
 
       {/* Action Footer */}
-      {activeSubTab !== 'clients' && (
+      {activeSubTab !== 'clients' && activeSubTab !== 'users' && (
         <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
           {saveStatus ? (
             <p className={`text-xs font-medium flex items-center gap-1.5 ${saveStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -709,7 +915,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition cursor-pointer shadow-lg disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            {isSaving ? 'Saving Configuration...' : 'Save Configuration'}
+            {isSaving ? 'Saving...' : 'Save Configuration'}
           </button>
         </div>
       )}
