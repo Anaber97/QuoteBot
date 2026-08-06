@@ -811,7 +811,6 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
 
           <div className="flex justify-between items-center">
             <h4 className="font-bold text-slate-200">Workspace Members</h4>
-            <span className="text-[10px] text-slate-500">Loaded from Supabase</span>
           </div>
 
           {companyUsers.length === 0 && !profile?.email && (
