@@ -140,6 +140,31 @@ function extractValue(item, keys) {
   return '';
 }
 
+function extractNumericValue(item, keys) {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = item[key];
+    if (value == null || value === '') {
+      continue;
+    }
+
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue) && numericValue > 0) {
+      return numericValue;
+    }
+  }
+
+  const nested = item?.equipment || item?.specs || item?.details || null;
+  if (nested && typeof nested === 'object') {
+    return extractNumericValue(nested, keys);
+  }
+
+  return null;
+}
+
 function inferMakeModelFromQuery(query) {
   const cleaned = coerceString(query);
   if (!cleaned) {
@@ -246,13 +271,17 @@ function normalizeGeminiResults(payload, query = '') {
         || fallback.model
         || 'Unknown';
       const serialNumber = extractValue(item, ['serial_number', 'serialNumber', 'serial', 'serial_no']) || null;
+      const operatingWeightLbs = extractNumericValue(
+        { ...item, ...(nested || {}) },
+        ['operating_weight_lbs', 'operating_weight_lb', 'operating_weight', 'weight_lbs', 'weight_lb', 'weight', 'estimated_weight_lbs']
+      );
 
       const normalizedItem = normalizeEquipmentItem({
         ...item,
         make,
         model,
         serial_number: serialNumber || null,
-        operating_weight_lbs: Number(item?.operating_weight_lbs ?? item?.weight_lbs ?? nested?.operating_weight_lbs ?? nested?.weight_lbs ?? 0) || null,
+        operating_weight_lbs: operatingWeightLbs,
         width_ft: item?.width_ft ?? nested?.width_ft ?? item?.width ?? nested?.width ?? null,
         height_ft: item?.height_ft ?? nested?.height_ft ?? item?.height ?? nested?.height ?? null,
         source: item?.source || 'gemini',
@@ -263,7 +292,7 @@ function normalizeGeminiResults(payload, query = '') {
         make,
         model,
         serial_number: serialNumber || null,
-        operating_weight_lbs: Number(item?.operating_weight_lbs ?? item?.weight_lbs ?? nested?.operating_weight_lbs ?? nested?.weight_lbs ?? 0) || null,
+        operating_weight_lbs: operatingWeightLbs,
         source: item?.source || 'gemini',
       };
     })
@@ -395,7 +424,7 @@ export default async function handler(req, res) {
                 {
                   parts: [
                     {
-                      text: `You are a towing-quote assistant. For the equipment query "${query}", return ONLY valid JSON. Return a JSON array of up to 3 likely equipment matches. Each object must include these exact keys: make, model, serial_number, operating_weight_lbs, width_in, height_in, source. IMPORTANT: infer a realistic make/model from the query whenever possible and do not use "Unknown" unless you truly cannot infer. Use conservative estimates or null values for missing numeric fields. Express dimensions as inches. Do not include extra commentary.`,
+                      text: `You are a towing-quote assistant. For the equipment query "${query}", return ONLY valid JSON. Return a JSON array of up to 3 likely equipment matches. Each object must include these exact keys: make, model, serial_number, operating_weight_lbs, width_in, height_in, source. IMPORTANT: infer a realistic make/model from the query whenever possible and do not use "Unknown" unless you truly cannot infer. For operating weight, use the most plausible published operating weight for the specific model family rather than an overly conservative low estimate, if there is a published weight *range*, return options for realistic weights for the lower bound, median, and upper bound of the weight range; if you are uncertain, use a realistic mid-to-upper estimate from the common model range. Express dimensions as inches. Do not include extra commentary.`,
                     },
                   ],
                 },

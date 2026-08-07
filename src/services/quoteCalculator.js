@@ -1,7 +1,7 @@
 // src/services/quoteCalculator.js
 // @ts-check
 import { RATES } from '../config/rates';
-import { evaluateMetroGeofences, evaluateHazardGeofences } from '../utils/geofenceEngine';
+import { evaluateMetroGeofences, evaluateHazardGeofences, evaluateCustomGeofences } from '../utils/geofenceEngine';
 import { loadGoogleMaps } from '../lib/googleMaps';
 
 /**
@@ -65,6 +65,7 @@ export async function calculateQuoteData({
   isHazard = false,
   companyRates = {},
   clientWeight = 0,
+  clientConfig = null,
 }) {
   await verifyGoogleMapsLoaded();
 
@@ -83,16 +84,24 @@ export async function calculateQuoteData({
 
   // Fallback parameters from app_config or rates config
   const pricing = companyRates?.pricing || {};
-  const driveBuffer = Number(pricing.drive_time_buffer || companyRates.drive_time_buffer) || 1.10;
-  const baseLoadMins = Number(pricing.load_unload_base_mins || companyRates.load_unload_base_mins) || 30;
-  const extraStopMins = Number(pricing.extra_stop_mins || companyRates.extra_stop_mins) || 15;
+  const clientPricing = clientConfig?.pricing || {};
+  const normalizeBuffer = (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 1.1;
+    return num > 1.5 ? 1 + num / 100 : num;
+  };
+  const driveBuffer = normalizeBuffer(clientPricing.drive_time_buffer ?? pricing.drive_time_buffer ?? companyRates.drive_time_buffer ?? 10);
+  const baseLoadMins = Number(clientPricing.load_unload_base_mins ?? pricing.load_unload_base_mins ?? companyRates.load_unload_base_mins) || 30;
+  const extraStopMins = Number(clientPricing.extra_stop_mins ?? pricing.extra_stop_mins ?? companyRates.extra_stop_mins) || 15;
 
-  // Build full route array: Base -> Pick-up -> [Waypoints...] -> Drop-off -> Base
+  // Build the full route once and request one batched Distance Matrix for all route legs.
+  // This keeps billing lower than issuing one matrix call per leg as the route grows.
   const fullRouteAddresses = [currentBase.address, ...cleanWaypoints, currentBase.address];
   const service = new window.google.maps.DistanceMatrixService();
 
   const origins = fullRouteAddresses.slice(0, -1);
   const destinations = fullRouteAddresses.slice(1);
+  const routeLegCount = Math.min(origins.length, destinations.length);
 
   const matrixResponse = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -120,7 +129,7 @@ export async function calculateQuoteData({
   let rawTotalMins = 0;
   let totalMeters = 0;
 
-  for (let i = 0; i < origins.length; i++) {
+  for (let i = 0; i < routeLegCount; i++) {
     const element = matrixResponse.rows[i]?.elements[i];
     if (element && element.status === 'OK') {
       rawTotalMins += element.duration.value / 60;
@@ -129,12 +138,6 @@ export async function calculateQuoteData({
       throw new Error(`Unable to calculate route from "${origins[i]}" to "${destinations[i]}". Status: ${element?.status || 'UNKNOWN'}`);
     }
   }
-
-  const bufferedDriveMins = rawTotalMins * driveBuffer;
-  const extraStopsCount = Math.max(0, cleanWaypoints.length - 2);
-  const totalOnSiteMins = baseLoadMins + extraStopsCount * extraStopMins;
-  const rawTotalHours = (bufferedDriveMins + totalOnSiteMins) / 60;
-  const totalMiles = totalMeters * 0.000621371;
 
   let baseMinRate = Number(pricing.hourly_min || companyRates.hourly_min) || 125;
   let baseMaxRate = Number(pricing.hourly_max || companyRates.hourly_max) || 135;
@@ -151,6 +154,24 @@ export async function calculateQuoteData({
     baseMaxRate = Number(matchingTier.rate) || baseMaxRate;
   }
 
+  const tierDriveBuffer = matchingTier?.drive_time_buffer;
+  const tierLoadMins = matchingTier?.load_unload_base_mins;
+
+  const bufferedDriveMins = rawTotalMins * (Number.isFinite(Number(tierDriveBuffer)) ? normalizeBuffer(tierDriveBuffer) : driveBuffer);
+  const extraStopsCount = Math.max(0, cleanWaypoints.length - 2);
+  const clientLoadMins = clientConfig?.pricing?.load_unload_base_mins ?? null;
+  const clientExtraStopMins = clientConfig?.pricing?.extra_stop_mins ?? null;
+  const totalOnSiteMins = (Number.isFinite(Number(tierLoadMins)) ? Number(tierLoadMins) : (clientLoadMins ?? baseLoadMins)) + extraStopsCount * (clientExtraStopMins ?? extraStopMins);
+  const rawTotalHours = (bufferedDriveMins + totalOnSiteMins) / 60;
+  const totalMiles = totalMeters * 0.000621371;
+
+  const legsDetails = origins.map((_, index) => {
+    const durationMinutes = Number(((matrixResponse.rows[index]?.elements[index]?.duration?.value || 0) / 60).toFixed(1));
+    const startLabel = index === 0 ? 'Base' : (cleanWaypoints[index - 1] || `Stop ${index}`);
+    const endLabel = index === origins.length - 1 ? 'Base' : (cleanWaypoints[index] || `Stop ${index + 1}`);
+    return { label: `${startLabel} → ${endLabel}`, minutes: durationMinutes };
+  });
+
   const customClasses = pricing.custom_truck_classes || [];
   const selectedClass = customClasses.find((c) => c.id === selectedTruckClassId);
 
@@ -162,32 +183,33 @@ export async function calculateQuoteData({
     baseMaxRate = Number(companyRates.heavy_hourly_max || pricing.heavy_hourly_max) || 250;
   }
 
-  const roundingInterval = Number(pricing.rounding_interval || companyRates.rounding_interval) || 25;
+  const roundingInterval = Number(clientPricing.rounding_interval ?? pricing.rounding_interval ?? companyRates.rounding_interval) || 25;
   const baseMinQuote = roundToNearest(rawTotalHours * baseMinRate, roundingInterval);
   const baseMaxQuote = roundToNearest(rawTotalHours * baseMaxRate, roundingInterval);
 
-  const legsDetails = origins.map((_, index) => {
-    const durationMinutes = Number(((matrixResponse.rows[index]?.elements[index]?.duration?.value || 0) / 60).toFixed(1));
-    const startLabel = index === 0 ? 'Base' : (cleanWaypoints[index - 1] || `Stop ${index}`);
-    const endLabel = index === origins.length - 1 ? 'Base' : (cleanWaypoints[index] || `Stop ${index + 1}`);
-    return { label: `${startLabel} → ${endLabel}`, minutes: durationMinutes };
-  });
-
   // Geofence evaluations
   const coordsList = await geocodeAll(cleanWaypoints);
-  const hitMetroZone = await evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates);
-  const hitHazardZone = await evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates);
+  const metroMatches = await evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates);
+  const hazardMatches = await evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates);
+  const customMatches = await evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates);
+  const hitMetroZone = metroMatches.length > 0;
+  const hitHazardZone = hazardMatches.length > 0;
+  const hitCustomZone = customMatches.length > 0;
 
   return {
     rawTotalHours,
     totalMiles,
     selectedTruckClassId,
     isHeavy,
-    approvalRequired: clientWeight >= Number(companyRates?.client_portal?.approval_threshold ?? 80000),
+    approvalRequired: clientWeight >= Number(clientConfig?.approval_threshold ?? companyRates?.client_portal?.approval_threshold ?? 80000),
     hasAfterHours: isAfterHours,
     hasRoadClub: isRoadClub,
     hasMetroZone: hitMetroZone || isMetro,
     hasHazardZone: hitHazardZone || isHazard,
+    hasCustomZone: hitCustomZone,
+    metroMultiplier: metroMatches[0]?.multiplier ?? null,
+    hazardMultiplier: hazardMatches[0]?.multiplier ?? null,
+    customMultiplier: customMatches[0]?.multiplier ?? null,
     baseAddress: currentBase?.address || '',
     cleanWaypoints,
     routeAddresses: fullRouteAddresses,
@@ -213,19 +235,22 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
 
   const getMultiplier = (val, defaultPct) => {
     const num = Number(val ?? defaultPct);
+    if (!Number.isFinite(num)) return 1;
     return num > 5 ? 1 + num / 100 : num;
   };
 
-  const afterHoursMult = getMultiplier(surcharges.after_hours_multiplier, 25);
-  const roadClubMult   = getMultiplier(surcharges.road_club_multiplier, 15);
-  const metroMult      = getMultiplier(surcharges.metro_multiplier, 28.57);
-  const hazardMult     = getMultiplier(surcharges.hazard_multiplier, 40);
+  const afterHoursMult = getMultiplier(pricing.after_hours_multiplier ?? surcharges.after_hours_multiplier, 25);
+  const roadClubMult   = getMultiplier(pricing.road_club_multiplier ?? surcharges.road_club_multiplier, 15);
+  const metroMult      = getMultiplier(quoteData.metroMultiplier ?? pricing.metro_multiplier ?? surcharges.metro_multiplier, 28.57);
+  const hazardMult     = getMultiplier(quoteData.hazardMultiplier ?? pricing.hazard_multiplier ?? surcharges.hazard_multiplier, 40);
+  const customMult     = getMultiplier(quoteData.customMultiplier ?? 1, 0);
 
   let effectiveMultiplier = 1.0;
   if (quoteData.hasAfterHours && activeOverrides?.afterHours) effectiveMultiplier *= afterHoursMult;
   if (quoteData.hasRoadClub   && activeOverrides?.roadClub)   effectiveMultiplier *= roadClubMult;
   if (quoteData.hasMetroZone  && activeOverrides?.metro)      effectiveMultiplier *= metroMult;
   if (quoteData.hasHazardZone && activeOverrides?.hazard)     effectiveMultiplier *= hazardMult;
+  if (quoteData.hasCustomZone) effectiveMultiplier *= customMult;
 
   let baseMinRate = Number(pricing.hourly_min || companyRates.hourly_min) || 125;
   let baseMaxRate = Number(pricing.hourly_max || companyRates.hourly_max) || 135;

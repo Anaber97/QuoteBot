@@ -11,6 +11,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const [isSearching, setIsSearching] = useState(false);
   const [searchStatus, setSearchStatus] = useState('');
   const [selectedEquipmentName, setSelectedEquipmentName] = useState('');
+  const [make, setMake] = useState('');
+  const [model, setModel] = useState('');
+  const [serialNumber, setSerialNumber] = useState('');
 
   // Specs state
   const [weight, setWeight] = useState('');
@@ -116,6 +119,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     const fullName = `${item.make} ${item.model}${item.serial_number ? ` (SN: ${item.serial_number})` : ''}`;
     setSelectedEquipmentName(fullName);
     setSearchQuery(fullName);
+    setMake(item.make || '');
+    setModel(item.model || '');
+    setSerialNumber(item.serial_number || '');
     setWeight(item.operating_weight_lbs || '');
     setWidth(item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : '') || '');
     setHeight(item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : '') || '');
@@ -131,6 +137,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
 
     onCalculate({
       equipmentName: selectedEquipmentName || searchQuery || 'Custom Load',
+      make,
+      model,
+      serialNumber,
       weight: Number(weight) || 0,
       width: Number(width) || 0,
       height: Number(height) || 0,
@@ -186,9 +195,12 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               onChange={(e) => {
                 setSearchQuery(e.target.value);
                 setSelectedEquipmentName('');
+                setMake('');
+                setModel('');
+                setSerialNumber('');
               }}
               placeholder="e.g. Caterpillar 320, CAT320-001..."
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
             <button
               type="button"
@@ -232,6 +244,40 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
           )}
         </div>
 
+        {/* Equipment Identity Inputs */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[11px] text-slate-400 mb-1">Make</label>
+            <input
+              type="text"
+              value={make}
+              onChange={(e) => setMake(e.target.value)}
+              placeholder="Caterpillar"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-slate-400 mb-1">Model</label>
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="320"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-slate-400 mb-1">Serial Number</label>
+            <input
+              type="text"
+              value={serialNumber}
+              onChange={(e) => setSerialNumber(e.target.value)}
+              placeholder="SN-00123"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        </div>
+
         {/* Equipment Dimension Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
@@ -241,7 +287,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
               placeholder="45000"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
             />
           </div>
           <div>
@@ -252,7 +298,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={width}
               onChange={(e) => setWidth(e.target.value)}
               placeholder="102"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
             />
           </div>
           <div>
@@ -263,7 +309,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={height}
               onChange={(e) => setHeight(e.target.value)}
               placeholder="138"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
             />
           </div>
         </div>
@@ -277,7 +323,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={attachmentType}
               onChange={(e) => setAttachmentType(e.target.value)}
               placeholder="bucket, hammer, grapple..."
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
           </div>
           <div>
@@ -287,7 +333,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={attachmentWeight}
               onChange={(e) => setAttachmentWeight(e.target.value)}
               placeholder="8000"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
             />
           </div>
         </div>
@@ -304,7 +350,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={pickupAddr}
               onChange={(e) => setPickupAddr(e.target.value)}
               placeholder="e.g. 120 Taylor Dr, Henderson, TX"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
           </div>
           <div>
@@ -317,7 +363,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={dropoffAddr}
               onChange={(e) => setDropoffAddr(e.target.value)}
               placeholder="e.g. 500 E Reno Ave, Oklahoma City, OK"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
           </div>
         </div>

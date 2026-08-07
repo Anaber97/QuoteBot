@@ -19,13 +19,20 @@ export default async function handler(req, res) {
       to: payload.email || 'quotes@yourcompany.com',
       subject: `Custom quote approval requested for ${payload.equipmentName || 'a client load'}`,
       html: `
-        <p>A client quote exceeded the approval threshold.</p>
+        <p>A client quote approval request was submitted.</p>
         <ul>
           <li>Company: ${payload.companyName || 'Unknown'}</li>
           <li>Equipment: ${payload.equipmentName || 'Unknown'}</li>
+          <li>Make: ${payload.make || 'N/A'}</li>
+          <li>Model: ${payload.model || 'N/A'}</li>
+          <li>Serial Number: ${payload.serialNumber || 'N/A'}</li>
           <li>Estimated weight: ${payload.weight || 0} lbs</li>
           <li>Pickup: ${payload.pickupAddr || 'N/A'}</li>
           <li>Dropoff: ${payload.dropoffAddr || 'N/A'}</li>
+          <li>Quote amount: ${payload.quoteAmount ?? 'N/A'}</li>
+          <li>Quote range: ${payload.quoteRange || 'N/A'}</li>
+          <li>Permit flags: ${payload.permitFlags?.length ? payload.permitFlags.join(', ') : 'None'}</li>
+          <li>Attachment: ${payload.attachmentName || payload.attachmentTypeLabel ? `${payload.attachmentName || payload.attachmentTypeLabel || 'Provided'}` : 'None'}</li>
         </ul>
         <p>Please review the quote and contact the client at ${payload.contactPhone || 'N/A'} or ${payload.contactEmail || 'N/A'}.</p>
       `,

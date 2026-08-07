@@ -2,9 +2,36 @@
 // @ts-check
 import { GEOFENCES, HAZARD_ZONES } from "../config/geofences";
 
+function isPointInPolygon(point, polygon) {
+  if (!polygon || polygon.length < 3) return false;
+  const { lat, lng } = point;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lat;
+    const yi = polygon[i].lng;
+    const xj = polygon[j].lat;
+    const yj = polygon[j].lng;
+    const intersects = ((yi > lng) !== (yj > lng)) && (lat < ((xj - xi) * (lng - yi)) / ((yj - yi) || 1) + xi);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
 function getActiveZones(baseZones, companyRates = {}) {
   const disabledZoneIds = new Set((companyRates?.geofences?.disabledZones || []).map((id) => String(id)));
   return Object.values(baseZones).filter((zone) => !disabledZoneIds.has(String(zone.id)));
+}
+
+function getZoneMultiplier(zoneConfig, companyRates = {}) {
+  const override = companyRates?.geofences?.customZoneRates?.[zoneConfig.id];
+  if (override?.multiplier != null) {
+    const numeric = Number(override.multiplier);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+
+  return zoneConfig.multiplier;
 }
 
 export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList = []) {
@@ -61,18 +88,50 @@ export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList =
   });
 }
 
-export async function evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates = {}) {
-  const activeZones = getActiveZones(GEOFENCES, companyRates);
+async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, companyRates = {}) {
+  const activeZones = getActiveZones(baseZones, companyRates);
   const results = await Promise.all(
-    activeZones.map((zone) => checkGeofenceZone(zone, cleanWaypoints, coordsList))
+    activeZones.map(async (zone) => {
+      const matched = await checkGeofenceZone(zone, cleanWaypoints, coordsList);
+      const customShape = companyRates?.geofences?.customZones?.find((item) => item.id === zone.id)?.shape;
+      const customPrice = companyRates?.geofences?.customZones?.find((item) => item.id === zone.id)?.price;
+
+      if (!matched && customShape?.length >= 3) {
+        const hit = coordsList.some((point) => point && isPointInPolygon(point, customShape));
+        if (hit) {
+          return { ...zone, multiplier: getZoneMultiplier(zone, companyRates), customPrice };
+        }
+      }
+
+      return matched ? { ...zone, multiplier: getZoneMultiplier(zone, companyRates), customPrice } : null;
+    })
   );
-  return results.some(Boolean);
+  return results.filter(Boolean);
+}
+
+export async function evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates = {}) {
+  return evaluateZoneMatches(GEOFENCES, cleanWaypoints, coordsList, companyRates);
 }
 
 export async function evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates = {}) {
-  const activeZones = getActiveZones(HAZARD_ZONES, companyRates);
+  return evaluateZoneMatches(HAZARD_ZONES, cleanWaypoints, coordsList, companyRates);
+}
+
+export async function evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates = {}) {
+  const disabledZoneIds = new Set((companyRates?.geofences?.disabledZones || []).map((id) => String(id)));
+  const customZones = (companyRates?.geofences?.customZones || []).filter((zone) => !disabledZoneIds.has(String(zone.id)));
+
   const results = await Promise.all(
-    activeZones.map((zone) => checkGeofenceZone(zone, cleanWaypoints, coordsList))
+    customZones.map(async (zone) => {
+      if (!Array.isArray(zone.shape) || zone.shape.length < 3) return null;
+      const matched = coordsList.some((point) => point && isPointInPolygon(point, zone.shape));
+      if (!matched) return null;
+      return {
+        ...zone,
+        multiplier: Number(zone.price ?? 0) > 0 ? 1 + Number(zone.price ?? 0) / 100 : 1,
+      };
+    })
   );
-  return results.some(Boolean);
+
+  return results.filter(Boolean);
 }

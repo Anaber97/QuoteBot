@@ -24,6 +24,14 @@ const getInitialBaseId = () => {
   return SHOP_LOCATIONS[0].id;
 };
 
+const normalizeDriveTimeBuffer = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 10;
+  if (num > 1.5) return num;
+  if (num > 0) return (num - 1) * 100;
+  return 10;
+};
+
 const normalizeCompanyConfig = (config = {}) => ({
   ...DEFAULT_CONFIG,
   ...config,
@@ -36,7 +44,7 @@ const normalizeCompanyConfig = (config = {}) => ({
     ) || 25,
     hourly_min: Number(config.pricing?.hourly_min ?? config.hourly_min ?? DEFAULT_CONFIG.pricing.hourly_min) || 125,
     hourly_max: Number(config.pricing?.hourly_max ?? config.hourly_max ?? DEFAULT_CONFIG.pricing.hourly_max) || 135,
-    drive_time_buffer: Number(config.pricing?.drive_time_buffer ?? config.drive_time_buffer ?? DEFAULT_CONFIG.pricing.drive_time_buffer) || 1.1,
+    drive_time_buffer: normalizeDriveTimeBuffer(config.pricing?.drive_time_buffer ?? config.drive_time_buffer ?? DEFAULT_CONFIG.pricing.drive_time_buffer),
     load_unload_base_mins: Number(config.pricing?.load_unload_base_mins ?? config.load_unload_base_mins ?? DEFAULT_CONFIG.pricing.load_unload_base_mins) || 30,
     extra_stop_mins: Number(config.pricing?.extra_stop_mins ?? config.extra_stop_mins ?? DEFAULT_CONFIG.pricing.extra_stop_mins) || 15,
   },
@@ -47,9 +55,20 @@ const normalizeCompanyConfig = (config = {}) => ({
   geofences: {
     disabledZones: config.geofences?.disabledZones || [],
     customZoneRates: config.geofences?.customZoneRates || {},
+    customZones: Array.isArray(config.geofences?.customZones) ? config.geofences.customZones : [],
   },
   bases: Array.isArray(config.bases) && config.bases.length > 0 ? config.bases : DEFAULT_CONFIG.bases,
   users: Array.isArray(config.users) ? config.users.filter(Boolean) : [],
+  client_portal: {
+    ...(DEFAULT_CONFIG.client_portal || {}),
+    ...(config.client_portal || {}),
+    clients: Array.isArray(config.client_portal?.clients)
+      ? config.client_portal.clients.map((client) => ({
+          ...client,
+          pricing: client.pricing || {},
+        }))
+      : [],
+  },
 });
 
 const initialState = {
@@ -108,6 +127,8 @@ function appReducer(state, action) {
       return { ...state, showDetails: !state.showDetails };
     case 'SET_CUSTOMER_INFO':
       return { ...state, [action.payload.field]: action.payload.value };
+    case 'SET_CUSTOM_RATE':
+      return { ...state, customRateInput: action.payload };
     case 'RESET_FORM':
       return {
         ...initialState,
@@ -130,6 +151,19 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [quoteData, setQuoteData] = useState(null);
   const [error, setError] = useState(null);
+
+  const getActiveClientConfig = (activeProfile = profile, activeRates = companyRates) => {
+    if (!activeProfile || !activeRates?.client_portal?.clients?.length) return null;
+
+    const profileEmail = String(activeProfile.email || '').trim().toLowerCase();
+    const profileName = String(activeProfile.full_name || activeProfile.client_name || activeProfile.name || '').trim().toLowerCase();
+
+    return (activeRates.client_portal.clients || []).find((client) => {
+      const clientEmail = String(client.contact_email || '').trim().toLowerCase();
+      const clientName = String(client.client_name || '').trim().toLowerCase();
+      return (profileEmail && clientEmail && profileEmail === clientEmail) || (profileName && clientName && profileName === clientName);
+    }) || null;
+  };
 
   const resultsRef = useRef(null);
 
@@ -246,7 +280,20 @@ export default function App() {
 
   // Client Portal Quote Handler
   const handleClientCalculateQuote = async (clientPayload) => {
-    const { pickupAddr, dropoffAddr, weight, width, height, equipmentName, permitInfo, attachmentType, attachmentWeight } = clientPayload;
+    const {
+      pickupAddr,
+      dropoffAddr,
+      weight,
+      width,
+      height,
+      equipmentName,
+      make,
+      model,
+      serialNumber,
+      permitInfo,
+      attachmentType,
+      attachmentWeight,
+    } = clientPayload;
 
     dispatch({ type: 'SET_WAYPOINTS', payload: [pickupAddr, dropoffAddr] });
 
@@ -256,6 +303,7 @@ export default function App() {
     setError(null);
 
     try {
+      const activeClientConfig = getActiveClientConfig(profile, companyRates);
       const data = await calculateQuoteData({
         currentBase,
         waypoints: [pickupAddr, dropoffAddr],
@@ -267,6 +315,7 @@ export default function App() {
         isHazard: state.isHazard,
         companyRates,
         clientWeight: Number(weight) + Number(attachmentWeight || 0),
+        clientConfig: activeClientConfig,
       });
 
       const permitFee = Number(permitInfo?.permitFee || 0);
@@ -278,13 +327,21 @@ export default function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               companyName: profile?.company_name || 'your company',
-              email: profile?.email || '',
+              email: companyRates?.client_portal?.contact_email || profile?.email || '',
               equipmentName: equipmentName || 'Custom Load',
+              make: make || '',
+              model: model || '',
+              serialNumber: serialNumber || '',
               weight: Number(weight) + Number(attachmentWeight || 0),
               pickupAddr,
               dropoffAddr,
-              contactPhone: companyRates?.client_portal?.contact_phone || '(555) 555-0199',
-              contactEmail: companyRates?.client_portal?.contact_email || 'quotes@yourcompany.com',
+              contactPhone: state.customerPhone || companyRates?.client_portal?.contact_phone || '(555) 555-0199',
+              contactEmail: profile?.email || companyRates?.client_portal?.contact_email || 'quotes@yourcompany.com',
+              quoteAmount: data.baseMinQuote,
+              quoteRange: `${data.baseMinQuote} - ${data.baseMaxQuote}`,
+              permitFlags: permitInfo?.flags || [],
+              attachmentTypeLabel: attachmentType || '',
+              attachmentWeight: Number(attachmentWeight || 0),
             }),
           });
         } catch (approvalErr) {
@@ -297,6 +354,9 @@ export default function App() {
         permitFee,
         equipmentMeta: {
           name: equipmentName,
+          make: make || '',
+          model: model || '',
+          serialNumber: serialNumber || '',
           weight,
           width,
           height,
@@ -368,6 +428,123 @@ export default function App() {
     }
   };
 
+  const handleSaveClientQuoteForLater = () => {
+    if (!quoteData || !profile) return;
+
+    const { currentMinQuote, currentMaxQuote } = calculateFinalQuotes(
+      quoteData,
+      state.activeOverrides,
+      0,
+      companyRates
+    );
+
+    const draft = {
+      id: `draft-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      company_id: profile.company_id,
+      customerName: state.customerName,
+      customerPhone: state.customerPhone,
+      quoteData,
+      estimate: {
+        min: currentMinQuote,
+        max: currentMaxQuote,
+      },
+    };
+
+    const storedDrafts = JSON.parse(localStorage.getItem('client_quote_drafts') || '[]');
+    storedDrafts.unshift(draft);
+    localStorage.setItem('client_quote_drafts', JSON.stringify(storedDrafts));
+
+    alert('Quote saved for later.');
+    dispatch({ type: 'RESET_FORM' });
+    setQuoteData(null);
+  };
+
+  const handleAcceptClientQuote = async ({ attachmentFile = null } = {}) => {
+    if (!session || !profile || !quoteData) return;
+
+    const { currentMinQuote, currentMaxQuote, customCalculatedQuote } = calculateFinalQuotes(
+      quoteData,
+      state.activeOverrides,
+      0,
+      companyRates
+    );
+
+    const waypointsArr = Array.isArray(state.waypoints) ? state.waypoints : ['', ''];
+    const pickupAddress = waypointsArr[0] || '';
+    const dropoffAddress = waypointsArr[waypointsArr.length - 1] || '';
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const payload = {
+        company_id: profile.company_id,
+        user_id: session.user.id,
+        customer_name: state.customerName,
+        customer_phone: state.customerPhone,
+        pickup_address: pickupAddress,
+        dropoff_address: dropoffAddress,
+        all_waypoints: waypointsArr,
+        base_yard_id: state.selectedBaseId,
+        truck_class: state.selectedTruckClassId,
+        total_miles: quoteData.totalMiles,
+        total_hours: quoteData.rawTotalHours,
+        min_quote: currentMinQuote,
+        max_quote: currentMaxQuote,
+        custom_quote: customCalculatedQuote,
+        applied_surcharges: {
+          afterHours: quoteData.hasAfterHours && state.activeOverrides.afterHours,
+          roadClub: quoteData.hasRoadClub && state.activeOverrides.roadClub,
+          metro: quoteData.hasMetroZone && state.activeOverrides.metro,
+          hazard: quoteData.hasHazardZone && state.activeOverrides.hazard,
+        },
+        notes: `Client portal approval request${attachmentFile ? `; attachment: ${attachmentFile.name}` : ''}`,
+      };
+
+      const { error: logErr } = await supabase.from('quote_logs').insert([payload]);
+      if (logErr) throw logErr;
+
+      const notificationEmail = companyRates?.client_portal?.contact_email || profile?.email || '';
+      if (notificationEmail) {
+        await fetch('/api/notifyApproval', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: notificationEmail,
+            companyName: profile?.company_name || 'your company',
+            equipmentName: quoteData?.equipmentMeta?.name || 'Custom Load',
+            make: quoteData?.equipmentMeta?.make || '',
+            model: quoteData?.equipmentMeta?.model || '',
+            serialNumber: quoteData?.equipmentMeta?.serialNumber || '',
+            weight: quoteData?.equipmentMeta?.weight || 0,
+            pickupAddr: pickupAddress,
+            dropoffAddr: dropoffAddress,
+            contactPhone: state.customerPhone || companyRates?.client_portal?.contact_phone || '(555) 555-0199',
+            contactEmail: profile?.email || companyRates?.client_portal?.contact_email || 'quotes@yourcompany.com',
+            quoteAmount: currentMinQuote,
+            quoteRange: `${currentMinQuote} - ${currentMaxQuote}`,
+            attachmentName: attachmentFile?.name || null,
+            attachmentType: attachmentFile?.type || null,
+            attachmentData: attachmentFile?.data || null,
+            permitFlags: quoteData?.equipmentMeta?.permitFlags || [],
+            attachmentTypeLabel: quoteData?.equipmentMeta?.attachmentType || '',
+            attachmentWeight: quoteData?.equipmentMeta?.attachmentWeight || 0,
+          }),
+        });
+      }
+
+      alert('Quote accepted. The approval request has been sent.');
+      dispatch({ type: 'RESET_FORM' });
+      setQuoteData(null);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to submit quote: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (isInviteRoute) {
     return <InviteRegister />;
   }
@@ -423,6 +600,7 @@ export default function App() {
                         resultsRef={resultsRef}
                         onLogQuote={handleLogQuote}
                         companyRates={companyRates}
+                        isDispatcherView={false}
                       />
                     ) : (
                       <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
@@ -439,8 +617,9 @@ export default function App() {
                 </div>
               ) : (
                 /* DISPATCHER / MANAGER CALCULATOR VIEW */
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                  <div className="lg:col-span-7 bg-[#121824] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+                <>
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    <div className="lg:col-span-7 bg-[#121824] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
                     <div className="border-b border-slate-800/80 pb-4">
                       <h2 className="text-lg font-bold text-white tracking-tight">
                         Quote Generator
@@ -523,34 +702,42 @@ export default function App() {
                         {loading ? 'Calculating Route...' : 'Calculate Quote'}
                       </button>
                     </form>
+                    </div>
+
+                    <div className="lg:col-span-5 mt-6 lg:mt-0">
+                      {quoteData ? (
+                        <QuoteResultsCard
+                          state={{
+                            ...state,
+                            quoteData,
+                            customRate: state.customRateInput,
+                          }}
+                          dispatch={dispatch}
+                          resultsRef={resultsRef}
+                          onLogQuote={handleLogQuote}
+                          companyRates={companyRates}
+                          isDispatcherView={true}
+                        />
+                      ) : (
+                        <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
+                          <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">
+                            $
+                          </div>
+                          <h4 className="text-sm font-bold text-slate-300">Quote Breakdown Preview</h4>
+                          <p className="text-xs max-w-xs">
+                            Enter pick-up/drop-off locations and click <strong className="text-blue-400">Calculate Quote</strong> to display live route estimates here.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="lg:col-span-5 mt-6 lg:mt-0">
-                    {quoteData ? (
-                      <QuoteResultsCard
-                        state={{
-                          ...state,
-                          quoteData,
-                          customRate: state.customRateInput,
-                        }}
-                        dispatch={dispatch}
-                        resultsRef={resultsRef}
-                        onLogQuote={handleLogQuote}
-                        companyRates={companyRates}
-                      />
-                    ) : (
-                      <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
-                        <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">
-                          $
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-300">Quote Breakdown Preview</h4>
-                        <p className="text-xs max-w-xs">
-                          Enter pick-up/drop-off locations and click <strong className="text-blue-400">Calculate Quote</strong> to display live route estimates here.
-                        </p>
-                      </div>
-                    )}
+                  <div className="mt-10 border-t border-slate-800/70 pt-5 text-center">
+                    <p className="text-[11px] text-slate-500">
+                      Quotes are electronically generated estimates and may contain occasional inaccuracies. Final pricing should be confirmed before dispatch.
+                    </p>
                   </div>
-                </div>
+                </>
               )
             )}
           </>

@@ -1,31 +1,29 @@
 // src/components/Settings.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Save, 
-  DollarSign, 
-  Percent, 
-  MapPin, 
-  Users, 
-  Truck, 
-  Plus, 
-  Trash2, 
-  ShieldAlert, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle,
-  Search,
-  Check,
-  AlertTriangle,
-  Building2,
-  Edit3
-} from 'lucide-react';
+import { Save, ShieldAlert, CheckCircle2, AlertCircle } from 'lucide-react';
+import CustomGeofenceEditor from './Settings/CustomGeofenceEditor';
 
 import { supabase } from '../lib/supabase';
 import { buildInviteEmailPayload } from '../lib/inviteEmail';
 import { RATES } from '../config/rates';
 import { SHOP_LOCATIONS } from '../config/locations';
 import { GEOFENCES, HAZARD_ZONES } from '../config/geofences';
-import ManagerOnboarding from './ManagerOnboarding';
+import {
+  SettingsTabsNav,
+  PricingTab,
+  GeofencesTab,
+  BasesTab,
+  ClientPortalTab,
+  UsersTab,
+} from './Settings/index';
+
+const normalizeDriveTimeBuffer = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 10;
+  if (num > 1.5) return num;
+  if (num > 0) return (num - 1) * 100;
+  return 10;
+};
 
 export const DEFAULT_CONFIG = {
   company_id: '00000000-0000-0000-0000-000000000000',
@@ -33,29 +31,30 @@ export const DEFAULT_CONFIG = {
     hourly_min: RATES.HOURLY_MIN || 125,
     hourly_max: RATES.HOURLY_MAX || 135,
     rounding_interval: RATES.ROUNDING_INTERVAL || 25,
-    drive_time_buffer: RATES.DRIVE_TIME_BUFFER || 1.10,
+    drive_time_buffer: (RATES.DRIVE_TIME_BUFFER - 1) * 100 || 10,
+    after_hours_multiplier: (RATES.AFTER_HOURS_MULTIPLIER - 1) * 100 || 25,
+    road_club_multiplier: (RATES.ROAD_CLUB_MULTIPLIER - 1) * 100 || 15,
+    metro_multiplier: 28.57,
+    hazard_multiplier: 40,
     load_unload_base_mins: RATES.LOAD_UNLOAD_BASE_MINS || 30,
     extra_stop_mins: RATES.EXTRA_STOP_MINS || 15,
     custom_truck_classes: [
       { id: '1', name: 'Standard Tow / Flatbed', minRate: RATES.HOURLY_MIN || 125, maxRate: RATES.HOURLY_MAX || 135 },
       { id: '2', name: 'Medium Duty Flatbed', minRate: 150, maxRate: 180 },
       { id: '3', name: 'Heavy Duty Towing', minRate: 200, maxRate: 250 },
-      { id: '4', name: 'Rotator / Heavy Recovery', minRate: 350, maxRate: 450 }
-    ]
+      { id: '4', name: 'Rotator / Heavy Recovery', minRate: 350, maxRate: 450 },
+    ],
   },
   surcharges: {
-    after_hours_multiplier: (RATES.AFTER_HOURS_MULTIPLIER - 1) * 100 || 25,
-    road_club_multiplier: (RATES.ROAD_CLUB_MULTIPLIER - 1) * 100 || 15,
-    metro_multiplier: 28.57,
-    hazard_multiplier: 40,
     custom_surcharges: [
       { id: '1', name: 'Winch Out / Off-Road', feeType: 'flat', value: 75, active: true },
-      { id: '2', name: 'Bad Weather / Ice', feeType: 'percent', value: 20, active: false }
-    ]
+      { id: '2', name: 'Bad Weather / Ice', feeType: 'percent', value: 20, active: false },
+    ],
   },
   geofences: {
     disabledZones: [],
-    customZoneRates: {}
+    customZoneRates: {},
+    customZones: [],
   },
   bases: SHOP_LOCATIONS,
   users: [],
@@ -63,6 +62,7 @@ export const DEFAULT_CONFIG = {
     contact_phone: '(555) 555-0199',
     contact_email: 'quotes@yourcompany.com',
     approval_threshold: 80000,
+    rounding_interval: 25,
     disclosure: 'These quotes are electronically generated estimates based on the information provided and may be affected by route conditions, permit requirements, or equipment-specific variables. Please confirm final pricing with a company representative before dispatch.',
     weight_tiers: [
       { id: 'tier-1', label: '0–20,000 lbs', minWeight: 0, maxWeight: 20000, rate: 150 },
@@ -71,8 +71,22 @@ export const DEFAULT_CONFIG = {
       { id: 'tier-4', label: '60,001–80,000 lbs', minWeight: 60001, maxWeight: 80000, rate: 225 },
       { id: 'tier-5', label: '80,001+ lbs', minWeight: 80001, maxWeight: 999999, rate: 250 },
     ],
-  }
+    clients: [],
+  },
 };
+
+const ROUNDING_OPTIONS = [1, 5, 10, 25];
+
+const normalizeClientPortalTier = (tier = {}, index = 0) => ({
+  id: tier.id || `tier-${index + 1}`,
+  label: tier.label || `Tier ${index + 1}`,
+  minWeight: Number(tier.minWeight ?? tier.min ?? 0) || 0,
+  maxWeight: Number(tier.maxWeight ?? tier.max ?? 999999) || 999999,
+  rate: Number(tier.rate ?? tier.hourly_rate ?? 0) || 0,
+  rounding_interval: ROUNDING_OPTIONS.includes(Number(tier.rounding_interval)) ? Number(tier.rounding_interval) : 25,
+  drive_time_buffer: Number(tier.drive_time_buffer ?? 10) || 10,
+  load_unload_base_mins: Number(tier.load_unload_base_mins ?? 30) || 30,
+});
 
 const normalizeConfig = (value = {}) => ({
   ...DEFAULT_CONFIG,
@@ -81,20 +95,52 @@ const normalizeConfig = (value = {}) => ({
   pricing: {
     ...(DEFAULT_CONFIG.pricing || {}),
     ...(value.pricing || {}),
+    ...(value.surcharges || {}),
     rounding_interval: Number(value.pricing?.rounding_interval ?? value.rounding_interval ?? DEFAULT_CONFIG.pricing.rounding_interval) || 25,
     hourly_min: Number(value.pricing?.hourly_min ?? value.hourly_min ?? DEFAULT_CONFIG.pricing.hourly_min) || 125,
     hourly_max: Number(value.pricing?.hourly_max ?? value.hourly_max ?? DEFAULT_CONFIG.pricing.hourly_max) || 135,
-    drive_time_buffer: Number(value.pricing?.drive_time_buffer ?? value.drive_time_buffer ?? DEFAULT_CONFIG.pricing.drive_time_buffer) || 1.1,
+    drive_time_buffer: normalizeDriveTimeBuffer(value.pricing?.drive_time_buffer ?? value.drive_time_buffer ?? DEFAULT_CONFIG.pricing.drive_time_buffer),
+    after_hours_multiplier: Number(value.pricing?.after_hours_multiplier ?? value.surcharges?.after_hours_multiplier ?? value.after_hours_multiplier ?? DEFAULT_CONFIG.pricing.after_hours_multiplier) || 25,
+    road_club_multiplier: Number(value.pricing?.road_club_multiplier ?? value.surcharges?.road_club_multiplier ?? value.road_club_multiplier ?? DEFAULT_CONFIG.pricing.road_club_multiplier) || 15,
+    metro_multiplier: Number(value.pricing?.metro_multiplier ?? value.surcharges?.metro_multiplier ?? DEFAULT_CONFIG.pricing.metro_multiplier) || 28.57,
+    hazard_multiplier: Number(value.pricing?.hazard_multiplier ?? value.surcharges?.hazard_multiplier ?? DEFAULT_CONFIG.pricing.hazard_multiplier) || 40,
     load_unload_base_mins: Number(value.pricing?.load_unload_base_mins ?? value.load_unload_base_mins ?? DEFAULT_CONFIG.pricing.load_unload_base_mins) || 30,
     extra_stop_mins: Number(value.pricing?.extra_stop_mins ?? value.extra_stop_mins ?? DEFAULT_CONFIG.pricing.extra_stop_mins) || 15,
+    custom_surcharges: Array.isArray(value.pricing?.custom_surcharges ?? value.surcharges?.custom_surcharges)
+      ? (value.pricing?.custom_surcharges ?? value.surcharges?.custom_surcharges).map((item, index) => ({
+          id: item.id || `surcharge-${index + 1}`,
+          name: item.name || `Custom Surcharge ${index + 1}`,
+          feeType: item.feeType || 'flat',
+          value: Number(item.value ?? 0) || 0,
+          active: item.active !== false,
+        }))
+      : DEFAULT_CONFIG.pricing.custom_surcharges,
   },
   surcharges: {
     ...(DEFAULT_CONFIG.surcharges || {}),
     ...(value.surcharges || {}),
+    custom_surcharges: Array.isArray(value.pricing?.custom_surcharges ?? value.surcharges?.custom_surcharges)
+      ? (value.pricing?.custom_surcharges ?? value.surcharges?.custom_surcharges).map((item, index) => ({
+          id: item.id || `surcharge-${index + 1}`,
+          name: item.name || `Custom Surcharge ${index + 1}`,
+          feeType: item.feeType || 'flat',
+          value: Number(item.value ?? 0) || 0,
+          active: item.active !== false,
+        }))
+      : DEFAULT_CONFIG.surcharges.custom_surcharges,
   },
   geofences: {
     disabledZones: value.geofences?.disabledZones || [],
     customZoneRates: value.geofences?.customZoneRates || {},
+    customZones: Array.isArray(value.geofences?.customZones) ? value.geofences.customZones.map((zone) => ({
+      id: zone.id || `custom-${Math.random().toString(36).slice(2)}`,
+      name: zone.name || 'Custom Geofence',
+      city: zone.city || '',
+      state: zone.state || '',
+      price: Number(zone.price ?? 0) || 0,
+      shape: Array.isArray(zone.shape) ? zone.shape : [],
+      type: 'custom',
+    })) : [],
   },
   bases: Array.isArray(value.bases) && value.bases.length > 0 ? value.bases : DEFAULT_CONFIG.bases,
   users: Array.isArray(value.users) ? value.users.filter(Boolean) : [],
@@ -102,16 +148,34 @@ const normalizeConfig = (value = {}) => ({
     contact_phone: value.client_portal?.contact_phone || DEFAULT_CONFIG.client_portal.contact_phone,
     contact_email: value.client_portal?.contact_email || DEFAULT_CONFIG.client_portal.contact_email,
     approval_threshold: Number(value.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
+    rounding_interval: ROUNDING_OPTIONS.includes(Number(value.client_portal?.rounding_interval)) ? Number(value.client_portal?.rounding_interval) : 25,
     disclosure: value.client_portal?.disclosure || DEFAULT_CONFIG.client_portal.disclosure,
     weight_tiers: Array.isArray(value.client_portal?.weight_tiers) && value.client_portal.weight_tiers.length > 0
-      ? value.client_portal.weight_tiers.map((tier, index) => ({
-          id: tier.id || `tier-${index + 1}`,
-          label: tier.label || `Tier ${index + 1}`,
-          minWeight: Number(tier.minWeight ?? tier.min ?? 0) || 0,
-          maxWeight: Number(tier.maxWeight ?? tier.max ?? 999999) || 999999,
-          rate: Number(tier.rate ?? tier.hourly_rate ?? 0) || 0,
+      ? value.client_portal.weight_tiers.map((tier, index) => normalizeClientPortalTier(tier, index))
+      : DEFAULT_CONFIG.client_portal.weight_tiers.map((tier, index) => normalizeClientPortalTier(tier, index)),
+    clients: Array.isArray(value.client_portal?.clients)
+      ? value.client_portal.clients.map((client, index) => ({
+          id: client.id || `client-${index + 1}`,
+          company_id: client.company_id || value.company_id || null,
+          client_name: client.client_name || client.name || `Client ${index + 1}`,
+          contact_email: client.contact_email || '',
+          contact_phone: client.contact_phone || '',
+          approval_threshold: client.approval_threshold === '' || client.approval_threshold === null || client.approval_threshold === undefined
+            ? null
+            : Number(client.approval_threshold),
+          pricing: {
+            hourly_min: client.pricing?.hourly_min === '' || client.pricing?.hourly_min === null || client.pricing?.hourly_min === undefined
+              ? null
+              : Number(client.pricing.hourly_min),
+            hourly_max: client.pricing?.hourly_max === '' || client.pricing?.hourly_max === null || client.pricing?.hourly_max === undefined
+              ? null
+              : Number(client.pricing.hourly_max),
+            rounding_interval: client.pricing?.rounding_interval === '' || client.pricing?.rounding_interval === null || client.pricing?.rounding_interval === undefined
+              ? 25
+              : Number(client.pricing.rounding_interval),
+          },
         }))
-      : DEFAULT_CONFIG.client_portal.weight_tiers,
+      : [],
   },
 });
 
@@ -140,6 +204,12 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   // Geofence Search & Filter State
   const [geofenceSearch, setGeofenceSearch] = useState('');
   const [geofenceFilter, setGeofenceFilter] = useState('all');
+  const [geofenceStateFilter, setGeofenceStateFilter] = useState('all');
+  const [geofenceTypeFilter, setGeofenceTypeFilter] = useState('all');
+  const [customSurchargeSearch, setCustomSurchargeSearch] = useState('');
+  const [customSurchargeFilter, setCustomSurchargeFilter] = useState('all');
+  const [selectedGeofenceId, setSelectedGeofenceId] = useState(null);
+  const [draftCustomGeofence, setDraftCustomGeofence] = useState(null);
 
   useEffect(() => {
     if (config) setFormData(normalizeConfig(config));
@@ -203,29 +273,61 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     setSaveStatus(null);
 
     try {
+      const visibleClients = (formData.client_portal?.clients || []).filter((client) => {
+        const clientCompanyId = client.company_id || companyId;
+        return !clientCompanyId || clientCompanyId === companyId;
+      });
+
       const normalizedConfig = {
         company_id: companyId,
         hourly_min: formData.pricing?.hourly_min || 125,
         hourly_max: formData.pricing?.hourly_max || 135,
         rounding_interval: formData.pricing?.rounding_interval || 25,
-        drive_time_buffer: formData.pricing?.drive_time_buffer || 1.10,
+        drive_time_buffer: normalizeDriveTimeBuffer(formData.pricing?.drive_time_buffer ?? 10),
         load_unload_base_mins: formData.pricing?.load_unload_base_mins || 30,
         extra_stop_mins: formData.pricing?.extra_stop_mins || 15,
-        after_hours_multiplier: formData.surcharges?.after_hours_multiplier || 25,
-        road_club_multiplier: formData.surcharges?.road_club_multiplier || 15,
-        metro_multiplier: formData.surcharges?.metro_multiplier || 28.57,
-        hazard_multiplier: formData.surcharges?.hazard_multiplier || 40,
+        after_hours_multiplier: formData.pricing?.after_hours_multiplier || 25,
+        road_club_multiplier: formData.pricing?.road_club_multiplier || 15,
+        metro_multiplier: formData.pricing?.metro_multiplier || 28.57,
+        hazard_multiplier: formData.pricing?.hazard_multiplier || 40,
         pricing: {
           ...(DEFAULT_CONFIG.pricing || {}),
-          ...(formData.pricing || {})
+          ...(formData.pricing || {}),
+          after_hours_multiplier: formData.pricing?.after_hours_multiplier || 25,
+          road_club_multiplier: formData.pricing?.road_club_multiplier || 15,
+          metro_multiplier: formData.pricing?.metro_multiplier || 28.57,
+          hazard_multiplier: formData.pricing?.hazard_multiplier || 40,
+          custom_surcharges: (formData.pricing?.custom_surcharges || []).map((item, index) => ({
+            id: item.id || `surcharge-${index + 1}`,
+            name: item.name || `Custom Surcharge ${index + 1}`,
+            feeType: item.feeType || 'flat',
+            value: Number(item.value ?? 0) || 0,
+            active: item.active !== false,
+          })),
         },
         surcharges: {
           ...(DEFAULT_CONFIG.surcharges || {}),
-          ...(formData.surcharges || {})
+          ...(formData.surcharges || {}),
+          custom_surcharges: (formData.pricing?.custom_surcharges || []).map((item, index) => ({
+            id: item.id || `surcharge-${index + 1}`,
+            name: item.name || `Custom Surcharge ${index + 1}`,
+            feeType: item.feeType || 'flat',
+            value: Number(item.value ?? 0) || 0,
+            active: item.active !== false,
+          })),
         },
         geofences: {
           disabledZones: formData.geofences?.disabledZones || [],
-          customZoneRates: formData.geofences?.customZoneRates || {}
+          customZoneRates: formData.geofences?.customZoneRates || {},
+          customZones: (formData.geofences?.customZones || []).map((zone) => ({
+            id: zone.id,
+            name: zone.name,
+            city: zone.city,
+            state: zone.state,
+            price: Number(zone.price ?? 0) || 0,
+            shape: Array.isArray(zone.shape) ? zone.shape : [],
+            type: 'custom',
+          })),
         },
         bases: (formData.bases || []).filter(Boolean),
         users: [],
@@ -233,13 +335,29 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           contact_phone: formData.client_portal?.contact_phone || DEFAULT_CONFIG.client_portal.contact_phone,
           contact_email: formData.client_portal?.contact_email || DEFAULT_CONFIG.client_portal.contact_email,
           approval_threshold: Number(formData.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
+          rounding_interval: ROUNDING_OPTIONS.includes(Number(formData.client_portal?.rounding_interval)) ? Number(formData.client_portal.rounding_interval) : 25,
           disclosure: formData.client_portal?.disclosure || DEFAULT_CONFIG.client_portal.disclosure,
-          weight_tiers: (formData.client_portal?.weight_tiers || DEFAULT_CONFIG.client_portal.weight_tiers).map((tier, index) => ({
-            id: tier.id || `tier-${index + 1}`,
-            label: tier.label || `Tier ${index + 1}`,
-            minWeight: Number(tier.minWeight ?? tier.min ?? 0) || 0,
-            maxWeight: Number(tier.maxWeight ?? tier.max ?? 999999) || 999999,
-            rate: Number(tier.rate ?? tier.hourly_rate ?? 0) || 0,
+          weight_tiers: (formData.client_portal?.weight_tiers || DEFAULT_CONFIG.client_portal.weight_tiers).map((tier, index) => normalizeClientPortalTier(tier, index)),
+          clients: visibleClients.map((client, index) => ({
+            id: client.id || `client-${index + 1}`,
+            company_id: client.company_id || companyId,
+            client_name: client.client_name || client.name || `Client ${index + 1}`,
+            contact_email: client.contact_email || '',
+            contact_phone: client.contact_phone || '',
+            approval_threshold: client.approval_threshold === '' || client.approval_threshold === null || client.approval_threshold === undefined
+              ? null
+              : Number(client.approval_threshold),
+            pricing: {
+              hourly_min: client.pricing?.hourly_min === '' || client.pricing?.hourly_min === null || client.pricing?.hourly_min === undefined
+                ? null
+                : Number(client.pricing.hourly_min),
+              hourly_max: client.pricing?.hourly_max === '' || client.pricing?.hourly_max === null || client.pricing?.hourly_max === undefined
+                ? null
+                : Number(client.pricing.hourly_max),
+              rounding_interval: client.pricing?.rounding_interval === '' || client.pricing?.rounding_interval === null || client.pricing?.rounding_interval === undefined
+                ? 25
+                : Number(client.pricing.rounding_interval),
+            },
           })),
         },
         updated_at: new Date().toISOString()
@@ -277,6 +395,43 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     }));
   };
 
+  const updateCustomSurcharge = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      pricing: {
+        ...prev.pricing,
+        custom_surcharges: (prev.pricing?.custom_surcharges || []).map((item, itemIndex) =>
+          itemIndex === index ? { ...item, [field]: field === 'value' ? Number(value) || 0 : value } : item
+        ),
+      },
+    }));
+  };
+
+  const addCustomSurcharge = () => {
+    setFormData(prev => ({
+      ...prev,
+      pricing: {
+        ...prev.pricing,
+        custom_surcharges: [
+          ...(prev.pricing?.custom_surcharges || []),
+          { id: `surcharge-${Date.now()}`, name: 'New Custom Surcharge', feeType: 'flat', value: 0, active: true },
+        ],
+      },
+    }));
+  };
+
+  const toggleCustomSurcharge = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      pricing: {
+        ...prev.pricing,
+        custom_surcharges: (prev.pricing?.custom_surcharges || []).map((item, itemIndex) =>
+          itemIndex === index ? { ...item, active: !item.active } : item
+        ),
+      },
+    }));
+  };
+
   const updateClientPortal = (field, value) => {
     setFormData(prev => ({
       ...prev,
@@ -290,7 +445,83 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       client_portal: {
         ...prev.client_portal,
         weight_tiers: (prev.client_portal?.weight_tiers || DEFAULT_CONFIG.client_portal.weight_tiers).map((tier, tierIndex) =>
-          tierIndex === index ? { ...tier, [field]: field === 'rate' ? Number(value) || 0 : value } : tier
+          tierIndex === index
+            ? {
+                ...tier,
+                [field]: ['rate', 'minWeight', 'maxWeight', 'rounding_interval', 'drive_time_buffer', 'load_unload_base_mins'].includes(field)
+                  ? Number(value) || 0
+                  : value,
+              }
+            : tier
+        ),
+      },
+    }));
+  };
+
+  const addClientPortalClient = () => {
+    const newClient = {
+      id: `client-${Date.now()}`,
+      company_id: profile?.company_id || null,
+      client_name: 'New Client',
+      contact_email: '',
+      contact_phone: '',
+      approval_threshold: null,
+      pricing: {
+        hourly_min: null,
+        hourly_max: null,
+        rounding_interval: 25,
+        drive_time_buffer: null,
+        load_unload_base_mins: null,
+        extra_stop_mins: null,
+      },
+    };
+
+    setFormData(prev => ({
+      ...prev,
+      client_portal: {
+        ...prev.client_portal,
+        clients: [...(prev.client_portal?.clients || []), newClient],
+      },
+    }));
+  };
+
+  const removeClientPortalClient = (clientId) => {
+    setFormData(prev => ({
+      ...prev,
+      client_portal: {
+        ...prev.client_portal,
+        clients: (prev.client_portal?.clients || []).filter((client) => client.id !== clientId),
+      },
+    }));
+  };
+
+  const updateClientPortalClient = (clientId, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      client_portal: {
+        ...prev.client_portal,
+        clients: (prev.client_portal?.clients || []).map((client) =>
+          client.id === clientId ? { ...client, [field]: value } : client
+        ),
+      },
+    }));
+  };
+
+  const updateClientPortalClientPricing = (clientId, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      client_portal: {
+        ...prev.client_portal,
+        clients: (prev.client_portal?.clients || []).map((client) =>
+          client.id === clientId
+            ? {
+                ...client,
+                pricing: {
+                  ...(client.pricing || {}),
+                  [field]: value === '' ? null : Number(value),
+                },
+              }
+            : client
         ),
       },
     }));
@@ -465,598 +696,270 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     }));
   };
 
+  const toggleGeofenceState = (state) => {
+    const matchedZones = allGeofences.filter((zone) => zone.state === state);
+    if (!matchedZones.length) return;
+
+    const matchedIds = matchedZones.map((zone) => zone.id);
+    const currentDisabled = formData.geofences?.disabledZones || [];
+    const hasAnyEnabled = matchedIds.some((id) => !currentDisabled.includes(id));
+    const updatedDisabled = hasAnyEnabled
+      ? [...new Set([...currentDisabled, ...matchedIds])]
+      : currentDisabled.filter((id) => !matchedIds.includes(id));
+
+    setFormData(prev => ({
+      ...prev,
+      geofences: { ...prev.geofences, disabledZones: updatedDisabled },
+    }));
+  };
+
+  const updateGeofenceOverride = (zoneId, value) => {
+    const numericValue = Number(value);
+    setFormData((prev) => ({
+      ...prev,
+      geofences: {
+        ...prev.geofences,
+        customZoneRates: {
+          ...(prev.geofences?.customZoneRates || {}),
+          [zoneId]: {
+            ...(prev.geofences?.customZoneRates?.[zoneId] || {}),
+            multiplier: Number.isFinite(numericValue) ? numericValue : 1,
+          },
+        },
+      },
+    }));
+  };
+
+  const clearGeofenceOverride = (zoneId) => {
+    setFormData((prev) => {
+      const nextCustomZoneRates = { ...(prev.geofences?.customZoneRates || {}) };
+      delete nextCustomZoneRates[zoneId];
+
+      return {
+        ...prev,
+        geofences: {
+          ...prev.geofences,
+          customZoneRates: nextCustomZoneRates,
+        },
+      };
+    });
+  };
+
+  const addCustomGeofence = () => {
+    const zone = {
+      id: `custom-${Date.now()}`,
+      name: 'New Municipality Zone',
+      city: '',
+      state: '',
+      price: 25,
+      shape: [],
+      type: 'custom',
+    };
+    setDraftCustomGeofence(zone);
+    setSelectedGeofenceId(zone.id);
+  };
+
+  const updateDraftCustomGeofence = (field, value) => {
+    setDraftCustomGeofence((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  const saveCustomGeofence = () => {
+    if (!draftCustomGeofence) return;
+
+    const cleanedZone = {
+      ...draftCustomGeofence,
+      name: (draftCustomGeofence.name || '').trim() || 'Custom Geofence',
+      city: (draftCustomGeofence.city || '').trim(),
+      state: (draftCustomGeofence.state || '').trim(),
+      price: Number(draftCustomGeofence.price ?? 0) || 0,
+      shape: Array.isArray(draftCustomGeofence.shape) ? draftCustomGeofence.shape : [],
+    };
+
+    if (!cleanedZone.name || cleanedZone.shape.length < 3) {
+      setSaveStatus({ type: 'error', message: 'A custom geofence needs a label and a polygon with at least 3 points.' });
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      geofences: {
+        ...prev.geofences,
+        customZones: [...(prev.geofences?.customZones || []), cleanedZone],
+      },
+    }));
+
+    setDraftCustomGeofence(null);
+    setSelectedGeofenceId(cleanedZone.id);
+    setSaveStatus({ type: 'success', message: 'Custom geofence saved. It will be evaluated in quote calculations.' });
+  };
+
+  const deleteCustomGeofence = (zoneId) => {
+    setFormData((prev) => ({
+      ...prev,
+      geofences: {
+        ...prev.geofences,
+        customZones: (prev.geofences?.customZones || []).filter((zone) => zone.id !== zoneId),
+      },
+    }));
+    if (draftCustomGeofence?.id === zoneId) {
+      setDraftCustomGeofence(null);
+    }
+    if (selectedGeofenceId === zoneId) {
+      setSelectedGeofenceId(null);
+    }
+  };
+
+  const getZoneState = (cities = []) => {
+    const stateCandidate = (cities || [])
+      .map((city) => String(city || '').split(',').pop()?.trim().toLowerCase())
+      .find((part) => part && part.length <= 3 && /^[a-z]{2}$/.test(part));
+    return stateCandidate || 'other';
+  };
+
   const allGeofences = useMemo(() => {
-    const hazardList = Object.values(HAZARD_ZONES).map(z => ({ ...z, type: 'hazard' }));
-    const metroList = Object.values(GEOFENCES).map(z => ({ ...z, type: 'metro' }));
-    return [...hazardList, ...metroList];
-  }, []);
+    const hazardList = Object.values(HAZARD_ZONES).map((zone) => ({ ...zone, type: 'hazard', state: getZoneState(zone.cities) }));
+    const metroList = Object.values(GEOFENCES).map((zone) => ({ ...zone, type: 'metro', state: getZoneState(zone.cities) }));
+    const customList = (formData.geofences?.customZones || []).map((zone) => ({
+      ...zone,
+      type: 'custom',
+      state: (zone.state || '').trim().toLowerCase(),
+    }));
+    return [...hazardList, ...metroList, ...customList];
+  }, [formData.geofences?.customZones]);
 
   const filteredGeofences = useMemo(() => {
-    return allGeofences.filter(zone => {
-      const matchesType = 
-        geofenceFilter === 'all' || 
-        (geofenceFilter === 'hazard' && zone.type === 'hazard') || 
+    return allGeofences.filter((zone) => {
+      const matchesType =
+        geofenceFilter === 'all' ||
+        (geofenceFilter === 'hazard' && zone.type === 'hazard') ||
         (geofenceFilter === 'metro' && zone.type === 'metro');
 
-      const query = geofenceSearch.toLowerCase();
-      const matchesSearch = 
-        !query || 
-        zone.name.toLowerCase().includes(query) || 
-        zone.cities.some(c => c.toLowerCase().includes(query));
+      const matchesState = geofenceStateFilter === 'all' || zone.state === geofenceStateFilter;
 
-      return matchesType && matchesSearch;
+      const query = geofenceSearch.toLowerCase();
+      const matchesSearch =
+        !query ||
+        zone.name.toLowerCase().includes(query) ||
+        (zone.cities || []).some((city) => city.toLowerCase().includes(query));
+
+      return matchesType && matchesState && matchesSearch;
     });
-  }, [allGeofences, geofenceFilter, geofenceSearch]);
+  }, [allGeofences, geofenceFilter, geofenceStateFilter, geofenceSearch]);
 
   const disabledSet = new Set(formData.geofences?.disabledZones || []);
+  const customSurchargeItems = useMemo(() => {
+    const items = formData.pricing?.custom_surcharges || [];
+    const query = customSurchargeSearch.toLowerCase();
+
+    return items.filter((item) => {
+      const matchesFilter =
+        customSurchargeFilter === 'all' ||
+        (customSurchargeFilter === 'active' && item.active !== false) ||
+        (customSurchargeFilter === 'inactive' && item.active === false);
+      const matchesSearch = !query || item.name.toLowerCase().includes(query);
+      return matchesFilter && matchesSearch;
+    });
+  }, [formData.pricing?.custom_surcharges, customSurchargeFilter, customSurchargeSearch]);
+  const selectedGeofence = allGeofences.find((zone) => zone.id === selectedGeofenceId) || null;
+  const geofenceStateOptions = useMemo(() => Array.from(new Set(allGeofences.map((zone) => zone.state))).sort(), [allGeofences]);
 
   return (
     <div className="space-y-6">
       {/* Sub-navigation Tabs */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 border-b border-slate-800 pb-1">
-        {[
-          { id: 'pricing', label: 'Pricing', icon: DollarSign },
-          { id: 'surcharges', label: 'Surcharges', icon: Percent },
-          { id: 'geofences', label: `Geofences (${allGeofences.length})`, icon: MapPin },
-          { id: 'bases', label: 'Bases', icon: Truck },
-          { id: 'client_portal', label: 'Client Portal', icon: Building2 },
-          { id: 'users', label: 'Users & Roles', icon: Users },
-          ...(currentUserRole === 'manager' ? [{ id: 'clients', label: 'Client Accounts', icon: Building2 }] : []),
-        ].map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeSubTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveSubTab(tab.id)}
-              className={`flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium rounded-t-lg transition cursor-pointer whitespace-nowrap ${
-                isActive
-                  ? 'bg-[#1a2234] text-blue-400 border-b-2 border-blue-500 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-[#0f1522]'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* CLIENT SUB-ACCOUNTS TAB (Manager Only) */}
-      {activeSubTab === 'clients' && currentUserRole === 'manager' && (
-        <ManagerOnboarding profile={profile} />
-      )}
+      <SettingsTabsNav
+        activeSubTab={activeSubTab}
+        setActiveSubTab={setActiveSubTab}
+        allGeofencesCount={allGeofences.length}
+      />
 
       {/* SUB TAB 1: PRICING */}
       {activeSubTab === 'pricing' && (
-        <div className="space-y-5 text-xs">
-          <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-            <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
-              <DollarSign className="w-4 h-4 text-emerald-400" /> Standard Tow Rates ($/hr)
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Min Rate ($/hr)</label>
-                <input
-                  type="number"
-                  value={formData.pricing?.hourly_min ?? 125}
-                  onChange={e => updatePricing('hourly_min', parseFloat(e.target.value) || 0)}
-                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Max Rate ($/hr)</label>
-                <input
-                  type="number"
-                  value={formData.pricing?.hourly_max ?? 135}
-                  onChange={e => updatePricing('hourly_max', parseFloat(e.target.value) || 0)}
-                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-            <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-blue-400" /> Time & Calculation Defaults
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Rounding Interval ($)</label>
-                <select
-                  value={formData.pricing?.rounding_interval ?? 25}
-                  onChange={e => updatePricing('rounding_interval', parseInt(e.target.value))}
-                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white"
-                >
-                  <option value={1}>Exact ($1)</option>
-                  <option value={5}>Nearest $5</option>
-                  <option value={10}>Nearest $10</option>
-                  <option value={25}>Nearest $25 (Default)</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Drive Time Buffer (Multiplier)</label>
-                <input
-                  type="number"
-                  step="0.05"
-                  value={formData.pricing?.drive_time_buffer ?? 1.10}
-                  onChange={e => updatePricing('drive_time_buffer', parseFloat(e.target.value) || 1)}
-                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                />
-                <span className="text-[9px] text-slate-500">e.g. 1.10 = +10% traffic pad</span>
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Load / Unload Flat (Mins)</label>
-                <input
-                  type="number"
-                  value={formData.pricing?.load_unload_base_mins ?? 30}
-                  onChange={e => updatePricing('load_unload_base_mins', parseInt(e.target.value) || 0)}
-                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="font-bold text-slate-200 text-xs">Truck & Equipment Classes ($/hr)</h4>
-                <p className="text-[10px] text-slate-400">Custom rates loaded into the Calculator dropdown.</p>
-              </div>
-              <button
-                type="button"
-                onClick={addTruckClass}
-                className="flex items-center gap-1 text-[11px] bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30 transition cursor-pointer"
-              >
-                <Plus className="w-3 h-3" /> Add Class
-              </button>
-            </div>
-            {formData.pricing?.custom_truck_classes?.map((tc, idx) => (
-              <div key={tc.id} className="flex flex-col sm:flex-row sm:items-center gap-2 bg-[#121824] p-2.5 rounded-lg border border-slate-800">
-                <input
-                  type="text"
-                  placeholder="Class Name"
-                  value={tc.name}
-                  onChange={e => {
-                    const updated = [...formData.pricing.custom_truck_classes];
-                    updated[idx].name = e.target.value;
-                    updatePricing('custom_truck_classes', updated);
-                  }}
-                  className="flex-1 bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
-                />
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-slate-400">Min $/hr:</span>
-                    <input
-                      type="number"
-                      value={tc.minRate}
-                      onChange={e => {
-                        const updated = [...formData.pricing.custom_truck_classes];
-                        updated[idx].minRate = parseFloat(e.target.value) || 0;
-                        updatePricing('custom_truck_classes', updated);
-                      }}
-                      className="w-20 bg-[#080c14] border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-slate-400">Max $/hr:</span>
-                    <input
-                      type="number"
-                      value={tc.maxRate}
-                      onChange={e => {
-                        const updated = [...formData.pricing.custom_truck_classes];
-                        updated[idx].maxRate = parseFloat(e.target.value) || 0;
-                        updatePricing('custom_truck_classes', updated);
-                      }}
-                      className="w-20 bg-[#080c14] border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeTruckClass(tc.id)}
-                    className="p-1 text-slate-500 hover:text-red-400 transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <PricingTab
+          formData={formData}
+          updatePricing={updatePricing}
+          addTruckClass={addTruckClass}
+          removeTruckClass={removeTruckClass}
+          customSurchargeItems={customSurchargeItems}
+          addCustomSurcharge={addCustomSurcharge}
+          toggleCustomSurcharge={toggleCustomSurcharge}
+          updateCustomSurcharge={updateCustomSurcharge}
+          customSurchargeSearch={customSurchargeSearch}
+          setCustomSurchargeSearch={setCustomSurchargeSearch}
+          customSurchargeFilter={customSurchargeFilter}
+          setCustomSurchargeFilter={setCustomSurchargeFilter}
+        />
       )}
 
-      {/* SUB TAB 2: SURCHARGES */}
-      {activeSubTab === 'surcharges' && (
-        <div className="space-y-4 text-xs">
-          <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-            <h4 className="font-bold text-slate-200 text-xs">Standard Percentage Multipliers (%)</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">After Hours (%)</label>
-                <input
-                  type="number"
-                  value={formData.surcharges?.after_hours_multiplier ?? 25}
-                  onChange={e => updateSurcharges('after_hours_multiplier', parseFloat(e.target.value) || 0)}
-                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Road Club (%)</label>
-                <input
-                  type="number"
-                  value={formData.surcharges?.road_club_multiplier ?? 15}
-                  onChange={e => updateSurcharges('road_club_multiplier', parseFloat(e.target.value) || 0)}
-                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Metro Traffic (%)</label>
-                <input
-                  type="number"
-                  value={formData.surcharges?.metro_multiplier ?? 28.57}
-                  onChange={e => updateSurcharges('metro_multiplier', parseFloat(e.target.value) || 0)}
-                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Hazard Zone (%)</label>
-                <input
-                  type="number"
-                  value={formData.surcharges?.hazard_multiplier ?? 40}
-                  onChange={e => updateSurcharges('hazard_multiplier', parseFloat(e.target.value) || 0)}
-                  className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SUB TAB 3: GEOFENCES */}
+      {/* SUB TAB 2: GEOFENCES */}
       {activeSubTab === 'geofences' && (
-        <div className="space-y-4 text-xs">
-          <div className="flex flex-col sm:flex-row gap-2 justify-between">
-            <div className="relative flex-1">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
-              <input
-                type="text"
-                placeholder="Search geofences by name or city..."
-                value={geofenceSearch}
-                onChange={e => setGeofenceSearch(e.target.value)}
-                className="w-full bg-[#080c14] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setGeofenceFilter('all')}
-                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${geofenceFilter === 'all' ? 'bg-blue-600 border-blue-500 text-white' : 'border-slate-800 text-slate-400'}`}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setGeofenceFilter('hazard')}
-                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${geofenceFilter === 'hazard' ? 'bg-rose-600 border-rose-500 text-white' : 'border-slate-800 text-slate-400'}`}
-              >
-                Hazards
-              </button>
-              <button
-                type="button"
-                onClick={() => setGeofenceFilter('metro')}
-                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${geofenceFilter === 'metro' ? 'bg-cyan-600 border-cyan-500 text-white' : 'border-slate-800 text-slate-400'}`}
-              >
-                Metro
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
-            {filteredGeofences.map(zone => {
-              const isDisabled = disabledSet.has(zone.id);
-              return (
-                <div key={zone.id} className={`p-3 rounded-xl border transition ${isDisabled ? 'bg-[#080c14]/40 border-slate-800/50 opacity-60' : 'bg-[#080c14] border-slate-800'}`}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-bold text-white text-xs flex items-center gap-1.5">
-                      <MapPin className={`w-3.5 h-3.5 ${zone.type === 'hazard' ? 'text-rose-400' : 'text-cyan-400'}`} />
-                      {zone.name}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => toggleGeofence(zone.id)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded border ${isDisabled ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'}`}
-                    >
-                      {isDisabled ? 'Disabled' : 'Active'}
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-400 line-clamp-1">{zone.cities?.join(', ')}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <GeofencesTab
+          geofenceSearch={geofenceSearch}
+          setGeofenceSearch={setGeofenceSearch}
+          geofenceFilter={geofenceFilter}
+          setGeofenceFilter={setGeofenceFilter}
+          geofenceStateFilter={geofenceStateFilter}
+          setGeofenceStateFilter={setGeofenceStateFilter}
+          geofenceTypeFilter={geofenceTypeFilter}
+          setGeofenceTypeFilter={setGeofenceTypeFilter}
+          filteredGeofences={filteredGeofences}
+          disabledSet={disabledSet}
+          toggleGeofence={toggleGeofence}
+          toggleGeofenceState={toggleGeofenceState}
+          updateGeofenceOverride={updateGeofenceOverride}
+          clearGeofenceOverride={clearGeofenceOverride}
+          selectedGeofence={selectedGeofence}
+          setSelectedGeofenceId={setSelectedGeofenceId}
+          formData={formData}
+          geofenceStateOptions={geofenceStateOptions}
+          addCustomGeofence={addCustomGeofence}
+          saveCustomGeofence={saveCustomGeofence}
+          deleteCustomGeofence={deleteCustomGeofence}
+          draftCustomGeofence={draftCustomGeofence}
+          updateDraftCustomGeofence={updateDraftCustomGeofence}
+        />
       )}
 
       {/* SUB TAB 4: BASES */}
       {activeSubTab === 'bases' && (
-        <div className="space-y-3 text-xs">
-          <div className="flex justify-between items-center">
-            <h4 className="font-bold text-slate-200">Dispatch Base Yards</h4>
-            <button
-              type="button"
-              onClick={addBase}
-              className="flex items-center gap-1 text-[11px] bg-blue-600/20 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30"
-            >
-              <Plus className="w-3 h-3" /> Add Yard
-            </button>
-          </div>
-          {(formData.bases || []).map((base, idx) => (
-            <div key={base.id} className="flex flex-col sm:flex-row gap-2 bg-[#080c14] p-3 rounded-xl border border-slate-800">
-              <input
-                type="text"
-                placeholder="Yard Name"
-                value={base.name}
-                onChange={e => {
-                  const updated = [...formData.bases];
-                  updated[idx].name = e.target.value;
-                  setFormData(prev => ({ ...prev, bases: updated }));
-                }}
-                className="bg-[#121824] border border-slate-700 rounded px-2.5 py-1.5 text-white flex-1"
-              />
-              <input
-                type="text"
-                placeholder="Physical Address"
-                value={base.address}
-                onChange={e => {
-                  const updated = [...formData.bases];
-                  updated[idx].address = e.target.value;
-                  setFormData(prev => ({ ...prev, bases: updated }));
-                }}
-                className="bg-[#121824] border border-slate-700 rounded px-2.5 py-1.5 text-white flex-1"
-              />
-              <button
-                type="button"
-                onClick={() => removeBase(base.id)}
-                className="p-1.5 text-slate-500 hover:text-red-400 transition"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-        </div>
+        <BasesTab formData={formData} addBase={addBase} removeBase={removeBase} setFormData={setFormData} />
       )}
 
       {/* SUB TAB 5: CLIENT PORTAL */}
       {activeSubTab === 'client_portal' && (
-        <div className="space-y-4 text-xs">
-          <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-3">
-            <h4 className="font-bold text-slate-200">Client Quote Settings</h4>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-[10px] text-slate-400">Contact Phone</label>
-                <input
-                  type="text"
-                  value={formData.client_portal?.contact_phone ?? ''}
-                  onChange={(e) => updateClientPortal('contact_phone', e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[10px] text-slate-400">Contact Email</label>
-                <input
-                  type="email"
-                  value={formData.client_portal?.contact_email ?? ''}
-                  onChange={(e) => updateClientPortal('contact_email', e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[10px] text-slate-400">Custom Approval Threshold (lbs)</label>
-                <input
-                  type="number"
-                  value={formData.client_portal?.approval_threshold ?? 80000}
-                  onChange={(e) => updateClientPortal('approval_threshold', Number(e.target.value) || 0)}
-                  className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="mb-1 block text-[10px] text-slate-400">Quote Disclosure</label>
-                <textarea
-                  rows="3"
-                  value={formData.client_portal?.disclosure ?? ''}
-                  onChange={(e) => updateClientPortal('disclosure', e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-3">
-            <h4 className="font-bold text-slate-200">Weight-based Hourly Rates</h4>
-            <p className="text-[10px] text-slate-500">These tiers control the client-facing quote rate whenever a load weight is entered.</p>
-            {(formData.client_portal?.weight_tiers || DEFAULT_CONFIG.client_portal.weight_tiers).map((tier, index) => (
-              <div key={tier.id || index} className="grid gap-2 rounded-lg border border-slate-800 bg-[#121824] p-2.5 sm:grid-cols-[1.2fr_0.8fr_0.8fr_0.7fr]">
-                <div>
-                  <label className="mb-1 block text-[10px] text-slate-400">Label</label>
-                  <input
-                    type="text"
-                    value={tier.label}
-                    onChange={(e) => updateClientPortalTier(index, 'label', e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-[#080c14] px-2 py-2 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[10px] text-slate-400">Min lbs</label>
-                  <input
-                    type="number"
-                    value={tier.minWeight}
-                    onChange={(e) => updateClientPortalTier(index, 'minWeight', Number(e.target.value) || 0)}
-                    className="w-full rounded-lg border border-slate-700 bg-[#080c14] px-2 py-2 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[10px] text-slate-400">Max lbs</label>
-                  <input
-                    type="number"
-                    value={tier.maxWeight}
-                    onChange={(e) => updateClientPortalTier(index, 'maxWeight', Number(e.target.value) || 0)}
-                    className="w-full rounded-lg border border-slate-700 bg-[#080c14] px-2 py-2 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[10px] text-slate-400">Rate $/hr</label>
-                  <input
-                    type="number"
-                    value={tier.rate}
-                    onChange={(e) => updateClientPortalTier(index, 'rate', Number(e.target.value) || 0)}
-                    className="w-full rounded-lg border border-slate-700 bg-[#080c14] px-2 py-2 text-white"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ClientPortalTab
+          formData={formData}
+          profile={profile}
+          updateClientPortal={updateClientPortal}
+          updateClientPortalTier={updateClientPortalTier}
+          addClientPortalClient={addClientPortalClient}
+          removeClientPortalClient={removeClientPortalClient}
+          updateClientPortalClient={updateClientPortalClient}
+          updateClientPortalClientPricing={updateClientPortalClientPricing}
+          onSaveConfig={handleSave}
+          isSaving={isSaving}
+        />
       )}
 
       {/* SUB TAB 6: USERS */}
       {activeSubTab === 'users' && (
-        <div className="space-y-4 text-xs">
-          <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-bold text-slate-200">Invite User</h4>
-              <span className="text-[10px] text-slate-500">Invite-based access</span>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_0.7fr_auto]">
-              <input
-                type="text"
-                value={inviteName}
-                onChange={(e) => setInviteName(e.target.value)}
-                placeholder="Name"
-                className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
-              />
-              <input
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="name@company.com"
-                className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
-              />
-              <select
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
-              >
-                <option value="client">Client</option>
-                <option value="dispatch">Dispatch</option>
-                <option value="manager">Manager</option>
-              </select>
-              <button
-                type="button"
-                onClick={handleInviteUser}
-                disabled={isSaving}
-                className="rounded-lg bg-blue-600 px-3 py-2 font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
-              >
-                {isSaving ? 'Sending...' : 'Send Invite'}
-              </button>
-            </div>
-            {inviteStatus && (
-              <p className={`text-[11px] ${inviteStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
-                {inviteStatus.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex justify-between items-center">
-            <h4 className="font-bold text-slate-200">Workspace Members</h4>
-          </div>
-
-          {companyUsers.length === 0 && !profile?.email && (
-            <div className="rounded-lg border border-dashed border-slate-800 bg-[#080c14] p-3 text-[11px] text-slate-500">
-              No workspace members found yet.
-            </div>
-          )}
-
-          {(companyUsers.length > 0 ? companyUsers : profile ? [profile] : []).map((user) => {
-            const draft = userEdits[user.id] || {};
-            const currentName = draft.full_name ?? user.full_name ?? user.name ?? '';
-            const currentRole = draft.role ?? user.role ?? 'client';
-            const isEditing = Boolean(editingUserIds[user.id]);
-
-            return (
-              <div key={user.id} className="flex flex-col gap-2 bg-[#080c14] p-3 rounded-xl border border-slate-800">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="font-semibold text-white">
-                        {isEditing ? currentName || 'Workspace Member' : user.full_name || user.name || user.email || 'Workspace Member'}
-                      </div>
-                      <div className="text-[11px] text-slate-400">{user.email || 'No email on file'}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap justify-end">
-                    <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-blue-300">
-                      {formatRole(isEditing ? currentRole : user.role || currentRole)}
-                    </span>
-                    {user.id === profile?.id && (
-                      <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
-                        You
-                      </span>
-                    )}
-                    {!isEditing && (
-                      <button
-                        type="button"
-                        onClick={() => handleEditUser(user.id)}
-                        disabled={isSaving}
-                        className="rounded-lg border border-slate-700 bg-[#121824] px-3 py-2 text-[11px] font-semibold text-slate-200 transition hover:border-blue-500/40 hover:text-white disabled:opacity-60"
-                      >
-                        Edit User
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {isEditing ? (
-                  <div className="grid gap-2 sm:grid-cols-[1fr_140px_auto]">
-                    <input
-                      type="text"
-                      value={currentName}
-                      onChange={(e) =>
-                        setUserEdits((prev) => ({
-                          ...prev,
-                          [user.id]: { ...prev[user.id], full_name: e.target.value },
-                        }))
-                      }
-                      placeholder="Name"
-                      className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
-                    />
-                    <select
-                      value={currentRole}
-                      onChange={(e) =>
-                        setUserEdits((prev) => ({
-                          ...prev,
-                          [user.id]: { ...prev[user.id], role: e.target.value },
-                        }))
-                      }
-                      className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
-                    >
-                      <option value="client">Client</option>
-                      <option value="dispatch">Dispatch</option>
-                      <option value="manager">Manager</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => handleEditUser(user.id)}
-                      disabled={isSaving}
-                      className="rounded-lg border border-emerald-500/30 bg-emerald-600/20 px-3 py-2 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-600/30 disabled:opacity-60"
-                    >
-                      Save
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
+        <UsersTab
+          inviteName={inviteName}
+          setInviteName={setInviteName}
+          inviteEmail={inviteEmail}
+          setInviteEmail={setInviteEmail}
+          inviteRole={inviteRole}
+          setInviteRole={setInviteRole}
+          handleInviteUser={handleInviteUser}
+          isSaving={isSaving}
+          inviteStatus={inviteStatus}
+          companyUsers={companyUsers}
+          profile={profile}
+          userEdits={userEdits}
+          editingUserIds={editingUserIds}
+          handleEditUser={handleEditUser}
+          setUserEdits={setUserEdits}
+          formatRole={formatRole}
+        />
       )}
 
       {/* Action Footer */}

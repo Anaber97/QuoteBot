@@ -30,7 +30,7 @@ export function loadGoogleMaps() {
       script = document.createElement('script');
       script.id = GOOGLE_MAPS_SCRIPT_ID;
       // NOTE: Do NOT use loading=async here, as it delays class definitions
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places,geometry`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places,geometry,drawing`;
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);
