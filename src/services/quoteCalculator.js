@@ -64,6 +64,7 @@ export async function calculateQuoteData({
   isMetro = false,
   isHazard = false,
   companyRates = {},
+  clientWeight = 0,
 }) {
   await verifyGoogleMapsLoaded();
 
@@ -138,6 +139,18 @@ export async function calculateQuoteData({
   let baseMinRate = Number(pricing.hourly_min || companyRates.hourly_min) || 125;
   let baseMaxRate = Number(pricing.hourly_max || companyRates.hourly_max) || 135;
 
+  const clientWeightTiers = companyRates?.client_portal?.weight_tiers || [];
+  const matchingTier = clientWeightTiers.find((tier) => {
+    const min = Number(tier.minWeight ?? 0) || 0;
+    const max = Number(tier.maxWeight ?? 999999) || 999999;
+    return clientWeight >= min && clientWeight <= max;
+  });
+
+  if (matchingTier) {
+    baseMinRate = Number(matchingTier.rate) || baseMinRate;
+    baseMaxRate = Number(matchingTier.rate) || baseMaxRate;
+  }
+
   const customClasses = pricing.custom_truck_classes || [];
   const selectedClass = customClasses.find((c) => c.id === selectedTruckClassId);
 
@@ -170,6 +183,7 @@ export async function calculateQuoteData({
     totalMiles,
     selectedTruckClassId,
     isHeavy,
+    approvalRequired: clientWeight >= Number(companyRates?.client_portal?.approval_threshold ?? 80000),
     hasAfterHours: isAfterHours,
     hasRoadClub: isRoadClub,
     hasMetroZone: hitMetroZone || isMetro,

@@ -29,9 +29,14 @@ export default async function handler(req, res) {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+    const role = body?.role || 'member';
+    const companyId = body?.company_id || null;
+    const inviteName = body?.name || '';
+
     // Determine target domain (Live origin -> ENV fallback -> fallback domain)
     const baseUrl = clientOrigin || process.env.SITE_URL || 'https://your-production-domain.com';
-    const redirectUrl = `${baseUrl.replace(/\/$/, '')}/?invite=`;
+    const inviteToken = crypto.randomUUID();
+    const redirectUrl = `${baseUrl.replace(/\/$/, '')}/?invite=${inviteToken}${role ? `&role=${encodeURIComponent(role)}` : ''}`;
 
     // Send invitation email with production redirect link
     const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
@@ -43,10 +48,25 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: error.message });
     }
 
+    try {
+      await supabase.from('company_invites').insert([{
+        token: inviteToken,
+        email,
+        company_id: companyId,
+        role,
+        full_name: inviteName,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      }]);
+    } catch (inviteDbErr) {
+      console.warn('Invite record write skipped:', inviteDbErr);
+    }
+
     return res.status(200).json({ 
       success: true, 
       message: `Invitation successfully sent to ${email}`,
-      data 
+      data,
+      redirectUrl,
     });
 
   } catch (err) {

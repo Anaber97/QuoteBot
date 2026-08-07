@@ -58,7 +58,20 @@ export const DEFAULT_CONFIG = {
     customZoneRates: {}
   },
   bases: SHOP_LOCATIONS,
-  users: []
+  users: [],
+  client_portal: {
+    contact_phone: '(555) 555-0199',
+    contact_email: 'quotes@yourcompany.com',
+    approval_threshold: 80000,
+    disclosure: 'These quotes are electronically generated estimates based on the information provided and may be affected by route conditions, permit requirements, or equipment-specific variables. Please confirm final pricing with a company representative before dispatch.',
+    weight_tiers: [
+      { id: 'tier-1', label: '0–20,000 lbs', minWeight: 0, maxWeight: 20000, rate: 150 },
+      { id: 'tier-2', label: '20,001–40,000 lbs', minWeight: 20001, maxWeight: 40000, rate: 180 },
+      { id: 'tier-3', label: '40,001–60,000 lbs', minWeight: 40001, maxWeight: 60000, rate: 200 },
+      { id: 'tier-4', label: '60,001–80,000 lbs', minWeight: 60001, maxWeight: 80000, rate: 225 },
+      { id: 'tier-5', label: '80,001+ lbs', minWeight: 80001, maxWeight: 999999, rate: 250 },
+    ],
+  }
 };
 
 const normalizeConfig = (value = {}) => ({
@@ -85,6 +98,21 @@ const normalizeConfig = (value = {}) => ({
   },
   bases: Array.isArray(value.bases) && value.bases.length > 0 ? value.bases : DEFAULT_CONFIG.bases,
   users: Array.isArray(value.users) ? value.users.filter(Boolean) : [],
+  client_portal: {
+    contact_phone: value.client_portal?.contact_phone || DEFAULT_CONFIG.client_portal.contact_phone,
+    contact_email: value.client_portal?.contact_email || DEFAULT_CONFIG.client_portal.contact_email,
+    approval_threshold: Number(value.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
+    disclosure: value.client_portal?.disclosure || DEFAULT_CONFIG.client_portal.disclosure,
+    weight_tiers: Array.isArray(value.client_portal?.weight_tiers) && value.client_portal.weight_tiers.length > 0
+      ? value.client_portal.weight_tiers.map((tier, index) => ({
+          id: tier.id || `tier-${index + 1}`,
+          label: tier.label || `Tier ${index + 1}`,
+          minWeight: Number(tier.minWeight ?? tier.min ?? 0) || 0,
+          maxWeight: Number(tier.maxWeight ?? tier.max ?? 999999) || 999999,
+          rate: Number(tier.rate ?? tier.hourly_rate ?? 0) || 0,
+        }))
+      : DEFAULT_CONFIG.client_portal.weight_tiers,
+  },
 });
 
 const formatRole = (role) => {
@@ -201,6 +229,19 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
         },
         bases: (formData.bases || []).filter(Boolean),
         users: [],
+        client_portal: {
+          contact_phone: formData.client_portal?.contact_phone || DEFAULT_CONFIG.client_portal.contact_phone,
+          contact_email: formData.client_portal?.contact_email || DEFAULT_CONFIG.client_portal.contact_email,
+          approval_threshold: Number(formData.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
+          disclosure: formData.client_portal?.disclosure || DEFAULT_CONFIG.client_portal.disclosure,
+          weight_tiers: (formData.client_portal?.weight_tiers || DEFAULT_CONFIG.client_portal.weight_tiers).map((tier, index) => ({
+            id: tier.id || `tier-${index + 1}`,
+            label: tier.label || `Tier ${index + 1}`,
+            minWeight: Number(tier.minWeight ?? tier.min ?? 0) || 0,
+            maxWeight: Number(tier.maxWeight ?? tier.max ?? 999999) || 999999,
+            rate: Number(tier.rate ?? tier.hourly_rate ?? 0) || 0,
+          })),
+        },
         updated_at: new Date().toISOString()
       };
 
@@ -233,6 +274,25 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     setFormData(prev => ({
       ...prev,
       surcharges: { ...prev.surcharges, [field]: value }
+    }));
+  };
+
+  const updateClientPortal = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      client_portal: { ...prev.client_portal, [field]: value }
+    }));
+  };
+
+  const updateClientPortalTier = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      client_portal: {
+        ...prev.client_portal,
+        weight_tiers: (prev.client_portal?.weight_tiers || DEFAULT_CONFIG.client_portal.weight_tiers).map((tier, tierIndex) =>
+          tierIndex === index ? { ...tier, [field]: field === 'rate' ? Number(value) || 0 : value } : tier
+        ),
+      },
     }));
   };
 
@@ -282,13 +342,17 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   setInviteStatus(null);
 
   try {
-    const token = crypto.randomUUID();
-
     // 1. Send API request to trigger Supabase Admin Invite
     const response = await fetch("/api/inviteUser", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: trimmedEmail }), // Fixed: passing trimmedEmail
+      body: JSON.stringify({
+        email: trimmedEmail,
+        role: inviteRole,
+        company_id: profile?.company_id,
+        name: inviteName.trim(),
+        origin: typeof window !== 'undefined' ? window.location.origin : '',
+      }),
     });
 
     // Check if the endpoint returned valid JSON before parsing
@@ -435,6 +499,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           { id: 'surcharges', label: 'Surcharges', icon: Percent },
           { id: 'geofences', label: `Geofences (${allGeofences.length})`, icon: MapPin },
           { id: 'bases', label: 'Bases', icon: Truck },
+          { id: 'client_portal', label: 'Client Portal', icon: Building2 },
           { id: 'users', label: 'Users & Roles', icon: Users },
           ...(currentUserRole === 'manager' ? [{ id: 'clients', label: 'Client Accounts', icon: Building2 }] : []),
         ].map(tab => {
@@ -761,7 +826,99 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
         </div>
       )}
 
-      {/* SUB TAB 5: USERS */}
+      {/* SUB TAB 5: CLIENT PORTAL */}
+      {activeSubTab === 'client_portal' && (
+        <div className="space-y-4 text-xs">
+          <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-3">
+            <h4 className="font-bold text-slate-200">Client Quote Settings</h4>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-[10px] text-slate-400">Contact Phone</label>
+                <input
+                  type="text"
+                  value={formData.client_portal?.contact_phone ?? ''}
+                  onChange={(e) => updateClientPortal('contact_phone', e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] text-slate-400">Contact Email</label>
+                <input
+                  type="email"
+                  value={formData.client_portal?.contact_email ?? ''}
+                  onChange={(e) => updateClientPortal('contact_email', e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] text-slate-400">Custom Approval Threshold (lbs)</label>
+                <input
+                  type="number"
+                  value={formData.client_portal?.approval_threshold ?? 80000}
+                  onChange={(e) => updateClientPortal('approval_threshold', Number(e.target.value) || 0)}
+                  className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-[10px] text-slate-400">Quote Disclosure</label>
+                <textarea
+                  rows="3"
+                  value={formData.client_portal?.disclosure ?? ''}
+                  onChange={(e) => updateClientPortal('disclosure', e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-[#121824] px-2.5 py-2 text-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-3">
+            <h4 className="font-bold text-slate-200">Weight-based Hourly Rates</h4>
+            <p className="text-[10px] text-slate-500">These tiers control the client-facing quote rate whenever a load weight is entered.</p>
+            {(formData.client_portal?.weight_tiers || DEFAULT_CONFIG.client_portal.weight_tiers).map((tier, index) => (
+              <div key={tier.id || index} className="grid gap-2 rounded-lg border border-slate-800 bg-[#121824] p-2.5 sm:grid-cols-[1.2fr_0.8fr_0.8fr_0.7fr]">
+                <div>
+                  <label className="mb-1 block text-[10px] text-slate-400">Label</label>
+                  <input
+                    type="text"
+                    value={tier.label}
+                    onChange={(e) => updateClientPortalTier(index, 'label', e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-[#080c14] px-2 py-2 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] text-slate-400">Min lbs</label>
+                  <input
+                    type="number"
+                    value={tier.minWeight}
+                    onChange={(e) => updateClientPortalTier(index, 'minWeight', Number(e.target.value) || 0)}
+                    className="w-full rounded-lg border border-slate-700 bg-[#080c14] px-2 py-2 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] text-slate-400">Max lbs</label>
+                  <input
+                    type="number"
+                    value={tier.maxWeight}
+                    onChange={(e) => updateClientPortalTier(index, 'maxWeight', Number(e.target.value) || 0)}
+                    className="w-full rounded-lg border border-slate-700 bg-[#080c14] px-2 py-2 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] text-slate-400">Rate $/hr</label>
+                  <input
+                    type="number"
+                    value={tier.rate}
+                    onChange={(e) => updateClientPortalTier(index, 'rate', Number(e.target.value) || 0)}
+                    className="w-full rounded-lg border border-slate-700 bg-[#080c14] px-2 py-2 text-white"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* SUB TAB 6: USERS */}
       {activeSubTab === 'users' && (
         <div className="space-y-4 text-xs">
           <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-3">

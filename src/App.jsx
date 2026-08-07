@@ -14,6 +14,7 @@ import QuoteResultsCard from './components/QuoteResultsCard';
 import QuoteLog from './components/QuoteLog';
 import Settings, { DEFAULT_CONFIG } from './components/Settings';
 import InviteRegister from './components/InviteRegister';
+import ClientQuoteForm from './components/ClientQuoteForm';
 
 const getInitialBaseId = () => {
   const savedBase = localStorage.getItem('dispatch_default_base');
@@ -132,6 +133,10 @@ export default function App() {
 
   const resultsRef = useRef(null);
 
+  const userRole = (profile?.role || '').toLowerCase().trim();
+  const isClientPortalUser = ['client', 'member', 'subaccount'].includes(userRole);
+  const isManagerRole = ['manager', 'admin', 'owner'].includes(userRole);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setIsInviteRoute(Boolean(params.get('invite')));
@@ -170,7 +175,6 @@ export default function App() {
       setProfile(prof);
 
       if (prof?.company_id) {
-        // Query from app_config table
         const { data: ratesData, error: ratesErr } = await supabase
           .from('app_config')
           .select('*')
@@ -201,7 +205,7 @@ export default function App() {
   // Dynamic Truck Classes from app_config
   const customClasses = companyRates?.pricing?.custom_truck_classes || [];
 
-  // Calculate Quote Handler
+  // Dispatcher Quote Handler
   const handleCalculate = async (e) => {
     if (e) e.preventDefault();
     setLoading(true);
@@ -228,6 +232,80 @@ export default function App() {
       });
 
       setQuoteData(data);
+
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Error calculating quote. Check addresses or API keys.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Client Portal Quote Handler
+  const handleClientCalculateQuote = async (clientPayload) => {
+    const { pickupAddr, dropoffAddr, weight, width, height, equipmentName, permitInfo, attachmentType, attachmentWeight } = clientPayload;
+
+    dispatch({ type: 'SET_WAYPOINTS', payload: [pickupAddr, dropoffAddr] });
+
+    const isHeavy = weight > 45000 || width > 8.5 || height > 13.5;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const data = await calculateQuoteData({
+        currentBase,
+        waypoints: [pickupAddr, dropoffAddr],
+        selectedTruckClassId: isHeavy ? 'heavy' : state.selectedTruckClassId,
+        isHeavy,
+        isAfterHours: false,
+        isRoadClub: false,
+        isMetro: state.isMetro,
+        isHazard: state.isHazard,
+        companyRates,
+        clientWeight: Number(weight) + Number(attachmentWeight || 0),
+      });
+
+      const permitFee = Number(permitInfo?.permitFee || 0);
+
+      if (data.approvalRequired) {
+        try {
+          await fetch('/api/notifyApproval', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              companyName: profile?.company_name || 'your company',
+              email: profile?.email || '',
+              equipmentName: equipmentName || 'Custom Load',
+              weight: Number(weight) + Number(attachmentWeight || 0),
+              pickupAddr,
+              dropoffAddr,
+              contactPhone: companyRates?.client_portal?.contact_phone || '(555) 555-0199',
+              contactEmail: companyRates?.client_portal?.contact_email || 'quotes@yourcompany.com',
+            }),
+          });
+        } catch (approvalErr) {
+          console.warn('Approval email notification could not be sent:', approvalErr);
+        }
+      }
+
+      setQuoteData({
+        ...data,
+        permitFee,
+        equipmentMeta: {
+          name: equipmentName,
+          weight,
+          width,
+          height,
+          permitFee,
+          permitFlags: permitInfo?.flags || [],
+          attachmentType,
+          attachmentWeight: Number(attachmentWeight || 0),
+        },
+      });
 
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -313,129 +391,167 @@ export default function App() {
             {state.activeTab === 'logs' && <QuoteLog profile={profile} />}
 
             {state.activeTab === 'settings' && (
-  <Settings
-    profile={profile}
-    currentUserRole={profile?.role || 'manager'} // <--- Pass currentUserRole!
-    config={companyRates}                       // <--- Pass companyRates as config!
-    onSaveConfig={handleSettingsSave}
-  />
-)}
+              <Settings
+                profile={profile}
+                currentUserRole={profile?.role || 'manager'}
+                config={companyRates}
+                onSaveConfig={handleSettingsSave}
+              />
+            )}
 
             {state.activeTab === 'calculator' && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                <div className="lg:col-span-7 bg-[#121824] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-                  <div className="border-b border-slate-800/80 pb-4">
-                    <h2 className="text-lg font-bold text-white tracking-tight">
-                      Quote Generator
-                    </h2>
+              isClientPortalUser ? (
+                /* CLIENT PORTAL VIEW */
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  <div className="lg:col-span-7">
+                    <ClientQuoteForm
+                      companyRates={companyRates}
+                      onCalculate={handleClientCalculateQuote}
+                      isCalculating={loading}
+                    />
                   </div>
 
-                  {error && (
-                    <div className="p-3 bg-red-950/40 border border-red-800/50 rounded-xl text-red-400 text-xs font-medium">
-                      {error}
-                    </div>
-                  )}
-
-                  <form onSubmit={handleCalculate} className="space-y-5">
-                    {/* Base Shop Selector */}
-                    <div>
-                      <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
-                        Base Dispatch Location
-                      </label>
-                      <select
-                        value={state.selectedBaseId}
-                        onChange={(e) => dispatch({ type: 'SET_BASE', payload: e.target.value })}
-                        className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {availableBases.map((loc) => (
-                          <option key={loc.id} value={loc.id}>
-                            {loc.name} ({loc.address})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Tow Vehicle / Class Selector */}
-                    <div>
-                      <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
-                        Tow Vehicle Class
-                      </label>
-                      <select
-                        value={state.selectedTruckClassId}
-                        onChange={(e) => dispatch({ type: 'SET_TRUCK_CLASS', payload: e.target.value })}
-                        className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                      >
-                        {/* Default / Standard Rates Option */}
-                        <option value="">
-                          Standard Tow / Flatbed (${companyRates?.pricing?.hourly_min || 125} - ${companyRates?.pricing?.hourly_max || 135}/hr)
-                        </option>
-
-                        {/* Dynamic Custom Truck Classes from Settings */}
-                        {customClasses.map((cls) => (
-                          <option key={cls.id} value={cls.id}>
-                            {cls.name} (${cls.minRate} - ${cls.maxRate}/hr)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[13px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
-                        Route Waypoints
-                      </label>
-                      <WaypointList
-                        waypoints={Array.isArray(state.waypoints) ? state.waypoints : ['', '']}
-                        inputRefs={{ current: [] }}
-                        onChange={(index, value) =>
-                          dispatch({ type: 'UPDATE_WAYPOINT', payload: { index, value } })
-                        }
-                        onRemove={(index) => dispatch({ type: 'REMOVE_WAYPOINT', payload: index })}
-                        onAdd={() => dispatch({ type: 'ADD_WAYPOINT' })}
+                  <div className="lg:col-span-5">
+                    {quoteData ? (
+                      <QuoteResultsCard
+                        state={{
+                          ...state,
+                          quoteData,
+                          customRate: state.customRateInput,
+                        }}
+                        dispatch={dispatch}
+                        resultsRef={resultsRef}
+                        onLogQuote={handleLogQuote}
+                        companyRates={companyRates}
                       />
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
-                        Manual Surcharge Overrides
-                      </label>
-                      <SurchargeToggles state={state} dispatch={dispatch} />
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-white rounded-xl transition cursor-pointer shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {loading ? 'Calculating Route...' : 'Calculate Quote'}
-                    </button>
-                  </form>
-                </div>
-
-                <div className="lg:col-span-5 mt-6 lg:mt-0">
-                  {quoteData ? (
-                    <QuoteResultsCard
-                      state={{
-                        ...state,
-                        quoteData,
-                        customRate: state.customRateInput,
-                      }}
-                      dispatch={dispatch}
-                      resultsRef={resultsRef}
-                      onLogQuote={handleLogQuote}
-                      companyRates={companyRates}
-                    />
-                  ) : (
-                    <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
-                      <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">
-                        $
+                    ) : (
+                      <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
+                        <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">
+                          $
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-300">Quote Estimate</h4>
+                        <p className="text-xs max-w-xs">
+                          Search your equipment and enter pickup/dropoff locations to view an instant transport quote.
+                        </p>
                       </div>
-                      <h4 className="text-sm font-bold text-slate-300">Quote Breakdown Preview</h4>
-                      <p className="text-xs max-w-xs">
-                        Enter pick-up/drop-off locations and click <strong className="text-blue-400">Calculate Quote</strong> to display live route estimates here.
-                      </p>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* DISPATCHER / MANAGER CALCULATOR VIEW */
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  <div className="lg:col-span-7 bg-[#121824] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+                    <div className="border-b border-slate-800/80 pb-4">
+                      <h2 className="text-lg font-bold text-white tracking-tight">
+                        Quote Generator
+                      </h2>
+                    </div>
+
+                    {error && (
+                      <div className="p-3 bg-red-950/40 border border-red-800/50 rounded-xl text-red-400 text-xs font-medium">
+                        {error}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleCalculate} className="space-y-5">
+                      {/* Base Shop Selector */}
+                      <div>
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+                          Base Dispatch Location
+                        </label>
+                        <select
+                          value={state.selectedBaseId}
+                          onChange={(e) => dispatch({ type: 'SET_BASE', payload: e.target.value })}
+                          className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {availableBases.map((loc) => (
+                            <option key={loc.id} value={loc.id}>
+                              {loc.name} ({loc.address})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Tow Vehicle / Class Selector */}
+                      <div>
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+                          Tow Vehicle Class
+                        </label>
+                        <select
+                          value={state.selectedTruckClassId}
+                          onChange={(e) => dispatch({ type: 'SET_TRUCK_CLASS', payload: e.target.value })}
+                          className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                        >
+                          <option value="">
+                            Standard Tow / Flatbed (${companyRates?.pricing?.hourly_min || 125} - ${companyRates?.pricing?.hourly_max || 135}/hr)
+                          </option>
+                          {customClasses.map((cls) => (
+                            <option key={cls.id} value={cls.id}>
+                              {cls.name} (${cls.minRate} - ${cls.maxRate}/hr)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[13px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+                          Route Waypoints
+                        </label>
+                        <WaypointList
+                          waypoints={Array.isArray(state.waypoints) ? state.waypoints : ['', '']}
+                          inputRefs={{ current: [] }}
+                          onChange={(index, value) =>
+                            dispatch({ type: 'UPDATE_WAYPOINT', payload: { index, value } })
+                          }
+                          onRemove={(index) => dispatch({ type: 'REMOVE_WAYPOINT', payload: index })}
+                          onAdd={() => dispatch({ type: 'ADD_WAYPOINT' })}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+                          Manual Surcharge Overrides
+                        </label>
+                        <SurchargeToggles state={state} dispatch={dispatch} />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-white rounded-xl transition cursor-pointer shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {loading ? 'Calculating Route...' : 'Calculate Quote'}
+                      </button>
+                    </form>
+                  </div>
+
+                  <div className="lg:col-span-5 mt-6 lg:mt-0">
+                    {quoteData ? (
+                      <QuoteResultsCard
+                        state={{
+                          ...state,
+                          quoteData,
+                          customRate: state.customRateInput,
+                        }}
+                        dispatch={dispatch}
+                        resultsRef={resultsRef}
+                        onLogQuote={handleLogQuote}
+                        companyRates={companyRates}
+                      />
+                    ) : (
+                      <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
+                        <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">
+                          $
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-300">Quote Breakdown Preview</h4>
+                        <p className="text-xs max-w-xs">
+                          Enter pick-up/drop-off locations and click <strong className="text-blue-400">Calculate Quote</strong> to display live route estimates here.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
             )}
           </>
         )}

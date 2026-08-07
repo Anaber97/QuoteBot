@@ -12,8 +12,7 @@ export default function Header({ activeTab, setActiveTab, profile }) {
   console.log('Current User Profile in Header:', profile);
   console.log('Parsed Role:', role);
 
-  // Allow manager, admin, owner, or default if role is missing/undefined
-  const isManager = role === 'manager' || role === 'admin' || role === 'owner' || !role;
+  const isManager = ['manager', 'admin', 'owner'].includes(role);
 
   const roleBadgeStyle =
     {

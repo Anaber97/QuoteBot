@@ -10,9 +10,11 @@ export default function InviteRegister() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
 
-  const inviteToken = typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search).get('invite')
-    : '';
+  const inviteParams = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search)
+    : new URLSearchParams('');
+  const inviteToken = inviteParams.get('invite') || '';
+  const inviteRoleFromQuery = inviteParams.get('role') || '';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -45,7 +47,10 @@ export default function InviteRegister() {
         .maybeSingle();
 
       if (inviteError) throw inviteError;
-      if (!inviteData || inviteData.status !== 'pending') {
+      if (!inviteData && !inviteRoleFromQuery) {
+        throw new Error('This invite is no longer valid. Please request a new one.');
+      }
+      if (inviteData && inviteData.status !== 'pending') {
         throw new Error('This invite is no longer valid. Please request a new one.');
       }
 
@@ -67,13 +72,16 @@ export default function InviteRegister() {
         throw new Error('The account could not be created yet. Please try again.');
       }
 
+      const resolvedRole = (inviteRoleFromQuery || inviteData?.role || 'member').toLowerCase();
+      const resolvedCompanyId = inviteData?.company_id || null;
+
       const { error: profileError } = await supabase.from('profiles').upsert(
         {
           id: userId,
           email: cleanedEmail,
           full_name: fullName.trim(),
-          company_id: inviteData.company_id,
-          role: inviteData.role || 'member',
+          company_id: resolvedCompanyId,
+          role: resolvedRole,
           created_at: new Date().toISOString(),
         },
         { onConflict: 'id' }
@@ -81,16 +89,18 @@ export default function InviteRegister() {
 
       if (profileError) throw profileError;
 
-      const { error: inviteUpdateError } = await supabase
-        .from('company_invites')
-        .update({
-          status: 'accepted',
-          accepted_at: new Date().toISOString(),
-          accepted_by: userId,
-        })
-        .eq('id', inviteData.id);
+      if (inviteData?.id) {
+        const { error: inviteUpdateError } = await supabase
+          .from('company_invites')
+          .update({
+            status: 'accepted',
+            accepted_at: new Date().toISOString(),
+            accepted_by: userId,
+          })
+          .eq('id', inviteData.id);
 
-      if (inviteUpdateError) throw inviteUpdateError;
+        if (inviteUpdateError) throw inviteUpdateError;
+      }
 
       setMessage({ type: 'success', text: 'Account created successfully. You can sign in now.' });
       window.location.assign('/');
