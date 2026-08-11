@@ -8,6 +8,7 @@ import { buildInviteEmailPayload } from '../lib/inviteEmail';
 import { RATES } from '../config/rates';
 import { SHOP_LOCATIONS } from '../config/locations';
 import { GEOFENCES, HAZARD_ZONES } from '../config/geofences';
+import { US_STATE_NAMES } from '../config/usStates';
 import {
   SettingsTabsNav,
   PricingTab,
@@ -36,6 +37,12 @@ export const DEFAULT_CONFIG = {
     road_club_multiplier: (RATES.ROAD_CLUB_MULTIPLIER - 1) * 100 || 15,
     metro_multiplier: 28.57,
     hazard_multiplier: 40,
+    surchargeModes: {
+      after_hours_multiplier: 'percent',
+      road_club_multiplier: 'percent',
+      metro_multiplier: 'percent',
+      hazard_multiplier: 'percent',
+    },
     load_unload_base_mins: RATES.LOAD_UNLOAD_BASE_MINS || 30,
     extra_stop_mins: RATES.EXTRA_STOP_MINS || 15,
     custom_truck_classes: [
@@ -96,6 +103,10 @@ const normalizeConfig = (value = {}) => ({
     ...(DEFAULT_CONFIG.pricing || {}),
     ...(value.pricing || {}),
     ...(value.surcharges || {}),
+    surchargeModes: {
+      ...(DEFAULT_CONFIG.pricing?.surchargeModes || {}),
+      ...(value.pricing?.surchargeModes || value.surcharges?.surchargeModes || {}),
+    },
     rounding_interval: Number(value.pricing?.rounding_interval ?? value.rounding_interval ?? DEFAULT_CONFIG.pricing.rounding_interval) || 25,
     hourly_min: Number(value.pricing?.hourly_min ?? value.hourly_min ?? DEFAULT_CONFIG.pricing.hourly_min) || 125,
     hourly_max: Number(value.pricing?.hourly_max ?? value.hourly_max ?? DEFAULT_CONFIG.pricing.hourly_max) || 135,
@@ -135,8 +146,10 @@ const normalizeConfig = (value = {}) => ({
     customZones: Array.isArray(value.geofences?.customZones) ? value.geofences.customZones.map((zone) => ({
       id: zone.id || `custom-${Math.random().toString(36).slice(2)}`,
       name: zone.name || 'Custom Geofence',
+      localityQuery: zone.localityQuery || '',
       city: zone.city || '',
       state: zone.state || '',
+      feeType: zone.feeType || 'percent',
       price: Number(zone.price ?? 0) || 0,
       shape: Array.isArray(zone.shape) ? zone.shape : [],
       type: 'custom',
@@ -184,7 +197,6 @@ const formatRole = (role) => {
   if (normalized === 'manager') return 'Manager';
   if (normalized === 'dispatch') return 'Dispatch';
   if (normalized === 'client') return 'Client';
-  if (normalized === 'member') return 'Member';
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
@@ -262,8 +274,9 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     );
   }
 
-  const handleSave = async () => {
-    const companyId = profile?.company_id || formData?.company_id;
+  const handleSave = async (sourceData = formData) => {
+    const configToSave = sourceData || formData;
+    const companyId = profile?.company_id || configToSave?.company_id;
     if (!companyId) {
       setSaveStatus({ type: 'error', message: 'No company ID found.' });
       return;
@@ -273,31 +286,31 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     setSaveStatus(null);
 
     try {
-      const visibleClients = (formData.client_portal?.clients || []).filter((client) => {
+      const visibleClients = (configToSave.client_portal?.clients || []).filter((client) => {
         const clientCompanyId = client.company_id || companyId;
         return !clientCompanyId || clientCompanyId === companyId;
       });
 
       const normalizedConfig = {
         company_id: companyId,
-        hourly_min: formData.pricing?.hourly_min || 125,
-        hourly_max: formData.pricing?.hourly_max || 135,
-        rounding_interval: formData.pricing?.rounding_interval || 25,
-        drive_time_buffer: normalizeDriveTimeBuffer(formData.pricing?.drive_time_buffer ?? 10),
-        load_unload_base_mins: formData.pricing?.load_unload_base_mins || 30,
-        extra_stop_mins: formData.pricing?.extra_stop_mins || 15,
-        after_hours_multiplier: formData.pricing?.after_hours_multiplier || 25,
-        road_club_multiplier: formData.pricing?.road_club_multiplier || 15,
-        metro_multiplier: formData.pricing?.metro_multiplier || 28.57,
-        hazard_multiplier: formData.pricing?.hazard_multiplier || 40,
+        hourly_min: configToSave.pricing?.hourly_min || 125,
+        hourly_max: configToSave.pricing?.hourly_max || 135,
+        rounding_interval: configToSave.pricing?.rounding_interval || 25,
+        drive_time_buffer: normalizeDriveTimeBuffer(configToSave.pricing?.drive_time_buffer ?? 10),
+        load_unload_base_mins: configToSave.pricing?.load_unload_base_mins || 30,
+        extra_stop_mins: configToSave.pricing?.extra_stop_mins || 15,
+        after_hours_multiplier: configToSave.pricing?.after_hours_multiplier || 25,
+        road_club_multiplier: configToSave.pricing?.road_club_multiplier || 15,
+        metro_multiplier: configToSave.pricing?.metro_multiplier || 28.57,
+        hazard_multiplier: configToSave.pricing?.hazard_multiplier || 40,
         pricing: {
           ...(DEFAULT_CONFIG.pricing || {}),
-          ...(formData.pricing || {}),
-          after_hours_multiplier: formData.pricing?.after_hours_multiplier || 25,
-          road_club_multiplier: formData.pricing?.road_club_multiplier || 15,
-          metro_multiplier: formData.pricing?.metro_multiplier || 28.57,
-          hazard_multiplier: formData.pricing?.hazard_multiplier || 40,
-          custom_surcharges: (formData.pricing?.custom_surcharges || []).map((item, index) => ({
+          ...(configToSave.pricing || {}),
+          after_hours_multiplier: configToSave.pricing?.after_hours_multiplier || 25,
+          road_club_multiplier: configToSave.pricing?.road_club_multiplier || 15,
+          metro_multiplier: configToSave.pricing?.metro_multiplier || 28.57,
+          hazard_multiplier: configToSave.pricing?.hazard_multiplier || 40,
+          custom_surcharges: (configToSave.pricing?.custom_surcharges || []).map((item, index) => ({
             id: item.id || `surcharge-${index + 1}`,
             name: item.name || `Custom Surcharge ${index + 1}`,
             feeType: item.feeType || 'flat',
@@ -307,8 +320,8 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
         },
         surcharges: {
           ...(DEFAULT_CONFIG.surcharges || {}),
-          ...(formData.surcharges || {}),
-          custom_surcharges: (formData.pricing?.custom_surcharges || []).map((item, index) => ({
+          ...(configToSave.surcharges || {}),
+          custom_surcharges: (configToSave.pricing?.custom_surcharges || []).map((item, index) => ({
             id: item.id || `surcharge-${index + 1}`,
             name: item.name || `Custom Surcharge ${index + 1}`,
             feeType: item.feeType || 'flat',
@@ -317,27 +330,29 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           })),
         },
         geofences: {
-          disabledZones: formData.geofences?.disabledZones || [],
-          customZoneRates: formData.geofences?.customZoneRates || {},
-          customZones: (formData.geofences?.customZones || []).map((zone) => ({
+          disabledZones: configToSave.geofences?.disabledZones || [],
+          customZoneRates: configToSave.geofences?.customZoneRates || {},
+          customZones: (configToSave.geofences?.customZones || []).map((zone) => ({
             id: zone.id,
             name: zone.name,
+            localityQuery: zone.localityQuery || '',
             city: zone.city,
             state: zone.state,
+            feeType: zone.feeType || 'percent',
             price: Number(zone.price ?? 0) || 0,
             shape: Array.isArray(zone.shape) ? zone.shape : [],
             type: 'custom',
           })),
         },
-        bases: (formData.bases || []).filter(Boolean),
+        bases: (configToSave.bases || []).filter(Boolean),
         users: [],
         client_portal: {
-          contact_phone: formData.client_portal?.contact_phone || DEFAULT_CONFIG.client_portal.contact_phone,
-          contact_email: formData.client_portal?.contact_email || DEFAULT_CONFIG.client_portal.contact_email,
-          approval_threshold: Number(formData.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
-          rounding_interval: ROUNDING_OPTIONS.includes(Number(formData.client_portal?.rounding_interval)) ? Number(formData.client_portal.rounding_interval) : 25,
-          disclosure: formData.client_portal?.disclosure || DEFAULT_CONFIG.client_portal.disclosure,
-          weight_tiers: (formData.client_portal?.weight_tiers || DEFAULT_CONFIG.client_portal.weight_tiers).map((tier, index) => normalizeClientPortalTier(tier, index)),
+          contact_phone: configToSave.client_portal?.contact_phone || DEFAULT_CONFIG.client_portal.contact_phone,
+          contact_email: configToSave.client_portal?.contact_email || DEFAULT_CONFIG.client_portal.contact_email,
+          approval_threshold: Number(configToSave.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
+          rounding_interval: ROUNDING_OPTIONS.includes(Number(configToSave.client_portal?.rounding_interval)) ? Number(configToSave.client_portal.rounding_interval) : 25,
+          disclosure: configToSave.client_portal?.disclosure || DEFAULT_CONFIG.client_portal.disclosure,
+          weight_tiers: (configToSave.client_portal?.weight_tiers || DEFAULT_CONFIG.client_portal.weight_tiers).map((tier, index) => normalizeClientPortalTier(tier, index)),
           clients: visibleClients.map((client, index) => ({
             id: client.id || `client-${index + 1}`,
             company_id: client.company_id || companyId,
@@ -385,6 +400,19 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     setFormData(prev => ({
       ...prev,
       pricing: { ...prev.pricing, [field]: value }
+    }));
+  };
+
+  const updatePricingMode = (field, feeType) => {
+    setFormData((prev) => ({
+      ...prev,
+      pricing: {
+        ...prev.pricing,
+        surchargeModes: {
+          ...(prev.pricing?.surchargeModes || {}),
+          [field]: feeType,
+        },
+      },
     }));
   };
 
@@ -581,6 +609,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
         email: trimmedEmail,
         role: inviteRole,
         company_id: profile?.company_id,
+        invited_by: profile?.id,
         name: inviteName.trim(),
         origin: typeof window !== 'undefined' ? window.location.origin : '',
       }),
@@ -599,7 +628,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     // 2. Optionally trigger custom email template function via Supabase Edge Function
     try {
       const emailPayload = buildInviteEmailPayload({
-        token,
+        token: apiResult.inviteToken,
         recipientEmail: trimmedEmail,
         recipientName: inviteName.trim(),
         inviterName: profile?.full_name || 'Your workspace manager',
@@ -696,11 +725,10 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     }));
   };
 
-  const toggleGeofenceState = (state) => {
-    const matchedZones = allGeofences.filter((zone) => zone.state === state);
-    if (!matchedZones.length) return;
+  const toggleFilteredGeofences = () => {
+    const matchedIds = filteredGeofences.map((zone) => zone.id);
+    if (!matchedIds.length) return;
 
-    const matchedIds = matchedZones.map((zone) => zone.id);
     const currentDisabled = formData.geofences?.disabledZones || [];
     const hasAnyEnabled = matchedIds.some((id) => !currentDisabled.includes(id));
     const updatedDisabled = hasAnyEnabled
@@ -713,8 +741,11 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     }));
   };
 
-  const updateGeofenceOverride = (zoneId, value) => {
-    const numericValue = Number(value);
+  const updateGeofenceOverride = (zoneId, fieldOrValue, maybeValue) => {
+    const hasField = maybeValue !== undefined;
+    const field = hasField ? fieldOrValue : 'value';
+    const rawValue = hasField ? maybeValue : fieldOrValue;
+    const nextValue = field === 'value' ? Number(rawValue) || 0 : rawValue;
     setFormData((prev) => ({
       ...prev,
       geofences: {
@@ -723,7 +754,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           ...(prev.geofences?.customZoneRates || {}),
           [zoneId]: {
             ...(prev.geofences?.customZoneRates?.[zoneId] || {}),
-            multiplier: Number.isFinite(numericValue) ? numericValue : 1,
+            [field]: nextValue,
           },
         },
       },
@@ -749,8 +780,10 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     const zone = {
       id: `custom-${Date.now()}`,
       name: 'New Municipality Zone',
+      localityQuery: '',
       city: '',
       state: '',
+      feeType: 'percent',
       price: 25,
       shape: [],
       type: 'custom',
@@ -766,31 +799,40 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   const saveCustomGeofence = () => {
     if (!draftCustomGeofence) return;
 
+    const localizedCity = (draftCustomGeofence.city || '').trim();
+    const localizedState = (draftCustomGeofence.state || '').trim().toUpperCase();
+    const localityQuery = (draftCustomGeofence.localityQuery || [localizedCity, localizedState].filter(Boolean).join(', ')).trim();
+
     const cleanedZone = {
       ...draftCustomGeofence,
       name: (draftCustomGeofence.name || '').trim() || 'Custom Geofence',
-      city: (draftCustomGeofence.city || '').trim(),
-      state: (draftCustomGeofence.state || '').trim(),
+      localityQuery,
+      city: localizedCity,
+      state: localizedState,
+      feeType: draftCustomGeofence.feeType === 'flat' ? 'flat' : 'percent',
       price: Number(draftCustomGeofence.price ?? 0) || 0,
       shape: Array.isArray(draftCustomGeofence.shape) ? draftCustomGeofence.shape : [],
     };
 
-    if (!cleanedZone.name || cleanedZone.shape.length < 3) {
-      setSaveStatus({ type: 'error', message: 'A custom geofence needs a label and a polygon with at least 3 points.' });
+    if (!cleanedZone.name || (!cleanedZone.city && !cleanedZone.state && !cleanedZone.localityQuery)) {
+      setSaveStatus({ type: 'error', message: 'A custom geofence needs a label and a locality selection.' });
       return;
     }
 
-    setFormData((prev) => ({
-      ...prev,
+    const nextFormData = {
+      ...formData,
       geofences: {
-        ...prev.geofences,
-        customZones: [...(prev.geofences?.customZones || []), cleanedZone],
+        ...formData.geofences,
+        customZones: [...(formData.geofences?.customZones || []).filter((zone) => zone.id !== cleanedZone.id), cleanedZone],
       },
-    }));
+    };
+
+    setFormData(nextFormData);
+    handleSave(nextFormData);
 
     setDraftCustomGeofence(null);
     setSelectedGeofenceId(cleanedZone.id);
-    setSaveStatus({ type: 'success', message: 'Custom geofence saved. It will be evaluated in quote calculations.' });
+    setSaveStatus({ type: 'success', message: 'Custom geofence saved and persisted.' });
   };
 
   const deleteCustomGeofence = (zoneId) => {
@@ -813,7 +855,12 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     const stateCandidate = (cities || [])
       .map((city) => String(city || '').split(',').pop()?.trim().toLowerCase())
       .find((part) => part && part.length <= 3 && /^[a-z]{2}$/.test(part));
-    return stateCandidate || 'other';
+    return stateCandidate || null;
+  };
+
+  const getStateName = (state) => {
+    if (!state) return '';
+    return US_STATE_NAMES[String(state).trim().toLowerCase()] || String(state).toUpperCase();
   };
 
   const allGeofences = useMemo(() => {
@@ -822,7 +869,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     const customList = (formData.geofences?.customZones || []).map((zone) => ({
       ...zone,
       type: 'custom',
-      state: (zone.state || '').trim().toLowerCase(),
+      state: (zone.state || '').trim().toLowerCase() || null,
     }));
     return [...hazardList, ...metroList, ...customList];
   }, [formData.geofences?.customZones]);
@@ -840,6 +887,8 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       const matchesSearch =
         !query ||
         zone.name.toLowerCase().includes(query) ||
+        String(zone.state || '').toLowerCase().includes(query) ||
+        getStateName(zone.state).toLowerCase().includes(query) ||
         (zone.cities || []).some((city) => city.toLowerCase().includes(query));
 
       return matchesType && matchesState && matchesSearch;
@@ -861,7 +910,10 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     });
   }, [formData.pricing?.custom_surcharges, customSurchargeFilter, customSurchargeSearch]);
   const selectedGeofence = allGeofences.find((zone) => zone.id === selectedGeofenceId) || null;
-  const geofenceStateOptions = useMemo(() => Array.from(new Set(allGeofences.map((zone) => zone.state))).sort(), [allGeofences]);
+  const geofenceStateOptions = useMemo(
+    () => Array.from(new Set(allGeofences.map((zone) => zone.state))).filter(Boolean).sort(),
+    [allGeofences]
+  );
 
   return (
     <div className="space-y-6">
@@ -877,6 +929,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
         <PricingTab
           formData={formData}
           updatePricing={updatePricing}
+          updatePricingMode={updatePricingMode}
           addTruckClass={addTruckClass}
           removeTruckClass={removeTruckClass}
           customSurchargeItems={customSurchargeItems}
@@ -899,12 +952,10 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           setGeofenceFilter={setGeofenceFilter}
           geofenceStateFilter={geofenceStateFilter}
           setGeofenceStateFilter={setGeofenceStateFilter}
-          geofenceTypeFilter={geofenceTypeFilter}
-          setGeofenceTypeFilter={setGeofenceTypeFilter}
           filteredGeofences={filteredGeofences}
           disabledSet={disabledSet}
           toggleGeofence={toggleGeofence}
-          toggleGeofenceState={toggleGeofenceState}
+          toggleFilteredGeofences={toggleFilteredGeofences}
           updateGeofenceOverride={updateGeofenceOverride}
           clearGeofenceOverride={clearGeofenceOverride}
           selectedGeofence={selectedGeofence}

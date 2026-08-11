@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   try {
     // Parse request body safely
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    const email = body?.email;
+    const email = String(body?.email || '').trim().toLowerCase();
     const clientOrigin = body?.origin || req.headers.origin;
 
     if (!email) {
@@ -29,9 +29,10 @@ export default async function handler(req, res) {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const role = body?.role || 'member';
+    const role = body?.role || 'client';
     const companyId = body?.company_id || null;
     const inviteName = body?.name || '';
+    const invitedBy = body?.invited_by || null;
 
     // Determine target domain (Live origin -> ENV fallback -> fallback domain)
     const baseUrl = clientOrigin || process.env.SITE_URL || 'https://your-production-domain.com';
@@ -55,6 +56,7 @@ export default async function handler(req, res) {
         company_id: companyId,
         role,
         full_name: inviteName,
+        invited_by: invitedBy,
         status: 'pending',
         created_at: new Date().toISOString(),
       }]);
@@ -66,6 +68,7 @@ export default async function handler(req, res) {
       success: true, 
       message: `Invitation successfully sent to ${email}`,
       data,
+      inviteToken,
       redirectUrl,
     });
 

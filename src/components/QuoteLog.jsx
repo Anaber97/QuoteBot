@@ -14,7 +14,7 @@ export default function QuoteLog({ onSelectQuote }) {
     setLoading(true);
     setError(null);
     const { data, error } = await supabase
-      .from('quotes')
+      .from('quote_logs')
       .select('*')
       .order('created_at', { ascending: false });
 
@@ -61,22 +61,24 @@ export default function QuoteLog({ onSelectQuote }) {
               <span className="font-bold text-white text-sm">{log.customer_name || 'N/A'}</span>
               <span className="block text-slate-500 text-[10px]">{log.customer_phone || 'No phone'}</span>
             </div>
-            <span className="font-extrabold text-emerald-400 text-sm">${log.quote_min} – ${log.quote_max}</span>
+            <span className="font-extrabold text-emerald-400 text-sm">${log.min_quote} – ${log.max_quote}</span>
           </div>
 
           <div className="text-slate-400 space-y-0.5">
-            <p><strong className="text-slate-300">Base:</strong> {log.base_location}</p>
-            <p><strong className="text-slate-300">Waypoints:</strong> {log.waypoints?.join(' ➔ ')}</p>
-            <p><strong className="text-slate-300">Hours:</strong> {log.estimated_hours} hrs</p>
+            <p><strong className="text-slate-300">Base:</strong> {log.base_yard_id || 'N/A'}</p>
+            <p><strong className="text-slate-300">Waypoints:</strong> {Array.isArray(log.all_waypoints) ? log.all_waypoints.join(' ➔ ') : 'N/A'}</p>
+            <p><strong className="text-slate-300">Hours:</strong> {log.total_hours} hrs</p>
           </div>
 
-          {log.surcharges_applied?.length > 0 && (
+          {log.applied_surcharges && Object.entries(log.applied_surcharges).length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1">
-              {log.surcharges_applied.map((s, i) => (
-                <span key={i} className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[10px] font-semibold">
-                  {s}
-                </span>
-              ))}
+              {Object.entries(log.applied_surcharges)
+                .filter(([, active]) => Boolean(active))
+                .map(([key]) => (
+                  <span key={key} className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[10px] font-semibold">
+                    {key}
+                  </span>
+                ))}
             </div>
           )}
 

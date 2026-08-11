@@ -113,7 +113,7 @@ const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRe
   );
 });
 
-export default function WaypointList({ waypoints, inputRefs, onChange, onRemove, onAdd }) {
+export default function WaypointList({ waypoints, inputRefs, onChange, onRemove, onAdd, onReset }) {
   return (
     <div className="space-y-3">
       {waypoints.map((waypoint, index) => (
@@ -128,13 +128,22 @@ export default function WaypointList({ waypoints, inputRefs, onChange, onRemove,
         />
       ))}
 
-      <button
-        type="button"
-        onClick={onAdd}
-        className="w-full py-2 bg-slate-800/60 hover:bg-slate-800 text-blue-400 font-semibold text-xs rounded-xl border border-blue-500/30 transition cursor-pointer"
-      >
-        + Add Extra Stop
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onAdd}
+          className="w-3/4 py-2 bg-slate-800/60 hover:bg-slate-800 text-blue-400 font-semibold text-xs rounded-xl border border-blue-500/30 transition cursor-pointer"
+        >
+          + Add Extra Stop
+        </button>
+        <button
+          type="button"
+          onClick={onReset}
+          className="w-1/4 py-2 bg-slate-900/80 hover:bg-slate-900 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition cursor-pointer"
+        >
+          RESET
+        </button>
+      </div>
     </div>
   );
 }

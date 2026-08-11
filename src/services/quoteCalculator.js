@@ -1,6 +1,7 @@
 // src/services/quoteCalculator.js
 // @ts-check
 import { RATES } from '../config/rates';
+import { METRO_CODE_BY_ZONE_ID } from '../config/geofences';
 import { evaluateMetroGeofences, evaluateHazardGeofences, evaluateCustomGeofences } from '../utils/geofenceEngine';
 import { loadGoogleMaps } from '../lib/googleMaps';
 
@@ -195,6 +196,13 @@ export async function calculateQuoteData({
   const hitMetroZone = metroMatches.length > 0;
   const hitHazardZone = hazardMatches.length > 0;
   const hitCustomZone = customMatches.length > 0;
+  const metroCodes = Array.from(
+    new Set(
+      metroMatches
+        .map((zone) => Object.entries(METRO_CODE_BY_ZONE_ID).find(([zoneId]) => zoneId === String(zone.id))?.[1])
+        .filter(Boolean)
+    )
+  );
 
   return {
     rawTotalHours,
@@ -207,9 +215,10 @@ export async function calculateQuoteData({
     hasMetroZone: hitMetroZone || isMetro,
     hasHazardZone: hitHazardZone || isHazard,
     hasCustomZone: hitCustomZone,
-    metroMultiplier: metroMatches[0]?.multiplier ?? null,
-    hazardMultiplier: hazardMatches[0]?.multiplier ?? null,
-    customMultiplier: customMatches[0]?.multiplier ?? null,
+    metroMatches,
+    hazardMatches,
+    customMatches,
+    metroCodes,
     baseAddress: currentBase?.address || '',
     cleanWaypoints,
     routeAddresses: fullRouteAddresses,
@@ -232,25 +241,50 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
 
   const pricing = companyRates?.pricing || {};
   const surcharges = companyRates?.surcharges || {};
+  const surchargeModes = pricing.surchargeModes || surcharges.surchargeModes || {};
 
-  const getMultiplier = (val, defaultPct) => {
-    const num = Number(val ?? defaultPct);
-    if (!Number.isFinite(num)) return 1;
-    return num > 5 ? 1 + num / 100 : num;
+  const getChargeType = (key, fallback = 'percent') => (surchargeModes[key] === 'flat' ? 'flat' : fallback);
+
+  const getChargeValue = (val, defaultValue) => {
+    const num = Number(val ?? defaultValue);
+    return Number.isFinite(num) ? num : Number(defaultValue) || 0;
   };
 
-  const afterHoursMult = getMultiplier(pricing.after_hours_multiplier ?? surcharges.after_hours_multiplier, 25);
-  const roadClubMult   = getMultiplier(pricing.road_club_multiplier ?? surcharges.road_club_multiplier, 15);
-  const metroMult      = getMultiplier(quoteData.metroMultiplier ?? pricing.metro_multiplier ?? surcharges.metro_multiplier, 28.57);
-  const hazardMult     = getMultiplier(quoteData.hazardMultiplier ?? pricing.hazard_multiplier ?? surcharges.hazard_multiplier, 40);
-  const customMult     = getMultiplier(quoteData.customMultiplier ?? 1, 0);
+  const chargeTotals = { multiplier: 1, flat: 0 };
 
-  let effectiveMultiplier = 1.0;
-  if (quoteData.hasAfterHours && activeOverrides?.afterHours) effectiveMultiplier *= afterHoursMult;
-  if (quoteData.hasRoadClub   && activeOverrides?.roadClub)   effectiveMultiplier *= roadClubMult;
-  if (quoteData.hasMetroZone  && activeOverrides?.metro)      effectiveMultiplier *= metroMult;
-  if (quoteData.hasHazardZone && activeOverrides?.hazard)     effectiveMultiplier *= hazardMult;
-  if (quoteData.hasCustomZone) effectiveMultiplier *= customMult;
+  const addCharge = (feeType, value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric === 0) return;
+    if (feeType === 'flat') {
+      chargeTotals.flat += numeric;
+    } else {
+      chargeTotals.multiplier *= 1 + numeric / 100;
+    }
+  };
+
+  if (quoteData.hasAfterHours && activeOverrides?.afterHours) {
+    addCharge(getChargeType('after_hours_multiplier'), getChargeValue(pricing.after_hours_multiplier ?? surcharges.after_hours_multiplier, 25));
+  }
+  if (quoteData.hasRoadClub && activeOverrides?.roadClub) {
+    addCharge(getChargeType('road_club_multiplier'), getChargeValue(pricing.road_club_multiplier ?? surcharges.road_club_multiplier, 15));
+  }
+  if (quoteData.hasMetroZone && activeOverrides?.metro) {
+      const metroMatch = Array.isArray(quoteData.metroMatches) ? quoteData.metroMatches[0] : null;
+      const charge = metroMatch?.charge || {};
+      addCharge(charge.feeType || getChargeType('metro_multiplier'), charge.value ?? getChargeValue(pricing.metro_multiplier ?? surcharges.metro_multiplier, 28.57));
+  }
+  if (quoteData.hasHazardZone && activeOverrides?.hazard) {
+    (Array.isArray(quoteData.hazardMatches) ? quoteData.hazardMatches : []).forEach((zone) => {
+      const charge = zone?.charge || {};
+      addCharge(charge.feeType || getChargeType('hazard_multiplier'), charge.value ?? getChargeValue(pricing.hazard_multiplier ?? surcharges.hazard_multiplier, 40));
+    });
+  }
+  if (quoteData.hasCustomZone) {
+    (Array.isArray(quoteData.customMatches) ? quoteData.customMatches : []).forEach((zone) => {
+      const charge = zone?.charge || {};
+      addCharge(charge.feeType || 'percent', charge.value ?? 0);
+    });
+  }
 
   let baseMinRate = Number(pricing.hourly_min || companyRates.hourly_min) || 125;
   let baseMaxRate = Number(pricing.hourly_max || companyRates.hourly_max) || 135;
@@ -268,18 +302,18 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
 
   const roundingInterval = Number(pricing.rounding_interval || companyRates.rounding_interval) || 25;
 
-  const currentMinQuote = roundToNearest(quoteData.rawTotalHours * baseMinRate * effectiveMultiplier, roundingInterval);
-  const currentMaxQuote = roundToNearest(quoteData.rawTotalHours * baseMaxRate * effectiveMultiplier, roundingInterval);
+  const currentMinQuote = roundToNearest((quoteData.rawTotalHours * baseMinRate * chargeTotals.multiplier) + chargeTotals.flat, roundingInterval);
+  const currentMaxQuote = roundToNearest((quoteData.rawTotalHours * baseMaxRate * chargeTotals.multiplier) + chargeTotals.flat, roundingInterval);
 
   const parsedCustomRate = Number(customRate);
   const customCalculatedQuote = parsedCustomRate > 0
-    ? roundToNearest(quoteData.rawTotalHours * parsedCustomRate * effectiveMultiplier, roundingInterval)
+    ? roundToNearest((quoteData.rawTotalHours * parsedCustomRate * chargeTotals.multiplier) + chargeTotals.flat, roundingInterval)
     : null;
 
   return {
     currentMinQuote,
     currentMaxQuote,
     customCalculatedQuote,
-    effectiveMultiplier,
+    effectiveMultiplier: chargeTotals.multiplier,
   };
 }

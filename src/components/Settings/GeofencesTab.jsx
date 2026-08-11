@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, MapPin, ToggleLeft, ToggleRight, Plus } from 'lucide-react';
 import CustomGeofenceEditor from './CustomGeofenceEditor';
+import { METRO_CODE_BY_ZONE_ID } from '../../config/geofences';
 
 export default function GeofencesTab({
   geofenceSearch,
@@ -12,7 +13,7 @@ export default function GeofencesTab({
   filteredGeofences,
   disabledSet,
   toggleGeofence,
-  toggleGeofenceState,
+  toggleFilteredGeofences,
   updateGeofenceOverride,
   clearGeofenceOverride,
   selectedGeofence,
@@ -25,6 +26,29 @@ export default function GeofencesTab({
   draftCustomGeofence,
   updateDraftCustomGeofence,
 }) {
+  const toTitleCase = (value) =>
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const toDisplayCity = (value) =>
+    toTitleCase(String(value || '').split(',')[0]);
+
+  const formatLocationSummary = (zone) => {
+    const cities = Array.isArray(zone?.cities)
+      ? zone.cities.filter(Boolean).map(toDisplayCity)
+      : zone?.city
+        ? [toDisplayCity(zone.city)]
+        : [];
+    const state = zone?.state ? String(zone.state).trim().toUpperCase() : '';
+
+    return {
+      cities: cities.length > 0 ? cities.join(', ') : 'No cities listed',
+      state: state || 'No state listed',
+    };
+  };
+
   return (
     <div className="space-y-4 text-xs">
       <div className="flex flex-col gap-3">
@@ -52,11 +76,9 @@ export default function GeofencesTab({
                 <option key={state} value={state}>{state.toUpperCase()}</option>
               ))}
             </select>
-            {geofenceStateFilter !== 'all' && (
-              <button type="button" onClick={() => toggleGeofenceState(geofenceStateFilter)} className="rounded-lg border border-slate-700 px-3 py-2 text-[10px] font-semibold text-slate-300">
-                Toggle state
-              </button>
-            )}
+            <button type="button" onClick={toggleFilteredGeofences} className="rounded-lg border border-slate-700 px-3 py-2 text-[10px] font-semibold text-slate-300">
+              Toggle filtered active/inactive
+            </button>
           </div>
         </div>
       </div>
@@ -64,7 +86,7 @@ export default function GeofencesTab({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[10px] uppercase tracking-wide text-slate-500">Custom municipality geofences</p>
-          <p className="text-[10px] text-slate-400">Draw a polygon and assign a price surcharge for a specific city/state.</p>
+          <p className="text-[10px] text-slate-400">Search for a locality and assign a price surcharge for that city/state.</p>
         </div>
         <button type="button" onClick={addCustomGeofence} className="flex items-center gap-1 rounded-lg border border-slate-700 px-3 py-2 text-[10px] font-semibold text-slate-300">
           <Plus className="w-3.5 h-3.5" /> New custom zone
@@ -72,28 +94,31 @@ export default function GeofencesTab({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1" style={{ gridAutoRows: '112px' }}>
           {filteredGeofences.map((zone) => {
             const isDisabled = disabledSet.has(zone.id);
             const hasOverride = Boolean(formData?.geofences?.customZoneRates?.[zone.id]);
+            const metroCode = METRO_CODE_BY_ZONE_ID[String(zone.id)] || null;
             return (
               <button
                 key={zone.id}
                 type="button"
                 onClick={() => setSelectedGeofenceId(zone.id)}
-                className={`text-left p-3 rounded-xl border transition ${isDisabled ? 'bg-[#080c14]/40 border-slate-800/50 opacity-60' : 'bg-[#080c14] border-slate-800'} ${selectedGeofence?.id === zone.id ? 'ring-1 ring-blue-500/40' : ''}`}
+                className={`text-left p-3 rounded-xl border transition h-full overflow-hidden ${isDisabled ? 'bg-[#080c14]/40 border-red-500/40' : 'bg-[#080c14] border-emerald-500/30'} ${selectedGeofence?.id === zone.id ? 'ring-1 ring-blue-500/40' : ''}`}
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="font-bold text-white text-xs flex items-center gap-1.5">
                     <MapPin className={`w-3.5 h-3.5 ${zone.type === 'hazard' ? 'text-rose-400' : 'text-cyan-400'}`} />
                     {zone.name}
                   </span>
-                  <span className="text-[10px] uppercase tracking-wide text-slate-500">{zone.state?.toUpperCase() || 'OTHER'}</span>
+                  <span className={`text-[10px] uppercase tracking-wide ${isDisabled ? 'text-red-300' : 'text-emerald-300'}`}>{isDisabled ? 'Inactive' : 'Active'}</span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] text-slate-400 line-clamp-1">{zone.cities?.join(', ')}</p>
-                  {hasOverride && <span className="text-[10px] text-amber-400">Custom</span>}
-                </div>
+                {zone.type === 'metro' && (
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
+                    <span>Metro code</span>
+                    <span className="font-semibold text-slate-300">{metroCode || 'No'}</span>
+                  </div>
+                )}
               </button>
             );
           })}
@@ -109,7 +134,7 @@ export default function GeofencesTab({
             />
           ) : (
             <div className="rounded-lg border border-dashed border-slate-700 p-3 text-center text-[10px] text-slate-500">
-              Select a geofence to edit its multiplier or create a custom municipality polygon to add a location-specific pricing rule.
+              Select a geofence to edit its multiplier or create a custom locality-based pricing rule.
             </div>
           )}
 
@@ -134,23 +159,41 @@ export default function GeofencesTab({
                   <span className="capitalize text-slate-300">{selectedGeofence.type}</span>
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-400">
-                  <span>Default multiplier</span>
-                  <span className="text-slate-300">{Number(selectedGeofence.multiplier).toFixed(2)}x</span>
+                  <span>Fee mode</span>
+                  <span className="text-slate-300">{selectedGeofence.feeType === 'flat' ? 'Flat $' : 'Percent %'}</span>
+                </div>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-[#121824] p-2.5 space-y-2">
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span>Cities</span>
+                  <span className="text-slate-300 text-right">{formatLocationSummary(selectedGeofence).cities}</span>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span>State</span>
+                  <span className="text-slate-300">{formatLocationSummary(selectedGeofence).state}</span>
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] text-slate-400 block">Override multiplier (%)</label>
+                <label className="text-[10px] text-slate-400 block">Override geofence charge</label>
                 <div className="flex gap-2">
+                  <select
+                    value={formData?.geofences?.customZoneRates?.[selectedGeofence.id]?.feeType || 'percent'}
+                    onChange={(e) => updateGeofenceOverride(selectedGeofence.id, 'feeType', e.target.value)}
+                    className="w-28 bg-[#121824] border border-slate-700 rounded p-2 text-white text-xs"
+                  >
+                    <option value="percent">Percent</option>
+                    <option value="flat">Flat</option>
+                  </select>
                   <input
                     type="number"
-                    value={formData?.geofences?.customZoneRates?.[selectedGeofence.id]?.multiplier ?? ''}
-                    onChange={(e) => updateGeofenceOverride(selectedGeofence.id, e.target.value)}
-                    placeholder="Leave blank for default"
+                    value={formData?.geofences?.customZoneRates?.[selectedGeofence.id]?.value ?? ''}
+                    onChange={(e) => updateGeofenceOverride(selectedGeofence.id, 'value', e.target.value)}
+                    placeholder={formData?.geofences?.customZoneRates?.[selectedGeofence.id]?.feeType === 'flat' ? 'Flat fee' : 'Percent'}
                     className="flex-1 bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
                   />
                   <button type="button" onClick={() => clearGeofenceOverride(selectedGeofence.id)} className="rounded-lg border border-slate-700 px-3 py-2 text-[10px] text-slate-300">Clear</button>
                 </div>
-                <p className="text-[10px] text-slate-500">Use a percentage like 28.57 for a metro-style surcharge or 40 for a hazard-style surcharge.</p>
+                <p className="text-[10px] text-slate-500">Use percent for a surcharge or flat for a fixed dollar amount when the override applies.</p>
               </div>
             </>
           )}

@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { LogOut, Calculator } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-export default function Header({ activeTab, setActiveTab, profile }) {
+export default function Header({ activeTab, setActiveTab, profile, onSignOut }) {
   const [imgError, setImgError] = useState(false);
   const rawRole = profile?.role || '';
   const role = rawRole.toLowerCase().trim();
@@ -12,7 +12,7 @@ export default function Header({ activeTab, setActiveTab, profile }) {
   console.log('Current User Profile in Header:', profile);
   console.log('Parsed Role:', role);
 
-  const isManager = ['manager', 'admin', 'owner'].includes(role);
+  const isManager = role === 'manager';
 
   const roleBadgeStyle =
     {
@@ -22,6 +22,11 @@ export default function Header({ activeTab, setActiveTab, profile }) {
     }[role] || 'bg-slate-500/10 text-slate-400 border-slate-500/30';
 
   const handleSignOut = async () => {
+    if (typeof onSignOut === 'function') {
+      await onSignOut();
+      return;
+    }
+
     await supabase.auth.signOut();
   };
 
@@ -77,7 +82,7 @@ export default function Header({ activeTab, setActiveTab, profile }) {
             Quote Log
           </button>
 
-          {/* Render Settings for Managers/Admins */}
+          {/* Render Settings for Managers */}
           {isManager && (
             <button
               type="button"

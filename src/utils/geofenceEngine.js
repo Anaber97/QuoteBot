@@ -22,16 +22,57 @@ function getActiveZones(baseZones, companyRates = {}) {
   return Object.values(baseZones).filter((zone) => !disabledZoneIds.has(String(zone.id)));
 }
 
-function getZoneMultiplier(zoneConfig, companyRates = {}) {
-  const override = companyRates?.geofences?.customZoneRates?.[zoneConfig.id];
-  if (override?.multiplier != null) {
-    const numeric = Number(override.multiplier);
-    if (Number.isFinite(numeric)) {
-      return numeric;
-    }
+function getZoneCharge(zoneConfig, companyRates = {}) {
+  const override = companyRates?.geofences?.customZoneRates?.[zoneConfig.id] || {};
+  const defaultFeeType = zoneConfig.feeType || 'percent';
+  const defaultValue = defaultFeeType === 'flat'
+    ? Number(zoneConfig.price ?? zoneConfig.value ?? 0) || 0
+    : Number.isFinite(Number(zoneConfig.multiplier))
+      ? Math.max(0, (Number(zoneConfig.multiplier) - 1) * 100)
+      : 0;
+
+  if (override.feeType === 'flat') {
+    return { feeType: 'flat', value: Number(override.value ?? override.price ?? 0) || 0 };
   }
 
-  return zoneConfig.multiplier;
+  if (override.feeType === 'percent') {
+    return { feeType: 'percent', value: Number(override.value ?? override.multiplier ?? 0) || 0 };
+  }
+
+  if (override.multiplier != null) {
+    return { feeType: 'percent', value: Number(override.multiplier) || defaultValue };
+  }
+
+  if (override.value != null) {
+    return { feeType: defaultFeeType, value: Number(override.value) || defaultValue };
+  }
+
+  return { feeType: defaultFeeType, value: defaultValue };
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchesLocality(address, zone) {
+  const addressText = normalizeText(address);
+  if (!addressText) return false;
+
+  const cityText = normalizeText(zone?.city);
+  const stateText = normalizeText(zone?.state);
+  const localityText = normalizeText(zone?.localityQuery || [zone?.city, zone?.state].filter(Boolean).join(', '));
+
+  if (localityText && addressText.includes(localityText)) return true;
+  if (cityText && stateText) {
+    return addressText.includes(cityText) && addressText.includes(stateText);
+  }
+  if (cityText) return addressText.includes(cityText);
+  if (stateText) return addressText.includes(stateText);
+  return false;
 }
 
 export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList = []) {
@@ -93,17 +134,17 @@ async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, compan
   const results = await Promise.all(
     activeZones.map(async (zone) => {
       const matched = await checkGeofenceZone(zone, cleanWaypoints, coordsList);
-      const customShape = companyRates?.geofences?.customZones?.find((item) => item.id === zone.id)?.shape;
-      const customPrice = companyRates?.geofences?.customZones?.find((item) => item.id === zone.id)?.price;
+      const customZone = companyRates?.geofences?.customZones?.find((item) => item.id === zone.id);
+      const customShape = customZone?.shape;
 
       if (!matched && customShape?.length >= 3) {
         const hit = coordsList.some((point) => point && isPointInPolygon(point, customShape));
         if (hit) {
-          return { ...zone, multiplier: getZoneMultiplier(zone, companyRates), customPrice };
+          return { ...zone, charge: getZoneCharge(zone, companyRates), customZone };
         }
       }
 
-      return matched ? { ...zone, multiplier: getZoneMultiplier(zone, companyRates), customPrice } : null;
+      return matched ? { ...zone, charge: getZoneCharge(zone, companyRates), customZone } : null;
     })
   );
   return results.filter(Boolean);
@@ -120,15 +161,40 @@ export async function evaluateHazardGeofences(cleanWaypoints, coordsList, compan
 export async function evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates = {}) {
   const disabledZoneIds = new Set((companyRates?.geofences?.disabledZones || []).map((id) => String(id)));
   const customZones = (companyRates?.geofences?.customZones || []).filter((zone) => !disabledZoneIds.has(String(zone.id)));
+  const pickupPoint = coordsList?.[0] || null;
+  const dropoffPoint = coordsList?.[coordsList.length - 1] || null;
+  const pickupAddress = cleanWaypoints?.[0] || '';
+  const dropoffAddress = cleanWaypoints?.[cleanWaypoints.length - 1] || '';
 
   const results = await Promise.all(
     customZones.map(async (zone) => {
-      if (!Array.isArray(zone.shape) || zone.shape.length < 3) return null;
-      const matched = coordsList.some((point) => point && isPointInPolygon(point, zone.shape));
-      if (!matched) return null;
+      const legacyShape = Array.isArray(zone.shape) && zone.shape.length >= 3;
+      const containsPickup = legacyShape
+        ? (pickupPoint ? isPointInPolygon(pickupPoint, zone.shape) : false)
+        : matchesLocality(pickupAddress, zone);
+      const containsDropoff = legacyShape
+        ? (dropoffPoint ? isPointInPolygon(dropoffPoint, zone.shape) : false)
+        : matchesLocality(dropoffAddress, zone);
+      const anyRoutePointInside = legacyShape
+        ? coordsList.some((point) => point && isPointInPolygon(point, zone.shape))
+        : cleanWaypoints.some((address) => matchesLocality(address, zone));
+
+      if (String(zone.feeType || 'percent') === 'flat') {
+        if (!containsPickup || !containsDropoff) return null;
+        return {
+          ...zone,
+          charge: { feeType: 'flat', value: Number(zone.price ?? zone.value ?? 0) || 0 },
+          containsPickup,
+          containsDropoff,
+        };
+      }
+
+      if (!anyRoutePointInside) return null;
       return {
         ...zone,
-        multiplier: Number(zone.price ?? 0) > 0 ? 1 + Number(zone.price ?? 0) / 100 : 1,
+        charge: { feeType: 'percent', value: Number(zone.price ?? zone.value ?? 0) || 0 },
+        containsPickup,
+        containsDropoff,
       };
     })
   );

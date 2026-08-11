@@ -18,7 +18,7 @@ const BADGE_STYLES = {
   metro: {
     active: 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300',
     disabled: 'bg-slate-900/60 border-slate-800 text-slate-500',
-    label: 'Metro Zone (+28.57%)',
+    label: 'Metro Zone',
   },
   hazard: {
     active: 'bg-rose-500/15 border-rose-500/40 text-rose-300',
@@ -30,6 +30,15 @@ const BADGE_STYLES = {
     disabled: 'border-slate-700 bg-slate-900/60 text-slate-500',
     label: 'Custom Zone',
   },
+};
+
+const formatChargeLabel = (label, feeType, value, defaultSuffix = '%') => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return label;
+  if (feeType === 'flat') return `${label} (+$${numericValue.toFixed(0)})`;
+  const suffix = defaultSuffix || '%';
+  const formatted = Number.isInteger(numericValue) ? numericValue.toFixed(0) : numericValue.toFixed(2);
+  return `${label} (+${formatted}${suffix})`;
 };
 
 // Distinct surcharge badge styling
@@ -77,6 +86,10 @@ export default function QuoteResultsCard({
     quoteData?.hasHazardZone ? { key: 'hazard', active: activeOverrides?.hazard } : null,
     quoteData?.hasCustomZone ? { key: 'custom', active: true } : null,
   ].filter(Boolean);
+  const metroCodes = Array.isArray(quoteData?.metroCodes) && quoteData.metroCodes.length > 0 ? quoteData.metroCodes : [];
+  const metroFeeMode = companyRates?.pricing?.surchargeModes?.metro_multiplier || companyRates?.surcharges?.surchargeModes?.metro_multiplier || 'percent';
+  const metroFeeValue = companyRates?.pricing?.metro_multiplier ?? companyRates?.surcharges?.metro_multiplier ?? 28.57;
+  const metroBadgeLabel = formatChargeLabel('Metro Zone', metroFeeMode, metroFeeValue);
   const routeLegs = Array.isArray(quoteData?.legsDetails) ? quoteData.legsDetails : [];
   const isBreakdownVisible = isDispatcherView && Boolean(state?.showDetails);
 
@@ -192,7 +205,7 @@ export default function QuoteResultsCard({
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${active ? style.active : style.disabled}`}
                   title={active ? 'Click to disable surcharge' : 'Click to restore surcharge'}
                 >
-                  <span>{style.label}</span>
+                  <span>{key === 'metro' ? metroBadgeLabel : style.label}</span>
                   <span className="rounded bg-black/20 px-1 text-[10px] font-black leading-none opacity-80">
                     {active ? '✕' : '↺'}
                   </span>
@@ -235,7 +248,7 @@ export default function QuoteResultsCard({
                 <span className="font-semibold text-slate-200">{Math.round(Number(quoteData?.loadUnloadTime || 0))} mins</span>
               </div>
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>Metro Zone</span>
+                <span>Municipality Code(s)</span>
                 <span
                   className={`font-semibold ${
                     quoteData.hasMetroZone && activeOverrides?.metro
@@ -243,11 +256,7 @@ export default function QuoteResultsCard({
                       : 'text-slate-200'
                   }`}
                 >
-                  {quoteData.hasMetroZone
-                    ? activeOverrides?.metro
-                      ? 'Applied (+28.57%)'
-                      : 'Removed (0%)'
-                    : 'No'}
+                  {metroCodes.length > 0 ? metroCodes.join(', ') : 'No'}
                 </span>
               </div>
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">

@@ -17,50 +17,56 @@ export default function LoginCard() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
 
-  // 1. Password Login (with Profile Check)
   const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+  e.preventDefault();
+  setLoading(true);
+  setError(null);
 
-    try {
-      const cleanedEmail = email.trim().toLowerCase();
+  try {
+    const cleanedEmail = email.trim().toLowerCase();
 
-      if (!cleanedEmail || !password) {
-        throw new Error('Please enter both your email and password.');
-      }
+    if (!cleanedEmail || !password) {
+      throw new Error('Please enter both your email and password.');
+    }
 
-      // Check if the email exists in your profiles table first
-      const { data: profileMatch, error: profileErr } = await supabase
-        .from('profiles')
-        .select('id, email')
-        .eq('email', cleanedEmail)
-        .maybeSingle();
-
-      if (profileErr) {
-        throw new Error('Database check failed. Please try again.');
-      }
-
-      // If no profile matches this email, block the login
-      if (!profileMatch) {
-        throw new Error('Access denied. This email is not registered under any company workspace.');
-      }
-
-      // 2. Changed from signInWithOtp to signInWithPassword
-      const { error: authErr } = await supabase.auth.signInWithPassword({
+    // Authenticate FIRST.
+    const { data: authData, error: authErr } =
+      await supabase.auth.signInWithPassword({
         email: cleanedEmail,
-        password: password,
+        password,
       });
 
-      if (authErr) throw authErr;
+    if (authErr) throw authErr;
 
-      // Supabase handles the session automatically on success!
-    } catch (err) {
-      setError(err.message || 'Failed to sign in.');
-    } finally {
-      setLoading(false);
+    // Now that we're authenticated, RLS allows us to read
+    // the user's own profile.
+    const { data: profileMatch, error: profileErr } =
+      await supabase
+        .from('profiles')
+        .select('id, email, company_id, role, full_name')
+        .eq('id', authData.user.id)
+        .maybeSingle();
+
+    if (profileErr) {
+      await supabase.auth.signOut();
+      throw new Error('Unable to load your company profile.');
     }
-  };
+
+    if (!profileMatch?.company_id) {
+      await supabase.auth.signOut();
+      throw new Error(
+        'Access denied. Your account is not associated with a company workspace.'
+      );
+    }
+
+    // Supabase has the authenticated session.
+    // App.jsx will pick it up through the auth state listener.
+  } catch (err) {
+    setError(err.message || 'Failed to sign in.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // 2. Submit Paid Account Request to Queue
   const handleRequestAccount = async (e) => {

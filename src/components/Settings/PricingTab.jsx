@@ -4,6 +4,7 @@ import { DollarSign, Clock, Plus, Trash2, Percent, ToggleLeft, ToggleRight } fro
 export default function PricingTab({
   formData,
   updatePricing,
+  updatePricingMode,
   addTruckClass,
   removeTruckClass,
   customSurchargeItems,
@@ -15,6 +16,32 @@ export default function PricingTab({
   customSurchargeFilter,
   setCustomSurchargeFilter,
 }) {
+  const renderSurchargeControl = (field, label, defaultValue) => {
+    const feeType = formData.pricing?.surchargeModes?.[field] || 'percent';
+    const unitLabel = feeType === 'flat' ? '$' : '%';
+
+    return (
+      <div>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <label className="text-[10px] text-slate-400 block">{label} ({unitLabel})</label>
+          <button
+            type="button"
+            onClick={() => updatePricingMode(field, feeType === 'flat' ? 'percent' : 'flat')}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${feeType === 'flat' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-slate-700 bg-slate-900/60 text-slate-300'}`}
+          >
+            {feeType === 'flat' ? 'Flat $' : 'Percent %'}
+          </button>
+        </div>
+        <input
+          type="number"
+          value={formData.pricing?.[field] ?? defaultValue}
+          onChange={(e) => updatePricing(field, parseFloat(e.target.value) || 0)}
+          className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
+        />
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-5 text-xs">
       <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
@@ -86,45 +113,13 @@ export default function PricingTab({
 
       <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
         <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
-          <Percent className="w-4 h-4 text-amber-400" /> Standard Multipliers (%)
+          <Percent className="w-4 h-4 text-amber-400" /> Standard Multipliers
         </h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">After Hours (%)</label>
-            <input
-              type="number"
-              value={formData.pricing?.after_hours_multiplier ?? 25}
-              onChange={(e) => updatePricing('after_hours_multiplier', parseFloat(e.target.value) || 0)}
-              className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Road Club (%)</label>
-            <input
-              type="number"
-              value={formData.pricing?.road_club_multiplier ?? 15}
-              onChange={(e) => updatePricing('road_club_multiplier', parseFloat(e.target.value) || 0)}
-              className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Metro (%)</label>
-            <input
-              type="number"
-              value={formData.pricing?.metro_multiplier ?? 28.57}
-              onChange={(e) => updatePricing('metro_multiplier', parseFloat(e.target.value) || 0)}
-              className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Hazard (%)</label>
-            <input
-              type="number"
-              value={formData.pricing?.hazard_multiplier ?? 40}
-              onChange={(e) => updatePricing('hazard_multiplier', parseFloat(e.target.value) || 0)}
-              className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-            />
-          </div>
+          {renderSurchargeControl('after_hours_multiplier', 'After Hours', 25)}
+          {renderSurchargeControl('road_club_multiplier', 'Road Club', 15)}
+          {renderSurchargeControl('metro_multiplier', 'Metro', 28.57)}
+          {renderSurchargeControl('hazard_multiplier', 'Hazard', 40)}
         </div>
       </div>
 

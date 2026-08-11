@@ -40,17 +40,19 @@ export default function InviteRegister() {
     }
 
     try {
-      const { data: inviteData, error: inviteError } = await supabase
-        .from('company_invites')
-        .select('*')
-        .eq('token', inviteToken)
-        .maybeSingle();
+      const inviteResponse = await fetch('/api/getInvite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: inviteToken }),
+      });
 
-      if (inviteError) throw inviteError;
-      if (!inviteData && !inviteRoleFromQuery) {
-        throw new Error('This invite is no longer valid. Please request a new one.');
+      const invitePayload = await inviteResponse.json().catch(() => ({}));
+      if (!inviteResponse.ok) {
+        throw new Error(invitePayload.error || 'This invite is no longer valid. Please request a new one.');
       }
-      if (inviteData && inviteData.status !== 'pending') {
+
+      const inviteData = invitePayload.invite;
+      if (!inviteData) {
         throw new Error('This invite is no longer valid. Please request a new one.');
       }
 
@@ -72,34 +74,26 @@ export default function InviteRegister() {
         throw new Error('The account could not be created yet. Please try again.');
       }
 
-      const resolvedRole = (inviteRoleFromQuery || inviteData?.role || 'member').toLowerCase();
-      const resolvedCompanyId = inviteData?.company_id || null;
+      const resolvedRole = (inviteRoleFromQuery || inviteData?.role || 'client').toLowerCase();
+      if (!['manager', 'dispatch', 'client'].includes(resolvedRole)) {
+        throw new Error('This invite specifies an invalid role.');
+      }
 
-      const { error: profileError } = await supabase.from('profiles').upsert(
-        {
-          id: userId,
+      const acceptResponse = await fetch('/api/acceptInvite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: inviteToken,
+          userId,
           email: cleanedEmail,
-          full_name: fullName.trim(),
-          company_id: resolvedCompanyId,
+          fullName: fullName.trim(),
           role: resolvedRole,
-          created_at: new Date().toISOString(),
-        },
-        { onConflict: 'id' }
-      );
+        }),
+      });
 
-      if (profileError) throw profileError;
-
-      if (inviteData?.id) {
-        const { error: inviteUpdateError } = await supabase
-          .from('company_invites')
-          .update({
-            status: 'accepted',
-            accepted_at: new Date().toISOString(),
-            accepted_by: userId,
-          })
-          .eq('id', inviteData.id);
-
-        if (inviteUpdateError) throw inviteUpdateError;
+      const acceptPayload = await acceptResponse.json().catch(() => ({}));
+      if (!acceptResponse.ok) {
+        throw new Error(acceptPayload.error || 'Unable to complete registration.');
       }
 
       setMessage({ type: 'success', text: 'Account created successfully. You can sign in now.' });

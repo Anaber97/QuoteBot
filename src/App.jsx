@@ -151,6 +151,19 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [quoteData, setQuoteData] = useState(null);
   const [error, setError] = useState(null);
+  const currentAuthUserIdRef = useRef(null);
+
+  const resetCalculatorState = () => {
+    dispatch({ type: 'RESET_FORM' });
+    setQuoteData(null);
+    setError(null);
+    setLoading(false);
+  };
+
+  const handleSignOut = async () => {
+    resetCalculatorState();
+    await supabase.auth.signOut();
+  };
 
   const getActiveClientConfig = (activeProfile = profile, activeRates = companyRates) => {
     if (!activeProfile || !activeRates?.client_portal?.clients?.length) return null;
@@ -168,8 +181,8 @@ export default function App() {
   const resultsRef = useRef(null);
 
   const userRole = (profile?.role || '').toLowerCase().trim();
-  const isClientPortalUser = ['client', 'member', 'subaccount'].includes(userRole);
-  const isManagerRole = ['manager', 'admin', 'owner'].includes(userRole);
+  const isClientPortalUser = userRole === 'client';
+  const isManagerRole = userRole === 'manager';
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -180,12 +193,26 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session?.user) fetchProfileAndRates(session.user.id);
+      const nextUserId = session?.user?.id || null;
+      currentAuthUserIdRef.current = nextUserId;
+      if (nextUserId) {
+        resetCalculatorState();
+        fetchProfileAndRates(nextUserId);
+      }
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextUserId = session?.user?.id || null;
+      const previousUserId = currentAuthUserIdRef.current;
+      const didAuthIdentityChange = previousUserId !== nextUserId;
+
+      if (didAuthIdentityChange) {
+        resetCalculatorState();
+      }
+
+      currentAuthUserIdRef.current = nextUserId;
       setSession(session);
       if (session?.user) fetchProfileAndRates(session.user.id);
       else {
@@ -556,6 +583,7 @@ export default function App() {
         profile={profile}
         activeTab={state.activeTab}
         setActiveTab={(tab) => dispatch({ type: 'SET_TAB', payload: tab })}
+        onSignOut={handleSignOut}
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
@@ -684,6 +712,7 @@ export default function App() {
                           }
                           onRemove={(index) => dispatch({ type: 'REMOVE_WAYPOINT', payload: index })}
                           onAdd={() => dispatch({ type: 'ADD_WAYPOINT' })}
+                          onReset={resetCalculatorState}
                         />
                       </div>
 
