@@ -32,36 +32,98 @@ const normalizeDriveTimeBuffer = (value) => {
   return 10;
 };
 
-const normalizeCompanyConfig = (config = {}) => ({
+const normalizeCompanyConfig = (rawConfig = {}) => {
+  // app_config has a legacy JSON "config" column plus the newer structured
+  // columns. Merge the legacy object first so either storage format works.
+  const config = {
+    ...(rawConfig.config && typeof rawConfig.config === 'object' ? rawConfig.config : {}),
+    ...rawConfig,
+  };
+
+  return {
   ...DEFAULT_CONFIG,
   ...config,
   company_id: config.company_id || DEFAULT_CONFIG.company_id,
   pricing: {
     ...(DEFAULT_CONFIG.pricing || {}),
     ...(config.pricing || {}),
+    ...(config.surcharges || {}),
+    surchargeModes: {
+      ...(DEFAULT_CONFIG.pricing?.surchargeModes || {}),
+      ...(config.pricing?.surchargeModes || config.surcharges?.surchargeModes || {}),
+    },
     rounding_interval: Number(
       config.pricing?.rounding_interval ?? config.rounding_interval ?? DEFAULT_CONFIG.pricing.rounding_interval
     ) || 25,
     hourly_min: Number(config.pricing?.hourly_min ?? config.hourly_min ?? DEFAULT_CONFIG.pricing.hourly_min) || 125,
     hourly_max: Number(config.pricing?.hourly_max ?? config.hourly_max ?? DEFAULT_CONFIG.pricing.hourly_max) || 135,
     drive_time_buffer: normalizeDriveTimeBuffer(config.pricing?.drive_time_buffer ?? config.drive_time_buffer ?? DEFAULT_CONFIG.pricing.drive_time_buffer),
+    after_hours_multiplier: Number(config.pricing?.after_hours_multiplier ?? config.surcharges?.after_hours_multiplier ?? config.after_hours_multiplier ?? DEFAULT_CONFIG.pricing.after_hours_multiplier) || 25,
+    road_club_multiplier: Number(config.pricing?.road_club_multiplier ?? config.surcharges?.road_club_multiplier ?? config.road_club_multiplier ?? DEFAULT_CONFIG.pricing.road_club_multiplier) || 15,
+    metro_multiplier: Number(config.pricing?.metro_multiplier ?? config.surcharges?.metro_multiplier ?? DEFAULT_CONFIG.pricing.metro_multiplier) || 28.57,
+    hazard_multiplier: Number(config.pricing?.hazard_multiplier ?? config.surcharges?.hazard_multiplier ?? DEFAULT_CONFIG.pricing.hazard_multiplier) || 40,
     load_unload_base_mins: Number(config.pricing?.load_unload_base_mins ?? config.load_unload_base_mins ?? DEFAULT_CONFIG.pricing.load_unload_base_mins) || 30,
     extra_stop_mins: Number(config.pricing?.extra_stop_mins ?? config.extra_stop_mins ?? DEFAULT_CONFIG.pricing.extra_stop_mins) || 15,
+    custom_truck_classes: Array.isArray(config.pricing?.custom_truck_classes) ? config.pricing.custom_truck_classes : DEFAULT_CONFIG.pricing.custom_truck_classes,
+    custom_surcharges: Array.isArray(config.pricing?.custom_surcharges ?? config.surcharges?.custom_surcharges)
+      ? (config.pricing?.custom_surcharges ?? config.surcharges?.custom_surcharges).map((item, index) => ({
+          id: item.id || `surcharge-${index + 1}`,
+          name: item.name || `Custom Surcharge ${index + 1}`,
+          feeType: item.feeType || 'flat',
+          value: Number(item.value ?? 0) || 0,
+          active: item.active !== false,
+        }))
+      : DEFAULT_CONFIG.pricing.custom_surcharges,
   },
   surcharges: {
     ...(DEFAULT_CONFIG.surcharges || {}),
     ...(config.surcharges || {}),
+    custom_surcharges: Array.isArray(config.pricing?.custom_surcharges ?? config.surcharges?.custom_surcharges)
+      ? (config.pricing?.custom_surcharges ?? config.surcharges?.custom_surcharges).map((item, index) => ({
+          id: item.id || `surcharge-${index + 1}`,
+          name: item.name || `Custom Surcharge ${index + 1}`,
+          feeType: item.feeType || 'flat',
+          value: Number(item.value ?? 0) || 0,
+          active: item.active !== false,
+        }))
+      : DEFAULT_CONFIG.surcharges.custom_surcharges,
   },
   geofences: {
     disabledZones: config.geofences?.disabledZones || [],
     customZoneRates: config.geofences?.customZoneRates || {},
-    customZones: Array.isArray(config.geofences?.customZones) ? config.geofences.customZones : [],
+    customZones: Array.isArray(config.geofences?.customZones)
+      ? config.geofences.customZones.map((zone) => ({
+          id: zone.id || `custom-${Math.random().toString(36).slice(2)}`,
+          name: zone.name || 'Custom Geofence',
+          localityQuery: zone.localityQuery || '',
+          city: zone.city || '',
+          state: zone.state || '',
+          feeType: zone.feeType || 'percent',
+          price: Number(zone.price ?? 0) || 0,
+          shape: Array.isArray(zone.shape) ? zone.shape : [],
+          type: 'custom',
+        }))
+      : [],
   },
   bases: Array.isArray(config.bases) && config.bases.length > 0 ? config.bases : DEFAULT_CONFIG.bases,
   users: Array.isArray(config.users) ? config.users.filter(Boolean) : [],
   client_portal: {
     ...(DEFAULT_CONFIG.client_portal || {}),
     ...(config.client_portal || {}),
+    approval_threshold: Number(config.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
+    rounding_interval: Number(config.client_portal?.rounding_interval ?? DEFAULT_CONFIG.client_portal.rounding_interval) || 25,
+    weight_tiers: Array.isArray(config.client_portal?.weight_tiers) && config.client_portal.weight_tiers.length > 0
+      ? config.client_portal.weight_tiers.map((tier, index) => ({
+          id: tier.id || `tier-${index + 1}`,
+          label: tier.label || `Tier ${index + 1}`,
+          minWeight: Number(tier.minWeight ?? tier.min ?? 0) || 0,
+          maxWeight: Number(tier.maxWeight ?? tier.max ?? 999999) || 999999,
+          rate: Number(tier.rate ?? tier.hourly_rate ?? 0) || 0,
+          rounding_interval: Number(tier.rounding_interval ?? 25) || 25,
+          drive_time_buffer: Number(tier.drive_time_buffer ?? 10) || 10,
+          load_unload_base_mins: Number(tier.load_unload_base_mins ?? 30) || 30,
+        }))
+      : DEFAULT_CONFIG.client_portal.weight_tiers,
     clients: Array.isArray(config.client_portal?.clients)
       ? config.client_portal.clients.map((client) => ({
           ...client,
@@ -69,7 +131,8 @@ const normalizeCompanyConfig = (config = {}) => ({
         }))
       : [],
   },
-});
+  };
+};
 
 const initialState = {
   activeTab: 'calculator',
@@ -236,14 +299,37 @@ export default function App() {
       setProfile(prof);
 
       if (prof?.company_id) {
-        const { data: ratesData, error: ratesErr } = await supabase
-          .from('app_config')
-          .select('*')
-          .eq('company_id', prof.company_id)
-          .maybeSingle();
+        let loadedConfig = null;
 
-        if (!ratesErr && ratesData) {
-          setCompanyRates(normalizeCompanyConfig(ratesData));
+        try {
+          const params = new URLSearchParams({
+            company_id: String(prof.company_id),
+            user_id: String(userId),
+          });
+          const response = await fetch(`/api/getAppConfig?${params.toString()}`);
+          const result = await response.json().catch(() => ({}));
+
+          if (response.ok && result?.config) {
+            loadedConfig = result.config;
+          }
+        } catch (apiErr) {
+          console.warn('Server app_config fetch fallback triggered:', apiErr);
+        }
+
+        if (!loadedConfig) {
+          const { data: ratesData, error: ratesErr } = await supabase
+            .from('app_config')
+            .select('*')
+            .eq('company_id', prof.company_id)
+            .maybeSingle();
+
+          if (!ratesErr && ratesData) {
+            loadedConfig = ratesData;
+          }
+        }
+
+        if (loadedConfig) {
+          setCompanyRates(normalizeCompanyConfig(loadedConfig));
         }
       }
     } catch (err) {

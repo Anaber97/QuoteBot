@@ -95,7 +95,16 @@ const normalizeClientPortalTier = (tier = {}, index = 0) => ({
   load_unload_base_mins: Number(tier.load_unload_base_mins ?? 30) || 30,
 });
 
-const normalizeConfig = (value = {}) => ({
+const normalizeConfig = (rawValue = {}) => {
+  // app_config has historically stored settings in several places. Treat the
+  // JSON "config" column as the oldest source, then let the current columns
+  // override it. This makes old and new rows load consistently.
+  const value = {
+    ...(rawValue.config && typeof rawValue.config === 'object' ? rawValue.config : {}),
+    ...rawValue,
+  };
+
+  return {
   ...DEFAULT_CONFIG,
   ...value,
   company_id: value.company_id || DEFAULT_CONFIG.company_id,
@@ -190,7 +199,8 @@ const normalizeConfig = (value = {}) => ({
         }))
       : [],
   },
-});
+  };
+};
 
 const formatRole = (role) => {
   const normalized = String(role || '').trim().toLowerCase();
@@ -274,9 +284,14 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     );
   }
 
-  const handleSave = async (sourceData = formData) => {
-    const configToSave = sourceData || formData;
+  const handleSave = async (sourceData) => {
+  const configSource =
+    sourceData && typeof sourceData === 'object' && !('nativeEvent' in sourceData)
+      ? sourceData
+      : formData;
+    const configToSave = normalizeConfig(configSource);
     const companyId = profile?.company_id || configToSave?.company_id;
+
     if (!companyId) {
       setSaveStatus({ type: 'error', message: 'No company ID found.' });
       return;
@@ -288,44 +303,42 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     try {
       const visibleClients = (configToSave.client_portal?.clients || []).filter((client) => {
         const clientCompanyId = client.company_id || companyId;
-        return !clientCompanyId || clientCompanyId === companyId;
+        return clientCompanyId === companyId;
       });
 
+      // This is the single canonical shape used by the UI and API.
+      // The API also mirrors the core pricing values into the legacy flat
+      // app_config columns for backwards compatibility.
       const normalizedConfig = {
+        ...configToSave,
         company_id: companyId,
-        hourly_min: configToSave.pricing?.hourly_min || 125,
-        hourly_max: configToSave.pricing?.hourly_max || 135,
-        rounding_interval: configToSave.pricing?.rounding_interval || 25,
-        drive_time_buffer: normalizeDriveTimeBuffer(configToSave.pricing?.drive_time_buffer ?? 10),
-        load_unload_base_mins: configToSave.pricing?.load_unload_base_mins || 30,
-        extra_stop_mins: configToSave.pricing?.extra_stop_mins || 15,
-        after_hours_multiplier: configToSave.pricing?.after_hours_multiplier || 25,
-        road_club_multiplier: configToSave.pricing?.road_club_multiplier || 15,
-        metro_multiplier: configToSave.pricing?.metro_multiplier || 28.57,
-        hazard_multiplier: configToSave.pricing?.hazard_multiplier || 40,
         pricing: {
-          ...(DEFAULT_CONFIG.pricing || {}),
-          ...(configToSave.pricing || {}),
-          after_hours_multiplier: configToSave.pricing?.after_hours_multiplier || 25,
-          road_club_multiplier: configToSave.pricing?.road_club_multiplier || 15,
-          metro_multiplier: configToSave.pricing?.metro_multiplier || 28.57,
-          hazard_multiplier: configToSave.pricing?.hazard_multiplier || 40,
+          ...configToSave.pricing,
+          hourly_min: Number(configToSave.pricing?.hourly_min ?? 125),
+          hourly_max: Number(configToSave.pricing?.hourly_max ?? 135),
+          rounding_interval: Number(configToSave.pricing?.rounding_interval ?? 25),
+          drive_time_buffer: normalizeDriveTimeBuffer(configToSave.pricing?.drive_time_buffer ?? 10),
+          load_unload_base_mins: Number(configToSave.pricing?.load_unload_base_mins ?? 30),
+          extra_stop_mins: Number(configToSave.pricing?.extra_stop_mins ?? 15),
+          after_hours_multiplier: Number(configToSave.pricing?.after_hours_multiplier ?? 25),
+          road_club_multiplier: Number(configToSave.pricing?.road_club_multiplier ?? 15),
+          metro_multiplier: Number(configToSave.pricing?.metro_multiplier ?? 28.57),
+          hazard_multiplier: Number(configToSave.pricing?.hazard_multiplier ?? 40),
           custom_surcharges: (configToSave.pricing?.custom_surcharges || []).map((item, index) => ({
             id: item.id || `surcharge-${index + 1}`,
             name: item.name || `Custom Surcharge ${index + 1}`,
             feeType: item.feeType || 'flat',
-            value: Number(item.value ?? 0) || 0,
+            value: Number(item.value ?? 0),
             active: item.active !== false,
           })),
         },
         surcharges: {
-          ...(DEFAULT_CONFIG.surcharges || {}),
-          ...(configToSave.surcharges || {}),
+          ...configToSave.surcharges,
           custom_surcharges: (configToSave.pricing?.custom_surcharges || []).map((item, index) => ({
             id: item.id || `surcharge-${index + 1}`,
             name: item.name || `Custom Surcharge ${index + 1}`,
             feeType: item.feeType || 'flat',
-            value: Number(item.value ?? 0) || 0,
+            value: Number(item.value ?? 0),
             active: item.active !== false,
           })),
         },
@@ -333,61 +346,80 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           disabledZones: configToSave.geofences?.disabledZones || [],
           customZoneRates: configToSave.geofences?.customZoneRates || {},
           customZones: (configToSave.geofences?.customZones || []).map((zone) => ({
-            id: zone.id,
-            name: zone.name,
-            localityQuery: zone.localityQuery || '',
-            city: zone.city,
-            state: zone.state,
-            feeType: zone.feeType || 'percent',
-            price: Number(zone.price ?? 0) || 0,
-            shape: Array.isArray(zone.shape) ? zone.shape : [],
+            ...zone,
+            id: zone.id || `custom-${Date.now()}`,
             type: 'custom',
+            price: Number(zone.price ?? 0),
+            shape: Array.isArray(zone.shape) ? zone.shape : [],
           })),
         },
         bases: (configToSave.bases || []).filter(Boolean),
         users: [],
         client_portal: {
-          contact_phone: configToSave.client_portal?.contact_phone || DEFAULT_CONFIG.client_portal.contact_phone,
-          contact_email: configToSave.client_portal?.contact_email || DEFAULT_CONFIG.client_portal.contact_email,
-          approval_threshold: Number(configToSave.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
-          rounding_interval: ROUNDING_OPTIONS.includes(Number(configToSave.client_portal?.rounding_interval)) ? Number(configToSave.client_portal.rounding_interval) : 25,
-          disclosure: configToSave.client_portal?.disclosure || DEFAULT_CONFIG.client_portal.disclosure,
-          weight_tiers: (configToSave.client_portal?.weight_tiers || DEFAULT_CONFIG.client_portal.weight_tiers).map((tier, index) => normalizeClientPortalTier(tier, index)),
+          ...configToSave.client_portal,
+          approval_threshold: Number(configToSave.client_portal?.approval_threshold ?? 80000),
+          rounding_interval: ROUNDING_OPTIONS.includes(Number(configToSave.client_portal?.rounding_interval))
+            ? Number(configToSave.client_portal.rounding_interval)
+            : 25,
+          weight_tiers: (configToSave.client_portal?.weight_tiers || []).map((tier, index) =>
+            normalizeClientPortalTier(tier, index)
+          ),
           clients: visibleClients.map((client, index) => ({
             id: client.id || `client-${index + 1}`,
             company_id: client.company_id || companyId,
             client_name: client.client_name || client.name || `Client ${index + 1}`,
             contact_email: client.contact_email || '',
             contact_phone: client.contact_phone || '',
-            approval_threshold: client.approval_threshold === '' || client.approval_threshold === null || client.approval_threshold === undefined
-              ? null
-              : Number(client.approval_threshold),
+            approval_threshold:
+              client.approval_threshold === '' ||
+              client.approval_threshold === null ||
+              client.approval_threshold === undefined
+                ? null
+                : Number(client.approval_threshold),
             pricing: {
-              hourly_min: client.pricing?.hourly_min === '' || client.pricing?.hourly_min === null || client.pricing?.hourly_min === undefined
-                ? null
-                : Number(client.pricing.hourly_min),
-              hourly_max: client.pricing?.hourly_max === '' || client.pricing?.hourly_max === null || client.pricing?.hourly_max === undefined
-                ? null
-                : Number(client.pricing.hourly_max),
-              rounding_interval: client.pricing?.rounding_interval === '' || client.pricing?.rounding_interval === null || client.pricing?.rounding_interval === undefined
-                ? 25
-                : Number(client.pricing.rounding_interval),
+              hourly_min:
+                client.pricing?.hourly_min === '' ||
+                client.pricing?.hourly_min === null ||
+                client.pricing?.hourly_min === undefined
+                  ? null
+                  : Number(client.pricing.hourly_min),
+              hourly_max:
+                client.pricing?.hourly_max === '' ||
+                client.pricing?.hourly_max === null ||
+                client.pricing?.hourly_max === undefined
+                  ? null
+                  : Number(client.pricing.hourly_max),
+              rounding_interval:
+                client.pricing?.rounding_interval === '' ||
+                client.pricing?.rounding_interval === null ||
+                client.pricing?.rounding_interval === undefined
+                  ? 25
+                  : Number(client.pricing.rounding_interval),
             },
           })),
         },
-        updated_at: new Date().toISOString()
       };
 
-      const payload = normalizedConfig;
+      const response = await fetch('/api/saveAppConfig', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId,
+          user_id: profile?.id,
+          config: normalizedConfig,
+        }),
+      });
 
-      const { error } = await supabase
-        .from('app_config')
-        .upsert(payload, { onConflict: 'company_id' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result?.error || `Settings save failed (${response.status}).`);
+      }
 
-      if (error) throw error;
-
+      // Use the exact object we sent as the new in-memory source of truth.
+      const savedConfig = normalizeConfig(result?.config || normalizedConfig);
       setSaveStatus({ type: 'success', message: 'Configuration saved successfully!' });
-      if (onSaveConfig) onSaveConfig(normalizedConfig);
+      setFormData(savedConfig);
+      if (onSaveConfig) onSaveConfig(savedConfig);
     } catch (err) {
       console.error('Error saving app_config:', err);
       setSaveStatus({ type: 'error', message: err.message || 'Failed to save settings.' });

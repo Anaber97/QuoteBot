@@ -26,6 +26,22 @@ function apiRoutePlugin() {
         }
 
         try {
+          let parsedBody = undefined;
+          if (req.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method.toUpperCase())) {
+            const chunks = [];
+            for await (const chunk of req) {
+              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            }
+            const rawBody = Buffer.concat(chunks).toString('utf8');
+            if (rawBody) {
+              try {
+                parsedBody = JSON.parse(rawBody);
+              } catch {
+                parsedBody = rawBody;
+              }
+            }
+          }
+
           const handlerModule = await import(`${pathToFileURL(apiFilePath).href}?t=${Date.now()}`);
           const handler = handlerModule.default || handlerModule.handler;
           if (typeof handler !== 'function') {
@@ -62,6 +78,7 @@ function apiRoutePlugin() {
             {
               ...req,
               method: req.method || 'GET',
+              body: parsedBody,
               query: Object.fromEntries(url.searchParams.entries()),
             },
             response

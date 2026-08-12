@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getServerEnv } from './_env.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -16,8 +17,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invite token, user ID, and email are required.' });
     }
 
-    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const serviceRoleKey = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = getServerEnv('VITE_SUPABASE_URL') || getServerEnv('SUPABASE_URL');
+    const serviceRoleKey = getServerEnv('VITE_SUPABASE_SERVICE_ROLE_KEY') || getServerEnv('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !serviceRoleKey) {
       return res.status(500).json({ error: 'Missing Supabase service role environment variables on server.' });

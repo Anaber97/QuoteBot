@@ -244,7 +244,7 @@ export default function ClientPortalTab({
                       className="w-full rounded-lg border border-slate-700 bg-[#080c14] px-2.5 py-2 text-white"
                     >
                       {ROUNDING_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
+                        <option key={option} value={option}>{option}</option>
                       ))}
                     </select>
                   </div>

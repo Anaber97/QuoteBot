@@ -242,6 +242,9 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
   const pricing = companyRates?.pricing || {};
   const surcharges = companyRates?.surcharges || {};
   const surchargeModes = pricing.surchargeModes || surcharges.surchargeModes || {};
+  const flatCustomOverride = (Array.isArray(quoteData.customMatches) ? quoteData.customMatches : [])
+    .filter((zone) => zone?.charge?.feeType === 'flat')
+    .reduce((maxValue, zone) => Math.max(maxValue, Number(zone?.charge?.value) || 0), 0);
 
   const getChargeType = (key, fallback = 'percent') => (surchargeModes[key] === 'flat' ? 'flat' : fallback);
 
@@ -301,6 +304,16 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
   }
 
   const roundingInterval = Number(pricing.rounding_interval || companyRates.rounding_interval) || 25;
+
+  if (flatCustomOverride > 0) {
+    const overriddenQuote = roundToNearest(flatCustomOverride, roundingInterval);
+    return {
+      currentMinQuote: overriddenQuote,
+      currentMaxQuote: overriddenQuote,
+      customCalculatedQuote: overriddenQuote,
+      effectiveMultiplier: 1,
+    };
+  }
 
   const currentMinQuote = roundToNearest((quoteData.rawTotalHours * baseMinRate * chargeTotals.multiplier) + chargeTotals.flat, roundingInterval);
   const currentMaxQuote = roundToNearest((quoteData.rawTotalHours * baseMaxRate * chargeTotals.multiplier) + chargeTotals.flat, roundingInterval);
