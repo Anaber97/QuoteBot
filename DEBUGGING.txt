@@ -1,0 +1,30 @@
+DEBUGGING
+
+
+Fix Client weight class labels
+
+Add load time to classes instead of 1 default
+
+Remove default base addresses LOL
+
+Remove Approval Threshold & Hourly Min/Max from individual clients
+
+FIX CLIENT ACCOUNTS PAGE [DUPLICATE] and add user creation
+
+IF Client, THEN show sub-account name on users & roles
+
+Add password reset to loginCard, and Users & Roles
+
+Fix defaults for Drive Time Buffer & Road Club %
+
+Client accounts need company AND client IDs!!!!!
+
+Show Pricing rule in Custom Geofences
+
+Search by geoCode in Geofences
+
+Edit and Delete buttons for Custom Geofences
+
+Make Dropoff location optional
+
+Add Drive Time Buffer to weight classes, and default buffer clean 10% (no decimal)
