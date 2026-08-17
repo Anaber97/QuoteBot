@@ -160,7 +160,7 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
       {(zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) === 'surcharge' && (
         <div>
           <label className="mb-1 block text-[10px] text-slate-400">Surcharge (%/$)</label>
-          <button type="button" onClick={() => onChange('surchargeFeeType', zone.surchargeFeeType === 'flat' ? 'percent' : 'flat')} className="rounded-full border border-slate-700 px-3 py-1.5 text-[10px] font-semibold text-slate-200">
+          <button type="button" onClick={() => onChange('surchargeFeeType', zone.surchargeFeeType === 'flat' ? 'percent' : 'flat')} className="light-surcharge-type-toggle rounded-full border border-slate-700 px-3 py-1.5 text-[10px] font-semibold text-slate-200">
             {zone.surchargeFeeType === 'flat' ? 'Dollar amount ($)' : 'Percent (%)'}
           </button>
         </div>

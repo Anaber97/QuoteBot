@@ -67,6 +67,7 @@ export async function calculateQuoteData({
   companyRates = {},
   clientWeight = 0,
   clientConfig = null,
+  useWeightTierPricing = false,
 }) {
   await verifyGoogleMapsLoaded();
 
@@ -150,27 +151,35 @@ export async function calculateQuoteData({
     return clientWeight >= min && clientWeight <= max;
   });
 
-  if (matchingTier) {
+  if (useWeightTierPricing && !matchingTier) {
+    throw new Error(`No equipment weight class is configured for ${Number(clientWeight || 0).toLocaleString()} lbs.`);
+  }
+
+  if (useWeightTierPricing && matchingTier) {
     baseMinRate = Number(matchingTier.rate) || baseMinRate;
     baseMaxRate = Number(matchingTier.rate) || baseMaxRate;
   }
 
-  const tierDriveBuffer = matchingTier?.drive_time_buffer;
-  const tierLoadMins = matchingTier?.load_unload_base_mins;
+  const tierDriveBuffer = useWeightTierPricing ? matchingTier?.drive_time_buffer : undefined;
+  const tierLoadMins = useWeightTierPricing ? matchingTier?.load_unload_base_mins : undefined;
   const customClasses = pricing.custom_truck_classes || [];
   const selectedClass = customClasses.find((item) => item.id === selectedTruckClassId);
   const selectedClassDriveBuffer = selectedClass?.drive_time_buffer;
   const selectedClassLoadMins = selectedClass?.load_unload_base_mins;
 
-  const bufferedDriveMins = rawTotalMins * (Number.isFinite(Number(selectedClassDriveBuffer))
-    ? normalizeBuffer(selectedClassDriveBuffer)
-    : Number.isFinite(Number(tierDriveBuffer)) ? normalizeBuffer(tierDriveBuffer) : driveBuffer);
+  const bufferedDriveMins = useWeightTierPricing
+    ? rawTotalMins * normalizeBuffer(tierDriveBuffer ?? 10)
+    : rawTotalMins * (Number.isFinite(Number(selectedClassDriveBuffer))
+      ? normalizeBuffer(selectedClassDriveBuffer)
+      : Number.isFinite(Number(tierDriveBuffer)) ? normalizeBuffer(tierDriveBuffer) : driveBuffer);
   const extraStopsCount = Math.max(0, cleanWaypoints.length - 2);
   const clientLoadMins = clientConfig?.pricing?.load_unload_base_mins ?? null;
   const clientExtraStopMins = clientConfig?.pricing?.extra_stop_mins ?? null;
-  const totalOnSiteMins = (Number.isFinite(Number(selectedClassLoadMins))
-    ? Number(selectedClassLoadMins)
-    : Number.isFinite(Number(tierLoadMins)) ? Number(tierLoadMins) : (clientLoadMins ?? baseLoadMins)) + extraStopsCount * (clientExtraStopMins ?? extraStopMins);
+  const totalOnSiteMins = useWeightTierPricing
+    ? (Number(tierLoadMins ?? 30) || 30) + extraStopsCount * (clientExtraStopMins ?? extraStopMins)
+    : (Number.isFinite(Number(selectedClassLoadMins))
+      ? Number(selectedClassLoadMins)
+      : Number.isFinite(Number(tierLoadMins)) ? Number(tierLoadMins) : (clientLoadMins ?? baseLoadMins)) + extraStopsCount * (clientExtraStopMins ?? extraStopMins);
   const rawTotalHours = (bufferedDriveMins + totalOnSiteMins) / 60;
   const totalMiles = totalMeters * 0.000621371;
 
@@ -181,7 +190,10 @@ export async function calculateQuoteData({
     return { label: `${startLabel} → ${endLabel}`, minutes: durationMinutes };
   });
 
-  if (selectedClass) {
+  if (useWeightTierPricing) {
+    baseMinRate = Number(matchingTier.rate);
+    baseMaxRate = Number(matchingTier.rate);
+  } else if (selectedClass) {
     baseMinRate = Number(selectedClass.minRate) || baseMinRate;
     baseMaxRate = Number(selectedClass.maxRate) || baseMaxRate;
   } else if (isHeavy) {
@@ -189,9 +201,10 @@ export async function calculateQuoteData({
     baseMaxRate = Number(companyRates.heavy_hourly_max || pricing.heavy_hourly_max) || 250;
   }
 
-  const roundingInterval = Number(clientPricing.rounding_interval ?? pricing.rounding_interval ?? companyRates.rounding_interval) || 25;
-  const baseMinQuote = roundToNearest(rawTotalHours * baseMinRate, roundingInterval);
-  const baseMaxQuote = roundToNearest(rawTotalHours * baseMaxRate, roundingInterval);
+  // Keep breakdown pricing dollar-accurate even when displayed totals use a
+  // larger configured quote interval.
+  const baseMinQuote = Math.round(rawTotalHours * baseMinRate);
+  const baseMaxQuote = Math.round(rawTotalHours * baseMaxRate);
 
   // Geofence evaluations
   const coordsList = await geocodeAll(cleanWaypoints);
@@ -233,6 +246,13 @@ export async function calculateQuoteData({
     baseMinQuote,
     baseMaxQuote,
     totalHours: Number(rawTotalHours.toFixed(2)),
+    fixedHourlyRate: useWeightTierPricing ? Number(matchingTier.rate) : null,
+    roundingInterval: useWeightTierPricing
+      ? Number(matchingTier.rounding_interval ?? clientPricing.rounding_interval ?? pricing.rounding_interval ?? 25) || 25
+      : null,
+    pricingMode: useWeightTierPricing ? 'equipment-weight-tier' : 'range',
+    weightTierLabel: useWeightTierPricing ? matchingTier.label : null,
+    driveTimeBufferPercent: useWeightTierPricing ? Number(tierDriveBuffer ?? 10) || 10 : null,
   };
 }
 
@@ -242,6 +262,19 @@ export async function calculateQuoteData({
 export function calculateFinalQuotes(quoteData, activeOverrides, customRate, companyRates = {}, customLoadUnloadMins = null) {
   if (!quoteData) {
     return { currentMinQuote: 0, currentMaxQuote: 0, customCalculatedQuote: null, effectiveMultiplier: 1.0 };
+  }
+
+  if (quoteData.pricingMode === 'equipment-weight-tier' && Number.isFinite(Number(quoteData.fixedHourlyRate))) {
+    const fixedQuote = roundToNearest(
+      Number(quoteData.rawTotalHours || 0) * Number(quoteData.fixedHourlyRate),
+      Number(quoteData.roundingInterval || 25)
+    );
+    return {
+      currentMinQuote: fixedQuote,
+      currentMaxQuote: fixedQuote,
+      customCalculatedQuote: null,
+      effectiveMultiplier: 1,
+    };
   }
 
   const pricing = companyRates?.pricing || {};

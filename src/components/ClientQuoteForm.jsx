@@ -5,6 +5,11 @@ import { searchEquipmentSpecs, calculatePermitRequirements } from '../services/e
 import { loadGoogleMaps } from '../lib/googleMaps';
 
 export default function ClientQuoteForm({ companyRates, onCalculate, isCalculating, title = 'Client Self-Service Quote Portal', onReset }) {
+  const confidenceStyles = {
+    low: 'bg-red-500',
+    medium: 'bg-amber-400',
+    high: 'bg-emerald-500',
+  };
   // Equipment selection state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -176,8 +181,8 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   };
 
   return (
-    <div className="bg-[#0c1019] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-      <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+    <div className="bg-[#0c1019] border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-6 min-w-0">
+      <div className="flex items-center justify-between border-b border-slate-800 pb-4 min-w-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
             <Truck className="w-5 h-5" />
@@ -234,22 +239,31 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
                   key={item.id}
                   type="button"
                   onClick={() => handleSelectEquipment(item)}
-                  className="w-full text-left px-4 py-2.5 hover:bg-blue-600/20 border-b border-slate-800/50 last:border-none transition flex items-center justify-between"
+                  className="w-full text-left px-4 py-2.5 hover:bg-blue-600/20 border-b border-slate-800/50 last:border-none transition flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1"
                 >
                   <div className="opacity-70">
-                    <p className="text-xs font-semibold text-slate-300">
+                    <p className="text-xs font-semibold text-slate-300 flex items-center gap-2">
                       {item.make} {item.model}
+                      <span className="inline-flex items-center gap-1 text-[9px] uppercase tracking-wide text-slate-400">
+                        <span className={`h-2 w-2 rounded-full ${confidenceStyles[item.confidence] || confidenceStyles.medium}`} />
+                        {item.confidence || 'medium'}
+                      </span>
                     </p>
                     {item.serial_number && (
                       <p className="text-[10px] text-slate-500">SN: {item.serial_number}</p>
                     )}
                   </div>
                   <span className="text-[11px] font-mono text-blue-400/70">
-                    {item.operating_weight_lbs.toLocaleString()} lbs | {item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : 0)}w x {item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : 0)}h in
+                    {Number(item.operating_weight_lbs || 0).toLocaleString()} lbs | {item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : 0)}w x {item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : 0)}h in
                   </span>
                 </button>
               ))}
             </div>
+          )}
+          {!isSearching && searchStatus && searchResults.length === 0 && (
+            <p className={`mt-2 text-[11px] ${searchStatus.startsWith('Search issue:') ? 'text-red-400' : 'text-slate-400'}`}>
+              {searchStatus}
+            </p>
           )}
         </div>
 
@@ -414,7 +428,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         >
           {isCalculating ? 'Calculating Live Route & Rates...' : 'Calculate Quote'}
         </button>
-        <button type="button" onClick={handleReset} className="rounded-xl border border-slate-700 py-3 text-xs font-semibold text-slate-300 hover:bg-slate-800">RESET</button>
+        <button type="button" onClick={handleReset} className="light-reset-button rounded-xl border border-slate-700 py-3 text-xs font-semibold text-slate-300 hover:bg-slate-800">RESET</button>
         </div>
       </form>
     </div>

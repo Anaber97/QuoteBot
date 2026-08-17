@@ -275,6 +275,10 @@ function normalizeGeminiResults(payload, query = '') {
         { ...item, ...(nested || {}) },
         ['operating_weight_lbs', 'operating_weight_lb', 'operating_weight', 'weight_lbs', 'weight_lb', 'weight', 'estimated_weight_lbs']
       );
+      const requestedConfidence = coerceString(item?.confidence).toLowerCase();
+      const confidence = ['low', 'medium', 'high'].includes(requestedConfidence)
+        ? requestedConfidence
+        : (operatingWeightLbs && make !== 'Unknown' && model !== 'Unknown' ? 'medium' : 'low');
 
       const normalizedItem = normalizeEquipmentItem({
         ...item,
@@ -285,6 +289,7 @@ function normalizeGeminiResults(payload, query = '') {
         width_ft: item?.width_ft ?? nested?.width_ft ?? item?.width ?? nested?.width ?? null,
         height_ft: item?.height_ft ?? nested?.height_ft ?? item?.height ?? nested?.height ?? null,
         source: item?.source || 'gemini',
+        confidence,
       });
 
       return {
@@ -294,6 +299,7 @@ function normalizeGeminiResults(payload, query = '') {
         serial_number: serialNumber || null,
         operating_weight_lbs: operatingWeightLbs,
         source: item?.source || 'gemini',
+        confidence,
       };
     })
     .slice(0, 8);
@@ -415,22 +421,42 @@ export default async function handler(req, res) {
 
       try {
         const geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': geminiKey,
+            },
             body: JSON.stringify({
               contents: [
                 {
                   parts: [
                     {
-                      text: `You are a towing-quote assistant. For the equipment query "${query}", return ONLY valid JSON. Return a JSON array of up to 3 likely equipment matches. Each object must include these exact keys: make, model, serial_number, operating_weight_lbs, width_in, height_in, source. IMPORTANT: infer a realistic make/model from the query whenever possible and do not use "Unknown" unless you truly cannot infer. For operating weight, use the most plausible published operating weight for the specific model family rather than an overly conservative low estimate, if there is a published weight *range*, return options for realistic weights for the lower bound, median, and upper bound of the weight range; if you are uncertain, use a realistic mid-to-upper estimate from the common model range. Express dimensions as inches. Do not include extra commentary.`,
+                      text: `You are a towing-quote assistant. Find up to 3 likely equipment matches for "${query}". Use confidence "high" only for an exact model/spec match, "medium" for a model-family estimate, and "low" for a broad inference. Prefer published operating specifications and express dimensions in inches.`,
                     },
                   ],
                 },
               ],
               generationConfig: {
                 responseMimeType: 'application/json',
+                responseSchema: {
+                  type: 'ARRAY',
+                  maxItems: 3,
+                  items: {
+                    type: 'OBJECT',
+                    properties: {
+                      make: { type: 'STRING' },
+                      model: { type: 'STRING' },
+                      serial_number: { type: 'STRING', nullable: true },
+                      operating_weight_lbs: { type: 'NUMBER' },
+                      width_in: { type: 'NUMBER' },
+                      height_in: { type: 'NUMBER' },
+                      confidence: { type: 'STRING', enum: ['low', 'medium', 'high'] },
+                    },
+                    required: ['make', 'model', 'operating_weight_lbs', 'width_in', 'height_in', 'confidence'],
+                  },
+                },
               },
             }),
           }
@@ -457,11 +483,21 @@ export default async function handler(req, res) {
           }
         } else {
           const errorText = await geminiResponse.text();
+          let providerMessage = `Gemini request failed (${geminiResponse.status}).`;
+          try {
+            const parsedError = JSON.parse(errorText);
+            const detail = parsedError?.error?.message || '';
+            providerMessage = /reported as leaked/i.test(detail)
+              ? 'Gemini API key has been revoked. Replace GEMINI_API_KEY in the deployment environment.'
+              : (detail || providerMessage);
+          } catch {
+            // Keep the concise status message when the provider returns non-JSON.
+          }
           const fallbackMatches = getFallbackEquipmentMatches(query);
           return res.status(200).json({
             results: fallbackMatches.slice(0, 8),
             source: fallbackMatches.length > 0 ? 'fallback' : '',
-            error: `Gemini request failed: ${geminiResponse.status} ${errorText}`,
+            error: providerMessage,
           });
         }
       } catch (geminiError) {

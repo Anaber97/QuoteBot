@@ -208,6 +208,7 @@ function appReducer(state, action) {
 
 export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const [theme, setTheme] = useState(() => localStorage.getItem('towcalc_theme') || 'dark');
   const [isInviteRoute, setIsInviteRoute] = useState(false);
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -218,6 +219,11 @@ export default function App() {
   const [showEquipmentCalculator, setShowEquipmentCalculator] = useState(false);
   const [error, setError] = useState(null);
   const currentAuthUserIdRef = useRef(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('towcalc_theme', theme);
+  }, [theme]);
 
   const resetCalculatorState = () => {
     dispatch({ type: 'RESET_FORM' });
@@ -451,6 +457,7 @@ export default function App() {
         companyRates,
         clientWeight: Number(weight) + Number(attachmentWeight || 0),
         clientConfig: activeClientConfig,
+        useWeightTierPricing: true,
       });
 
       const permitFee = Number(permitInfo?.permitFee || 0);
@@ -685,16 +692,18 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#080c14] text-slate-100 font-sans pb-12">
+    <div className="app-shell min-h-screen bg-[#080c14] text-slate-100 font-sans pb-12 overflow-x-hidden">
       <Header
         session={session}
         profile={profile}
         activeTab={state.activeTab}
         setActiveTab={(tab) => dispatch({ type: 'SET_TAB', payload: tab })}
         onSignOut={handleSignOut}
+        theme={theme}
+        onToggleTheme={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6">
         {!session ? (
           <div className="py-12">
             <LoginCard />
@@ -756,7 +765,7 @@ export default function App() {
                 /* DISPATCHER / MANAGER CALCULATOR VIEW */
                 <>
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                    <div className="lg:col-span-7 bg-[#121824] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+                    <div className="lg:col-span-7 bg-[#121824] border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-6 min-w-0">
                     <div className="border-b border-slate-800/80 pb-4">
                       <div className="flex items-center justify-between gap-3">
                         <h2 className="text-lg font-bold text-white tracking-tight">{showEquipmentCalculator ? 'Equipment Calculator' : 'Quote Generator'}</h2>

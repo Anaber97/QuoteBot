@@ -1,9 +1,9 @@
 // src/components/Header.jsx
 import React, { useState } from 'react';
-import { LogOut, Calculator } from 'lucide-react';
+import { LogOut, Calculator, Moon, Sun } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-export default function Header({ activeTab, setActiveTab, profile, onSignOut }) {
+export default function Header({ activeTab, setActiveTab, profile, onSignOut, theme = 'dark', onToggleTheme }) {
   const [imgError, setImgError] = useState(false);
   const rawRole = profile?.role || '';
   const role = rawRole.toLowerCase().trim();
@@ -31,18 +31,20 @@ export default function Header({ activeTab, setActiveTab, profile, onSignOut }) 
   };
 
   return (
-    <div className="border-b border-slate-800/80 bg-[#121824]/60 backdrop-blur-md sticky top-0 z-50 px-4 sm:px-6 py-7">
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-start gap-6">
+    <div className="app-header border-b border-slate-800/80 bg-[#121824]/60 backdrop-blur-md sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-5">
+      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-stretch lg:items-center justify-start gap-3 lg:gap-6">
         
         {/* Logo & Title */}
-        <div className="flex items-center gap-5">
+        <div className="brand-lockup flex items-center justify-center lg:justify-start gap-3 sm:gap-5">
           {!imgError ? (
-            <img
-              src="/logo-trn.png"
-              alt="TowCalc Pro Logo"
-              onError={() => setImgError(true)}
-              className="h-full max-h-16 w-auto object-contain py-0"
-            />
+            <span className="brand-logo-surface inline-flex rounded-xl px-2 py-1">
+              <img
+                src="/logo-trn.png"
+                alt="TowCalc Pro Logo"
+                onError={() => setImgError(true)}
+                className="h-12 sm:h-16 w-auto object-contain py-0"
+              />
+            </span>
           ) : (
             <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center font-black text-white text-lg shadow-lg shadow-blue-500/20">
               <Calculator className="w-6 h-6 text-white" />
@@ -57,7 +59,7 @@ export default function Header({ activeTab, setActiveTab, profile, onSignOut }) 
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 w-full sm:w-auto">
+        <div className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 w-full lg:w-auto overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('calculator')}
@@ -100,7 +102,7 @@ export default function Header({ activeTab, setActiveTab, profile, onSignOut }) 
 
         {/* User Badge & Logout */}
         {profile && (
-          <div className="flex items-center gap-2 bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 sm:ml-auto">
+          <div className="flex items-center gap-2 bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 lg:ml-auto min-w-0">
             <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${roleBadgeStyle}`}>
               {rawRole || 'User'}
             </span>
@@ -114,6 +116,15 @@ export default function Header({ activeTab, setActiveTab, profile, onSignOut }) 
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className="text-slate-500 hover:text-blue-400 p-1 transition cursor-pointer"
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            >
+              {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
             </button>
           </div>
         )}

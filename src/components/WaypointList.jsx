@@ -139,7 +139,7 @@ export default function WaypointList({ waypoints, inputRefs, onChange, onRemove,
         <button
           type="button"
           onClick={onReset}
-          className="w-1/4 py-2 bg-slate-900/80 hover:bg-slate-900 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition cursor-pointer"
+          className="light-reset-button w-1/4 py-2 bg-slate-900/80 hover:bg-slate-900 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition cursor-pointer"
         >
           RESET
         </button>

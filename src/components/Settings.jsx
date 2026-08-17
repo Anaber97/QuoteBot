@@ -82,7 +82,7 @@ export const DEFAULT_CONFIG = {
   },
 };
 
-const ROUNDING_OPTIONS = [1, 5, 10, 25];
+const ROUNDING_OPTIONS = [1, 5, 10, 25, 50];
 
 const normalizeClientPortalTier = (tier = {}, index = 0) => ({
   id: tier.id || `tier-${index + 1}`,

@@ -81,6 +81,7 @@ export default function QuoteResultsCard({
   const effectiveMinQuote = currentMinQuote + permitFee + attachmentAdjustment;
   const effectiveMaxQuote = currentMaxQuote + permitFee + attachmentAdjustment;
   const clientPrice = effectiveMinQuote;
+  const isFixedEquipmentQuote = quoteData?.pricingMode === 'equipment-weight-tier';
   const dispatcherSurcharges = [
     quoteData?.hasAfterHours ? { key: 'afterHours', active: activeOverrides?.afterHours } : null,
     quoteData?.hasRoadClub ? { key: 'roadClub', active: activeOverrides?.roadClub } : null,
@@ -172,17 +173,22 @@ export default function QuoteResultsCard({
   return (
     <div
       ref={resultsRef}
-      className="mt-6 bg-[#0c1019] border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-5 transition-all"
+      className="mt-6 lg:mt-0 bg-[#0c1019] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xl space-y-5 transition-all min-w-0"
     >
       {/* 1. Price Range Display */}
       <div className="text-center space-y-1">
         <span className="text-[10px] uppercase font-mono tracking-widest text-slate-400">
           {isDispatcherView ? 'Estimated Total Quote' : 'Your Estimated Price'}
         </span>
-        {!isDispatcherView && <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>}
-        <div className={`text-4xl font-black text-white tracking-tight ${isDispatcherView ? '' : 'hidden'}`}>
+        {(!isDispatcherView || isFixedEquipmentQuote) && <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>}
+        <div className={`text-4xl font-black text-white tracking-tight ${isDispatcherView && !isFixedEquipmentQuote ? '' : 'hidden'}`}>
           ${effectiveMinQuote} <span className="text-slate-500 font-light">–</span> ${effectiveMaxQuote}
         </div>
+        {isFixedEquipmentQuote && (
+          <div className="text-[11px] text-slate-400">
+            {quoteData.weightTierLabel || 'Equipment weight class'} · ${Number(quoteData.fixedHourlyRate).toFixed(0)}/hr
+          </div>
+        )}
         {permitFee > 0 && (
           <div className="inline-block bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold text-xs px-2.5 py-0.5 rounded-full mt-1">
             Permit surcharge included: +${permitFee.toFixed(2)}
@@ -242,18 +248,22 @@ export default function QuoteResultsCard({
               {routeLegs.map((leg, index) => (
                 <div
                   key={`${leg.label}-${index}`}
-                  className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80"
+                className="flex justify-between items-start gap-3 text-slate-400 pb-1.5 border-b border-slate-800/80"
                 >
                   <span>{leg.label}</span>
                   <span className="font-semibold text-slate-200">{leg.minutes} mins</span>
                 </div>
               ))}
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>Adjusted Drive Time (+10%)</span>
+                <span>
+                  Adjusted Drive Time (+{isFixedEquipmentQuote
+                    ? Number(quoteData.driveTimeBufferPercent ?? 10)
+                    : Number(companyRates?.pricing?.drive_time_buffer ?? 10)}%)
+                </span>
                 <span className="font-semibold text-slate-200">{Math.round(Number(quoteData?.adjustedDriveMin || 0))} mins</span>
               </div>
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>Load / Unload Flat Rate</span>
+                <span>Load / Unload Time</span>
                 <span className="font-semibold text-slate-200">{Math.round(Number(quoteData?.loadUnloadTime || 0))} mins</span>
               </div>
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
@@ -285,9 +295,11 @@ export default function QuoteResultsCard({
                 </span>
               </div>
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>Base Price Range (No Surcharges)</span>
+                <span>{isFixedEquipmentQuote ? 'Base Equipment Price' : 'Base Price Range (No Surcharges)'}</span>
                 <span className="font-semibold text-emerald-400">
-                  ${quoteData.baseMinQuote} – ${quoteData.baseMaxQuote}
+                  {isFixedEquipmentQuote
+                    ? `$${quoteData.baseMinQuote}`
+                    : `$${quoteData.baseMinQuote} – $${quoteData.baseMaxQuote}`}
                 </span>
               </div>
               <div className="flex justify-between items-center pt-1 text-sm font-bold text-white">

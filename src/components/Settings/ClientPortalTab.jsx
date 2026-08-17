@@ -46,7 +46,7 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal,
         <input value={formData.client_portal?.contact_email ?? ''} onChange={(e) => updateClientPortal('contact_email', e.target.value)} placeholder="Contact email" className="rounded-lg border border-slate-700 bg-[#121824] px-3 py-2 text-white" />
         <input type="number" value={formData.client_portal?.approval_threshold ?? 80001} onChange={(e) => updateClientPortal('approval_threshold', Number(e.target.value) || 80001)} placeholder="Human quote threshold (lbs)" className="rounded-lg border border-slate-700 bg-[#121824] px-3 py-2 text-white" />
       </div>
-      <button type="button" onClick={onSaveConfig} disabled={isSaving} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 font-semibold text-emerald-300">{isSaving ? 'Saving...' : 'Save portal details'}</button>
+      <button type="button" onClick={onSaveConfig} disabled={isSaving} className="light-save-portal rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 font-semibold text-emerald-300">{isSaving ? 'Saving...' : 'Save portal details'}</button>
     </div>
     <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-4">
       <div><h4 className="flex items-center gap-2 font-bold text-white"><Building className="h-4 w-4 text-blue-400" /> Client Accounts</h4><p className="mt-1 text-slate-400">Each account belongs only to this company. Create the account here, then invite its user in Users & Roles and choose this account.</p></div>

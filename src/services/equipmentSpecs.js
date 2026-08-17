@@ -23,6 +23,9 @@ function normalizeDimensionResults(results) {
       height_in: heightIn != null ? Number(heightIn) : null,
       width_ft: widthIn != null ? Number((widthIn / 12).toFixed(1)) : null,
       height_ft: heightIn != null ? Number((heightIn / 12).toFixed(1)) : null,
+      confidence: ['low', 'medium', 'high'].includes(String(item?.confidence || '').toLowerCase())
+        ? String(item.confidence).toLowerCase()
+        : (item?.source === 'gemini' ? 'medium' : 'high'),
     };
   });
 }
@@ -71,7 +74,7 @@ export async function searchEquipmentSpecs(query) {
     };
   } catch (error) {
     console.warn('Search API unavailable, falling back to an empty result set:', error);
-    return { results: [], source: '' };
+    return { results: [], source: '', error: error.message || 'Equipment search is unavailable.' };
   }
 }
 

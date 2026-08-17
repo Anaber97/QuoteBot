@@ -31,7 +31,7 @@ export default function PricingTab({
           <button
             type="button"
             onClick={() => updatePricingMode(field, feeType === 'flat' ? 'percent' : 'flat')}
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${feeType === 'flat' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-slate-700 bg-slate-900/60 text-slate-300'}`}
+            className={`light-surcharge-type-toggle inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${feeType === 'flat' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-slate-700 bg-slate-900/60 text-slate-300'}`}
           >
             {feeType === 'flat' ? 'Flat $' : 'Percent %'}
           </button>
@@ -103,6 +103,7 @@ export default function PricingTab({
               <option value={5}>Nearest $5</option>
               <option value={10}>Nearest $10</option>
               <option value={25}>Nearest $25 (Default)</option>
+              <option value={50}>Nearest $50</option>
             </select>
           </div>
         </div>

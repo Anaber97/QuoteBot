@@ -67,7 +67,7 @@ export default function QuoteLog({ onSelectQuote }) {
           <div className="text-slate-400 space-y-0.5">
             <p><strong className="text-slate-300">Base:</strong> {log.base_yard_id || 'N/A'}</p>
             <p><strong className="text-slate-300">Waypoints:</strong> {Array.isArray(log.all_waypoints) ? log.all_waypoints.join(' ➔ ') : 'N/A'}</p>
-            <p><strong className="text-slate-300">Hours:</strong> {log.total_hours} hrs</p>
+            <p><strong className="text-slate-300">Hours:</strong> {Number(log.total_hours || 0).toFixed(2)} hrs</p>
           </div>
 
           {log.applied_surcharges && Object.entries(log.applied_surcharges).length > 0 && (
