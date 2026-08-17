@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createClient } from '@supabase/supabase-js';
+import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
+
+const responseCache = new Map();
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const envCandidates = [
@@ -305,25 +308,10 @@ function normalizeGeminiResults(payload, query = '') {
     .slice(0, 8);
 }
 
-async function persistGeminiResults(results, supabaseUrl, supabaseKey) {
-  if (!Array.isArray(results) || results.length === 0 || !supabaseUrl || !supabaseKey) {
+async function persistGeminiResults(results, supabaseAdmin, companyId) {
+  if (!Array.isArray(results) || results.length === 0 || !supabaseAdmin || !companyId) {
     return;
   }
-
-  const serviceRoleKey =
-    process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!serviceRoleKey) {
-    return;
-  }
-
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
 
   for (const item of results) {
     try {
@@ -332,6 +320,7 @@ async function persistGeminiResults(results, supabaseUrl, supabaseKey) {
       }
 
       const candidate = {
+        company_id: companyId,
         make: item.make,
         model: item.model,
         serial_number: item.serial_number || null,
@@ -341,7 +330,7 @@ async function persistGeminiResults(results, supabaseUrl, supabaseKey) {
         source: item.source || 'gemini',
       };
 
-      let query = supabaseAdmin.from('equipment_specs').select('id').limit(1);
+      let query = supabaseAdmin.from('equipment_specs').select('id').eq('company_id', companyId).limit(1);
       if (candidate.serial_number) {
         query = query.eq('serial_number', candidate.serial_number);
       } else {
@@ -372,23 +361,30 @@ export default async function handler(req, res) {
   }
 
   try {
-    const query = String(req.query?.query || '').trim();
-    if (!query) {
+    const rawQuery = String(req.query?.query || '').trim();
+    if (!rawQuery) {
       return res.status(200).json([]);
     }
+    if (rawQuery.length < 2 || rawQuery.length > 80) return res.status(400).json({ error: 'Search must be 2 to 80 characters.' });
+    const query = rawQuery.replace(/[,%()]/g, ' ').replace(/\s+/g, ' ').trim();
+    const { admin, profile } = await requireUser(req);
+    enforceRateLimit(`equipment-search:${profile.id}`, { limit: 120, windowMs: 60 * 60 * 1000 });
+
+    const cacheKey = `${profile.company_id}:${query.toLowerCase()}`;
+    const cached = responseCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return res.status(200).json(cached.payload);
 
     const supabaseUrl = getEnvValue('VITE_SUPABASE_URL', 'SUPABASE_URL');
-    const supabaseKey = getEnvValue('VITE_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY');
 
     let results = [];
     let source = '';
     let error = '';
 
-    if (supabaseUrl && supabaseKey) {
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      const { data, error: supabaseError } = await supabase
+    if (supabaseUrl) {
+      const { data, error: supabaseError } = await admin
         .from('equipment_specs')
         .select('*')
+        .or(`company_id.is.null,company_id.eq.${profile.company_id}`)
         .or(`make.ilike.%${query.toLowerCase()}%,model.ilike.%${query.toLowerCase()}%,serial_number.ilike.%${query.toLowerCase()}%`)
         .limit(8);
 
@@ -411,6 +407,7 @@ export default async function handler(req, res) {
     );
 
     if (results.length === 0) {
+      enforceRateLimit(`gemini:${profile.id}`, { limit: 20, windowMs: 24 * 60 * 60 * 1000 });
       if (!geminiKey) {
         return res.status(200).json({
           results: [],
@@ -470,8 +467,8 @@ export default async function handler(req, res) {
             results = normalizeGeminiResults(rawText, query);
             source = results.length > 0 ? 'gemini' : '';
 
-            if (results.length > 0 && supabaseUrl && supabaseKey) {
-              await persistGeminiResults(results, supabaseUrl, supabaseKey);
+            if (results.length > 0) {
+              await persistGeminiResults(results, admin, profile.company_id);
             }
           } catch (parseErr) {
             console.warn('Gemini response was not valid JSON:', parseErr);
@@ -510,13 +507,14 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({
+    const payload = {
       results: results.slice(0, 8),
       source,
       error,
-    });
+    };
+    responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
+    return res.status(200).json(payload);
   } catch (error) {
-    console.error('Equipment search API failed:', error);
-    return res.status(500).json({ error: error.message || 'Equipment search failed.' });
+    return sendApiError(res, error, 'Equipment search failed.');
   }
 }

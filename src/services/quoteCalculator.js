@@ -1,6 +1,5 @@
 // src/services/quoteCalculator.js
 // @ts-check
-import { RATES } from '../config/rates';
 import { METRO_CODE_BY_ZONE_ID } from '../config/geofences';
 import { evaluateMetroGeofences, evaluateHazardGeofences, evaluateCustomGeofences } from '../utils/geofenceEngine';
 import { loadGoogleMaps } from '../lib/googleMaps';
@@ -144,7 +143,9 @@ export async function calculateQuoteData({
   let baseMinRate = Number(pricing.hourly_min || companyRates.hourly_min) || 125;
   let baseMaxRate = Number(pricing.hourly_max || companyRates.hourly_max) || 135;
 
-  const clientWeightTiers = companyRates?.client_portal?.weight_tiers || [];
+  const clientWeightTiers = clientConfig?.pricing?.use_custom_pricing && Array.isArray(clientConfig?.pricing?.weight_tiers)
+    ? clientConfig.pricing.weight_tiers
+    : companyRates?.client_portal?.weight_tiers || [];
   const matchingTier = clientWeightTiers.find((tier) => {
     const min = Number(tier.minWeight ?? 0) || 0;
     const max = Number(tier.maxWeight ?? 999999) || 999999;

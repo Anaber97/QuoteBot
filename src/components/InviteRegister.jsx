@@ -57,35 +57,44 @@ export default function InviteRegister() {
       }
 
       const cleanedEmail = email.trim().toLowerCase();
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: cleanedEmail,
-        password,
-        options: {
-          data: {
-            full_name: fullName.trim(),
-          },
-        },
-      });
+      if (cleanedEmail !== String(inviteData.email || '').toLowerCase()) {
+        throw new Error('Use the email address that received this invitation.');
+      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      let authData;
+      let authError;
+      if (sessionData?.session?.user?.email?.toLowerCase() === cleanedEmail) {
+        ({ data: authData, error: authError } = await supabase.auth.updateUser({
+          password,
+          data: { full_name: fullName.trim() },
+        }));
+        authData = { ...authData, session: sessionData.session };
+      } else {
+        ({ data: authData, error: authError } = await supabase.auth.signUp({
+          email: cleanedEmail,
+          password,
+          options: { data: { full_name: fullName.trim() } },
+        }));
+      }
 
       if (authError) throw authError;
 
       const userId = authData?.user?.id;
-      if (!userId) {
+      const accessToken = authData?.session?.access_token;
+      if (!userId || !accessToken) {
         throw new Error('The account could not be created yet. Please try again.');
       }
 
-      const resolvedRole = (inviteRoleFromQuery || inviteData?.role || 'client').toLowerCase();
+      const resolvedRole = (inviteData?.role || inviteRoleFromQuery || 'client').toLowerCase();
       if (!['manager', 'dispatch', 'client'].includes(resolvedRole)) {
         throw new Error('This invite specifies an invalid role.');
       }
 
       const acceptResponse = await fetch('/api/acceptInvite', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({
           token: inviteToken,
-          userId,
-          email: cleanedEmail,
           fullName: fullName.trim(),
           role: resolvedRole,
         }),

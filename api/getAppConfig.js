@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-import { getServerEnv } from './_env.js';
+import { requireUser, sendApiError } from './_security.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -8,37 +7,12 @@ export default async function handler(req, res) {
 
   try {
     const companyId = String(req.query?.company_id || '').trim();
-    const userId = String(req.query?.user_id || '').trim();
-
-    if (!companyId || !userId) {
-      return res.status(400).json({ error: 'company_id and user_id are required.' });
+    if (!companyId) {
+      return res.status(400).json({ error: 'company_id is required.' });
     }
+    const { admin } = await requireUser(req, { companyId });
 
-    const supabaseUrl = getServerEnv('VITE_SUPABASE_URL') || getServerEnv('SUPABASE_URL');
-    const serviceRoleKey = getServerEnv('VITE_SUPABASE_SERVICE_ROLE_KEY') || getServerEnv('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return res.status(500).json({ error: 'Missing Supabase service role environment variables on server.' });
-    }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
-
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, company_id')
-      .eq('id', userId)
-      .single();
-
-    if (profileError || !profile || profile.company_id !== companyId) {
-      return res.status(403).json({ error: 'User is not authorized to read this company configuration.' });
-    }
-
-    const { data: configData, error: configError } = await supabase
+    const { data: configData, error: configError } = await admin
       .from('app_config')
       .select('*')
       .eq('company_id', companyId)
@@ -83,6 +57,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, config: mergedConfig });
   } catch (error) {
     console.error('Unexpected getAppConfig error:', error);
-    return res.status(500).json({ error: error.message || 'Internal server error.' });
+    return sendApiError(res, error, 'Unable to load company configuration.');
   }
 }

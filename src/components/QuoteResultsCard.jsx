@@ -95,7 +95,6 @@ export default function QuoteResultsCard({
   const metroFeeValue = companyRates?.pricing?.metro_multiplier ?? companyRates?.surcharges?.metro_multiplier ?? 28.57;
   const metroBadgeLabel = formatChargeLabel('Metro Zone', metroFeeMode, metroFeeValue);
   const routeLegs = Array.isArray(quoteData?.legsDetails) ? quoteData.legsDetails : [];
-  const isBreakdownVisible = isDispatcherView && Boolean(state?.showDetails);
 
   // Dispatcher map should show the full base-to-base route; client map should show pickup-to-dropoff.
   const routeAddresses = isDispatcherView

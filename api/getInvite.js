@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from './_security.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -13,19 +13,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invite token is required.' });
     }
 
-    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const serviceRoleKey = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return res.status(500).json({ error: 'Missing Supabase service role environment variables on server.' });
-    }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
+    const supabase = createAdminClient();
 
     const { data, error } = await supabase
       .from('company_invites')

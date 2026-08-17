@@ -1,5 +1,6 @@
 // src/services/equipmentSpecs.js
 import { supabase } from '../lib/supabase';
+import { authenticatedFetch } from '../lib/api';
 
 // Standard legal limits for non-permitted flatbed/stepdeck transport
 export const LEGAL_LIMITS = {
@@ -54,7 +55,7 @@ export async function searchEquipmentSpecs(query) {
   }
 
   try {
-    const response = await fetch(`/api/searchEquipment?query=${encodeURIComponent(cleanQuery)}`, {
+    const response = await authenticatedFetch(`/api/searchEquipment?query=${encodeURIComponent(cleanQuery)}`, {
       headers: { Accept: 'application/json' },
     });
 

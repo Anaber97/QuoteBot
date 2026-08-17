@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MapPin, Trash2 } from 'lucide-react';
 import { loadGoogleMaps } from '../../lib/googleMaps';
 
@@ -22,16 +22,20 @@ const buildReviewQuery = (zone) => {
 export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete }) {
   const searchInputRef = useRef(null);
   const autocompleteRef = useRef(null);
+  const zoneRef = useRef(zone);
+  const onChangeRef = useRef(onChange);
+  zoneRef.current = zone;
+  onChangeRef.current = onChange;
   const [status, setStatus] = useState('Search for a city or municipality to define this geofence.');
 
-  const reviewQuery = useMemo(() => buildReviewQuery(zone), [zone?.city, zone?.state, zone?.localityQuery]);
-  const reviewMapUrl = useMemo(() => {
+  const reviewQuery = buildReviewQuery(zone);
+  const reviewMapUrl = (() => {
     if (!API_KEY || !reviewQuery) return null;
     return `https://www.google.com/maps/embed/v1/place?key=${API_KEY}&q=${encodeURIComponent(reviewQuery)}`;
-  }, [reviewQuery]);
+  })();
 
   useEffect(() => {
-    if (!zone) return;
+    if (!zoneRef.current) return;
 
     let cancelled = false;
 
@@ -53,6 +57,7 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         autocompleteRef.current = autocomplete;
 
         const listener = autocomplete.addListener('place_changed', () => {
+          const currentZone = zoneRef.current;
           const place = autocomplete.getPlace();
           const components = Array.isArray(place?.address_components) ? place.address_components : [];
           const cityComponent = components.find((component) => component.types.includes('locality'))
@@ -64,22 +69,24 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
           const nextState = String(stateComponent?.short_name || stateComponent?.long_name || '').trim().toUpperCase();
           const nextQuery = [nextCity, nextState].filter(Boolean).join(', ');
 
-          onChange('city', nextCity);
-          onChange('state', nextState);
-          onChange('localityQuery', nextQuery);
-          if (!zone?.name || zone.name === 'New Municipality Zone') {
-            onChange('name', nextQuery || nextCity || zone.name || 'Custom Geofence');
+          onChangeRef.current('city', nextCity);
+          onChangeRef.current('state', nextState);
+          onChangeRef.current('localityQuery', nextQuery);
+          if (!currentZone?.name || currentZone.name === 'New Municipality Zone') {
+            onChangeRef.current('name', nextQuery || nextCity || currentZone?.name || 'Custom Geofence');
           }
           setStatus(nextQuery ? `Selected ${nextQuery}.` : 'Select a city from the suggestions.');
         });
 
-        if (zone?.localityQuery && searchInputRef.current.value !== zone.localityQuery) {
-          searchInputRef.current.value = zone.localityQuery;
-        } else if (zone?.city && searchInputRef.current.value !== buildReviewQuery(zone)) {
-          searchInputRef.current.value = buildReviewQuery(zone);
+        const currentZone = zoneRef.current;
+        if (currentZone?.localityQuery && searchInputRef.current.value !== currentZone.localityQuery) {
+          searchInputRef.current.value = currentZone.localityQuery;
+        } else if (currentZone?.city && searchInputRef.current.value !== buildReviewQuery(currentZone)) {
+          searchInputRef.current.value = buildReviewQuery(currentZone);
         }
 
-        setStatus(reviewQuery ? `Reviewing ${reviewQuery}.` : 'Search for a city or municipality to define this geofence.');
+        const currentReviewQuery = buildReviewQuery(zoneRef.current);
+        setStatus(currentReviewQuery ? `Reviewing ${currentReviewQuery}.` : 'Search for a city or municipality to define this geofence.');
 
         return () => {
           google.maps.event.removeListener(listener);
@@ -101,7 +108,7 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
   useEffect(() => {
     if (!zone) return;
     setStatus(reviewQuery ? `Reviewing ${reviewQuery}.` : 'Search for a city or municipality to define this geofence.');
-  }, [reviewQuery, zone?.id]);
+  }, [reviewQuery, zone]);
 
   if (!zone) return null;
 

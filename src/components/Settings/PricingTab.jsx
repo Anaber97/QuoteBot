@@ -9,7 +9,6 @@ export default function PricingTab({
   removeTruckClass,
   customSurchargeItems,
   addCustomSurcharge,
-  toggleCustomSurcharge,
   removeCustomSurcharge,
   updateCustomSurcharge,
   customSurchargeSearch,

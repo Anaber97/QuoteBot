@@ -1,6 +1,6 @@
 // src/components/ClientQuoteForm.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, AlertTriangle, ShieldAlert, CheckCircle, Truck, MapPin } from 'lucide-react';
+import { Search, ShieldAlert, Truck, MapPin } from 'lucide-react';
 import { searchEquipmentSpecs, calculatePermitRequirements } from '../services/equipmentSpecs';
 import { loadGoogleMaps } from '../lib/googleMaps';
 

@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-import { getServerEnv } from './_env.js';
+import { requireUser, sendApiError } from './_security.js';
 
 const finiteNumber = (value, fallback) => {
   const num = Number(value);
@@ -16,48 +15,12 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
     const companyId = String(body?.company_id || '').trim();
-    const userId = String(body?.user_id || '').trim();
     const incoming = body?.config || null;
 
-    if (!companyId || !userId || !incoming) {
-      return res.status(400).json({ error: 'company_id, user_id, and config are required.' });
+    if (!companyId || !incoming) {
+      return res.status(400).json({ error: 'company_id and config are required.' });
     }
-
-    const supabaseUrl = getServerEnv('VITE_SUPABASE_URL') || getServerEnv('SUPABASE_URL');
-    const serviceRoleKey =
-      getServerEnv('VITE_SUPABASE_SERVICE_ROLE_KEY') ||
-      getServerEnv('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return res.status(500).json({
-        error: 'Missing Supabase service role environment variables on server.',
-      });
-    }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
-
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, company_id, role')
-      .eq('id', userId)
-      .single();
-
-    if (profileError || !profile) {
-      return res.status(403).json({
-        error: 'Unable to verify user profile for settings save.',
-      });
-    }
-
-    if (profile.company_id !== companyId || String(profile.role).toLowerCase() !== 'manager') {
-      return res.status(403).json({
-        error: 'Only managers can save company settings.',
-      });
-    }
+    const { admin } = await requireUser(req, { companyId, manager: true });
 
     // Always save one canonical object. The JSON columns receive the
     // structured sections, while the old flat columns receive the core
@@ -162,7 +125,7 @@ export default async function handler(req, res) {
       updated_at: new Date().toISOString(),
     };
 
-    const { data: savedRow, error: saveError } = await supabase
+    const { data: savedRow, error: saveError } = await admin
       .from('app_config')
       .upsert(row, { onConflict: 'company_id' })
       .select('*')
@@ -182,8 +145,6 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Unexpected saveAppConfig error:', error);
-    return res.status(500).json({
-      error: error.message || 'Internal server error.',
-    });
+    return sendApiError(res, error, 'Unable to save company configuration.');
   }
 }

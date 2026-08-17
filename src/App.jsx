@@ -3,6 +3,7 @@
 // @ts-check
 import React, { useReducer, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { authenticatedFetch } from './lib/api';
 import { calculateQuoteData, calculateFinalQuotes } from './services/quoteCalculator';
 
 import Header from './components/Header';
@@ -35,6 +36,16 @@ const normalizeCompanyConfig = (rawConfig = {}) => {
     ...(rawConfig.config && typeof rawConfig.config === 'object' ? rawConfig.config : {}),
     ...rawConfig,
   };
+  const customSurcharges = config.pricing?.custom_surcharges ?? config.surcharges?.custom_surcharges;
+  const normalizedCustomSurcharges = Array.isArray(customSurcharges)
+    ? customSurcharges.map((item, index) => ({
+        id: item.id || `surcharge-${index + 1}`,
+        name: item.name || `Custom Surcharge ${index + 1}`,
+        feeType: item.feeType || 'flat',
+        value: Number(item.value ?? 0) || 0,
+        active: item.active !== false,
+      }))
+    : null;
 
   return {
   ...DEFAULT_CONFIG,
@@ -61,28 +72,12 @@ const normalizeCompanyConfig = (rawConfig = {}) => {
     load_unload_base_mins: Number(config.pricing?.load_unload_base_mins ?? config.load_unload_base_mins ?? DEFAULT_CONFIG.pricing.load_unload_base_mins) || 30,
     extra_stop_mins: Number(config.pricing?.extra_stop_mins ?? config.extra_stop_mins ?? DEFAULT_CONFIG.pricing.extra_stop_mins) || 15,
     custom_truck_classes: Array.isArray(config.pricing?.custom_truck_classes) ? config.pricing.custom_truck_classes : DEFAULT_CONFIG.pricing.custom_truck_classes,
-    custom_surcharges: Array.isArray(config.pricing?.custom_surcharges ?? config.surcharges?.custom_surcharges)
-      ? (config.pricing?.custom_surcharges ?? config.surcharges?.custom_surcharges).map((item, index) => ({
-          id: item.id || `surcharge-${index + 1}`,
-          name: item.name || `Custom Surcharge ${index + 1}`,
-          feeType: item.feeType || 'flat',
-          value: Number(item.value ?? 0) || 0,
-          active: item.active !== false,
-        }))
-      : DEFAULT_CONFIG.pricing.custom_surcharges,
+    custom_surcharges: normalizedCustomSurcharges || DEFAULT_CONFIG.pricing.custom_surcharges,
   },
   surcharges: {
     ...(DEFAULT_CONFIG.surcharges || {}),
     ...(config.surcharges || {}),
-    custom_surcharges: Array.isArray(config.pricing?.custom_surcharges ?? config.surcharges?.custom_surcharges)
-      ? (config.pricing?.custom_surcharges ?? config.surcharges?.custom_surcharges).map((item, index) => ({
-          id: item.id || `surcharge-${index + 1}`,
-          name: item.name || `Custom Surcharge ${index + 1}`,
-          feeType: item.feeType || 'flat',
-          value: Number(item.value ?? 0) || 0,
-          active: item.active !== false,
-        }))
-      : DEFAULT_CONFIG.surcharges.custom_surcharges,
+    custom_surcharges: normalizedCustomSurcharges || DEFAULT_CONFIG.surcharges.custom_surcharges,
   },
   geofences: {
     disabledZones: config.geofences?.disabledZones || [],
@@ -255,7 +250,6 @@ export default function App() {
 
   const userRole = (profile?.role || '').toLowerCase().trim();
   const isClientPortalUser = userRole === 'client';
-  const isManagerRole = userRole === 'manager';
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -312,11 +306,8 @@ export default function App() {
         let loadedConfig = null;
 
         try {
-          const params = new URLSearchParams({
-            company_id: String(prof.company_id),
-            user_id: String(userId),
-          });
-          const response = await fetch(`/api/getAppConfig?${params.toString()}`);
+          const params = new URLSearchParams({ company_id: String(prof.company_id) });
+          const response = await authenticatedFetch(`/api/getAppConfig?${params.toString()}`);
           const result = await response.json().catch(() => ({}));
 
           if (response.ok && result?.config) {
@@ -464,7 +455,7 @@ export default function App() {
 
       if (data.approvalRequired) {
         try {
-          await fetch('/api/notifyApproval', {
+          await authenticatedFetch('/api/notifyApproval', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -570,39 +561,7 @@ export default function App() {
     }
   };
 
-  const handleSaveClientQuoteForLater = () => {
-    if (!quoteData || !profile) return;
-
-    const { currentMinQuote, currentMaxQuote } = calculateFinalQuotes(
-      quoteData,
-      state.activeOverrides,
-      0,
-      companyRates
-    );
-
-    const draft = {
-      id: `draft-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      company_id: profile.company_id,
-      customerName: state.customerName,
-      customerPhone: state.customerPhone,
-      quoteData,
-      estimate: {
-        min: currentMinQuote,
-        max: currentMaxQuote,
-      },
-    };
-
-    const storedDrafts = JSON.parse(localStorage.getItem('client_quote_drafts') || '[]');
-    storedDrafts.unshift(draft);
-    localStorage.setItem('client_quote_drafts', JSON.stringify(storedDrafts));
-
-    alert('Quote saved for later.');
-    dispatch({ type: 'RESET_FORM' });
-    setQuoteData(null);
-  };
-
-  const handleAcceptClientQuote = async ({ attachmentFile = null } = {}) => {
+  const _handleAcceptClientQuote = async ({ attachmentFile = null } = {}) => {
     if (!session || !profile || !quoteData) return;
 
     const { currentMinQuote, currentMaxQuote, customCalculatedQuote } = calculateFinalQuotes(
@@ -649,7 +608,7 @@ export default function App() {
 
       const notificationEmail = companyRates?.client_portal?.contact_email || profile?.email || '';
       if (notificationEmail) {
-        await fetch('/api/notifyApproval', {
+        await authenticatedFetch('/api/notifyApproval', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

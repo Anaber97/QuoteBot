@@ -96,6 +96,7 @@ function apiRoutePlugin() {
 export default defineConfig({
   plugins: [
     react(),
+    tailwindcss(),
     apiRoutePlugin(),
     VitePWA({
       registerType: 'autoUpdate',

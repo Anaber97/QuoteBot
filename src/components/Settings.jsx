@@ -1,10 +1,9 @@
 // src/components/Settings.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Save, ShieldAlert, CheckCircle2, AlertCircle } from 'lucide-react';
-import CustomGeofenceEditor from './Settings/CustomGeofenceEditor';
 
 import { supabase } from '../lib/supabase';
-import { buildInviteEmailPayload } from '../lib/inviteEmail';
+import { authenticatedFetch } from '../lib/api';
 import { RATES } from '../config/rates';
 import { GEOFENCES, HAZARD_ZONES, METRO_CODE_BY_ZONE_ID } from '../config/geofences';
 import { US_STATE_NAMES } from '../config/usStates';
@@ -25,6 +24,7 @@ const normalizeDriveTimeBuffer = (value) => {
   return 10;
 };
 
+// oxlint-disable-next-line react/only-export-components -- shared normalization defaults
 export const DEFAULT_CONFIG = {
   company_id: '00000000-0000-0000-0000-000000000000',
   pricing: {
@@ -103,6 +103,16 @@ const normalizeConfig = (rawValue = {}) => {
     ...(rawValue.config && typeof rawValue.config === 'object' ? rawValue.config : {}),
     ...rawValue,
   };
+  const customSurcharges = value.pricing?.custom_surcharges ?? value.surcharges?.custom_surcharges;
+  const normalizedCustomSurcharges = Array.isArray(customSurcharges)
+    ? customSurcharges.map((item, index) => ({
+        id: item.id || `surcharge-${index + 1}`,
+        name: item.name || `Custom Surcharge ${index + 1}`,
+        feeType: item.feeType || 'flat',
+        value: Number(item.value ?? 0) || 0,
+        active: item.active !== false,
+      }))
+    : null;
 
   return {
   ...DEFAULT_CONFIG,
@@ -126,28 +136,12 @@ const normalizeConfig = (rawValue = {}) => {
     hazard_multiplier: Number(value.pricing?.hazard_multiplier ?? value.surcharges?.hazard_multiplier ?? DEFAULT_CONFIG.pricing.hazard_multiplier) || 40,
     load_unload_base_mins: Number(value.pricing?.load_unload_base_mins ?? value.load_unload_base_mins ?? DEFAULT_CONFIG.pricing.load_unload_base_mins) || 30,
     extra_stop_mins: Number(value.pricing?.extra_stop_mins ?? value.extra_stop_mins ?? DEFAULT_CONFIG.pricing.extra_stop_mins) || 15,
-    custom_surcharges: Array.isArray(value.pricing?.custom_surcharges ?? value.surcharges?.custom_surcharges)
-      ? (value.pricing?.custom_surcharges ?? value.surcharges?.custom_surcharges).map((item, index) => ({
-          id: item.id || `surcharge-${index + 1}`,
-          name: item.name || `Custom Surcharge ${index + 1}`,
-          feeType: item.feeType || 'flat',
-          value: Number(item.value ?? 0) || 0,
-          active: item.active !== false,
-        }))
-      : DEFAULT_CONFIG.pricing.custom_surcharges,
+    custom_surcharges: normalizedCustomSurcharges || DEFAULT_CONFIG.pricing.custom_surcharges,
   },
   surcharges: {
     ...(DEFAULT_CONFIG.surcharges || {}),
     ...(value.surcharges || {}),
-    custom_surcharges: Array.isArray(value.pricing?.custom_surcharges ?? value.surcharges?.custom_surcharges)
-      ? (value.pricing?.custom_surcharges ?? value.surcharges?.custom_surcharges).map((item, index) => ({
-          id: item.id || `surcharge-${index + 1}`,
-          name: item.name || `Custom Surcharge ${index + 1}`,
-          feeType: item.feeType || 'flat',
-          value: Number(item.value ?? 0) || 0,
-          active: item.active !== false,
-        }))
-      : DEFAULT_CONFIG.surcharges.custom_surcharges,
+    custom_surcharges: normalizedCustomSurcharges || DEFAULT_CONFIG.surcharges.custom_surcharges,
   },
   geofences: {
     disabledZones: value.geofences?.disabledZones || [],
@@ -231,7 +225,6 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   const [geofenceSearch, setGeofenceSearch] = useState('');
   const [geofenceFilter, setGeofenceFilter] = useState('all');
   const [geofenceStateFilter, setGeofenceStateFilter] = useState('all');
-  const [geofenceTypeFilter, setGeofenceTypeFilter] = useState('all');
   const [customSurchargeSearch, setCustomSurchargeSearch] = useState('');
   const [customSurchargeFilter, setCustomSurchargeFilter] = useState('all');
   const [selectedGeofenceId, setSelectedGeofenceId] = useState(null);
@@ -402,12 +395,11 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
         },
       };
 
-      const response = await fetch('/api/saveAppConfig', {
+      const response = await authenticatedFetch('/api/saveAppConfig', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           company_id: companyId,
-          user_id: profile?.id,
           config: normalizedConfig,
         }),
       });
@@ -447,13 +439,6 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           [field]: feeType,
         },
       },
-    }));
-  };
-
-  const updateSurcharges = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      surcharges: { ...prev.surcharges, [field]: value }
     }));
   };
 
@@ -648,7 +633,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
 
   try {
     // 1. Send API request to trigger Supabase Admin Invite
-    const response = await fetch("/api/inviteUser", {
+    const response = await authenticatedFetch("/api/inviteUser", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -656,9 +641,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
         role: inviteRole,
         company_id: profile?.company_id,
         client_id: inviteRole === 'client' && inviteClientId ? inviteClientId : null,
-        invited_by: profile?.id,
         name: inviteName.trim(),
-        origin: typeof window !== 'undefined' ? window.location.origin : '',
       }),
     });
 
@@ -671,26 +654,6 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
 
     const apiResult = await response.json();
     if (apiResult.error) throw new Error(apiResult.error);
-
-    // 2. Optionally trigger custom email template function via Supabase Edge Function
-    try {
-      const emailPayload = buildInviteEmailPayload({
-        token: apiResult.inviteToken,
-        recipientEmail: trimmedEmail,
-        recipientName: inviteName.trim(),
-        inviterName: profile?.full_name || 'Your workspace manager',
-        companyName: profile?.company_name || 'your workspace',
-        origin: typeof window !== 'undefined' ? window.location.origin : '',
-      });
-
-      const { error: emailError } = await supabase.functions.invoke('send-invite-email', {
-        body: emailPayload,
-      });
-
-      if (emailError) console.warn('Supabase edge function warning:', emailError);
-    } catch (emailErr) {
-      console.warn('Invite custom email could not be sent:', emailErr);
-    }
 
     setInviteStatus({
       type: 'success',

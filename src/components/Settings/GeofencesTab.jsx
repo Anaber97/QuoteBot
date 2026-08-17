@@ -97,7 +97,6 @@ export default function GeofencesTab({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1" style={{ gridAutoRows: '112px' }}>
           {filteredGeofences.map((zone) => {
             const isDisabled = disabledSet.has(zone.id);
-            const hasOverride = Boolean(formData?.geofences?.customZoneRates?.[zone.id]);
             const metroCode = METRO_CODE_BY_ZONE_ID[String(zone.id)] || null;
             return (
               <button

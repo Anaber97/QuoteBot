@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Users, Building, Plus, Trash2, ShieldCheck } from 'lucide-react';
+import { Users, Building, Plus, Trash2 } from 'lucide-react';
 
 export default function ManagerOnboarding({ profile }) {
   const [clients, setClients] = useState([]);
