@@ -189,6 +189,18 @@ function appReducer(state, action) {
       return { ...state, customLoadUnloadMins: action.payload };
     case 'SET_PENDING_CUSTOM_SURCHARGES':
       return { ...state, pendingCustomSurcharges: action.payload };
+    case 'LOAD_LOGGED_QUOTE':
+      return {
+        ...state,
+        activeTab: 'calculator',
+        selectedBaseId: action.payload.base_yard_id || '',
+        selectedTruckClassId: action.payload.truck_class || '',
+        waypoints: Array.isArray(action.payload.all_waypoints) && action.payload.all_waypoints.length >= 2
+          ? action.payload.all_waypoints
+          : [action.payload.pickup_address || '', action.payload.dropoff_address || ''],
+        customerName: action.payload.customer_name || '',
+        customerPhone: action.payload.customer_phone || '',
+      };
     case 'RESET_FORM':
       return {
         ...initialState,
@@ -212,6 +224,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [quoteData, setQuoteData] = useState(null);
   const [showEquipmentCalculator, setShowEquipmentCalculator] = useState(false);
+  const [openedLoggedQuote, setOpenedLoggedQuote] = useState(null);
   const [error, setError] = useState(null);
   const currentAuthUserIdRef = useRef(null);
 
@@ -223,8 +236,16 @@ export default function App() {
   const resetCalculatorState = () => {
     dispatch({ type: 'RESET_FORM' });
     setQuoteData(null);
+    setOpenedLoggedQuote(null);
     setError(null);
     setLoading(false);
+  };
+
+  const handleOpenLoggedQuote = (loggedQuote) => {
+    dispatch({ type: 'LOAD_LOGGED_QUOTE', payload: loggedQuote });
+    setQuoteData(null);
+    setOpenedLoggedQuote(loggedQuote);
+    setShowEquipmentCalculator(loggedQuote.quote_source === 'client_portal');
   };
 
   const handleSignOut = async () => {
@@ -512,7 +533,7 @@ export default function App() {
   };
 
   // Log Quote Handler
-  const handleLogQuote = async () => {
+  const handleLogQuote = async ({ attachmentFile = null } = {}) => {
     if (!session || !profile) return;
 
     try {
@@ -528,6 +549,8 @@ export default function App() {
       const payload = {
         company_id: profile.company_id,
         user_id: session.user.id,
+        client_id: isClientPortalUser ? profile.client_id : null,
+        quote_source: isClientPortalUser ? 'client_portal' : (showEquipmentCalculator ? 'equipment_calculator' : 'main_calculator'),
         customer_name: state.customerName,
         customer_phone: state.customerPhone,
         pickup_address: waypointsArr[0] || '',
@@ -546,13 +569,28 @@ export default function App() {
           metro: quoteData.hasMetroZone && state.activeOverrides.metro,
           hazard: quoteData.hasHazardZone && state.activeOverrides.hazard,
         },
+        quote_details: quoteData?.equipmentMeta || {},
       };
 
-      const { error: logErr } = await supabase.from('quote_logs').insert([payload]);
+      const { data: loggedQuote, error: logErr } = await supabase.from('quote_logs').insert([payload]).select('*').single();
 
       if (logErr) throw logErr;
 
-      alert('Quote successfully logged!');
+      if (attachmentFile) {
+        const safeName = attachmentFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const bolPath = `${profile.company_id}/${loggedQuote.id}/${crypto.randomUUID()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage.from('quote-bols').upload(bolPath, attachmentFile, { contentType: attachmentFile.type, upsert: false });
+        if (uploadError) throw uploadError;
+        const { error: updateError } = await supabase.from('quote_logs').update({ bol_path: bolPath, bol_name: attachmentFile.name, bol_type: attachmentFile.type }).eq('id', loggedQuote.id);
+        if (updateError) throw updateError;
+        const response = await authenticatedFetch('/api/sendQuoteEmail', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quoteId: loggedQuote.id, action: 'bol_attached' }),
+        });
+        if (!response.ok) throw new Error((await response.json()).error || 'The BOL was saved, but the notification email failed.');
+      }
+
+      alert(attachmentFile ? 'Quote logged, BOL attached, and host company notified!' : 'Quote successfully logged!');
       dispatch({ type: 'RESET_FORM' });
       setQuoteData(null);
     } catch (err) {
@@ -669,7 +707,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {state.activeTab === 'logs' && <QuoteLog profile={profile} />}
+            {state.activeTab === 'logs' && <QuoteLog profile={profile} onSelectQuote={handleOpenLoggedQuote} />}
 
             {state.activeTab === 'settings' && (
               <Settings
@@ -689,6 +727,7 @@ export default function App() {
                       companyRates={companyRates}
                       onCalculate={handleClientCalculateQuote}
                       isCalculating={loading}
+                      initialQuote={openedLoggedQuote}
                     />
                   </div>
 
@@ -741,7 +780,7 @@ export default function App() {
                     )}
 
                     {showEquipmentCalculator ? (
-                      <ClientQuoteForm companyRates={companyRates} onCalculate={handleClientCalculateQuote} isCalculating={loading} title="Equipment Calculator" onReset={resetCalculatorState} />
+                      <ClientQuoteForm companyRates={companyRates} onCalculate={handleClientCalculateQuote} isCalculating={loading} title="Equipment Calculator" onReset={resetCalculatorState} initialQuote={openedLoggedQuote} />
                     ) : <form onSubmit={handleCalculate} className="space-y-5">
                       {/* Base Shop Selector */}
                       <div>

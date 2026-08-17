@@ -77,9 +77,8 @@ export default function QuoteResultsCard({
   );
   const permitFee = Number(quoteData?.equipmentMeta?.permitFee || quoteData?.permitFee || 0);
   const attachmentWeight = Number(quoteData?.equipmentMeta?.attachmentWeight || 0);
-  const attachmentAdjustment = attachmentWeight > 0 ? Math.min(10000, Math.max(5000, Math.round(attachmentWeight * 0.6))) : 0;
-  const effectiveMinQuote = currentMinQuote + permitFee + attachmentAdjustment;
-  const effectiveMaxQuote = currentMaxQuote + permitFee + attachmentAdjustment;
+  const effectiveMinQuote = currentMinQuote + permitFee;
+  const effectiveMaxQuote = currentMaxQuote + permitFee;
   const clientPrice = effectiveMinQuote;
   const isFixedEquipmentQuote = quoteData?.pricingMode === 'equipment-weight-tier';
   const dispatcherSurcharges = [
@@ -119,7 +118,7 @@ export default function QuoteResultsCard({
         }&mode=driving`
       : null;
 
-  const handleAttachmentChange = async (event) => {
+  const handleAttachmentChange = (event) => {
     const file = event.target.files?.[0];
     if (!file) {
       setSelectedAttachment(null);
@@ -132,20 +131,8 @@ export default function QuoteResultsCard({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSelectedAttachment({
-        name: file.name,
-        type: file.type,
-        data: reader.result,
-      });
-      setAttachmentError('');
-    };
-    reader.onerror = () => {
-      setAttachmentError('The selected file could not be read.');
-      setSelectedAttachment(null);
-    };
-    reader.readAsDataURL(file);
+    setSelectedAttachment(file);
+    setAttachmentError('');
   };
 
   const handleAcceptQuote = () => {
@@ -165,6 +152,15 @@ export default function QuoteResultsCard({
     onAcceptQuote?.({ attachmentFile: null });
   };
 
+  const handleLogQuote = () => {
+    if (!showAttachmentPrompt) {
+      setShowAttachmentPrompt(true);
+      return;
+    }
+    onLogQuote?.({ attachmentFile: selectedAttachment || null });
+    setShowAttachmentPrompt(false);
+  };
+
   const toggleOverride = (key) => {
     dispatch?.({ type: 'SET_OVERRIDE', payload: { key, value: !activeOverrides?.[key] } });
   };
@@ -177,25 +173,26 @@ export default function QuoteResultsCard({
       {/* 1. Price Range Display */}
       <div className="text-center space-y-1">
         <span className="text-[10px] uppercase font-mono tracking-widest text-slate-400">
-          {isDispatcherView ? 'Estimated Total Quote' : 'Your Estimated Price'}
+          {isDispatcherView ? 'Estimated Total Quote' : 'Your Estimated Quote'}
         </span>
-        {(!isDispatcherView || isFixedEquipmentQuote) && <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>}
+        {!isDispatcherView && <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>}
+        {isDispatcherView && isFixedEquipmentQuote && <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>}
         <div className={`text-4xl font-black text-white tracking-tight ${isDispatcherView && !isFixedEquipmentQuote ? '' : 'hidden'}`}>
           ${effectiveMinQuote} <span className="text-slate-500 font-light">–</span> ${effectiveMaxQuote}
         </div>
-        {isFixedEquipmentQuote && (
+        {isDispatcherView && isFixedEquipmentQuote && (
           <div className="text-[11px] text-slate-400">
             {quoteData.weightTierLabel || 'Equipment weight class'} · ${Number(quoteData.fixedHourlyRate).toFixed(0)}/hr
           </div>
         )}
-        {permitFee > 0 && (
+        {isDispatcherView && permitFee > 0 && (
           <div className="inline-block bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold text-xs px-2.5 py-0.5 rounded-full mt-1">
             Permit surcharge included: +${permitFee.toFixed(2)}
           </div>
         )}
         {attachmentWeight > 0 && (
           <div className="inline-block bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-bold text-xs px-2.5 py-0.5 rounded-full mt-1">
-            Attachment impact applied: +${attachmentAdjustment.toFixed(2)}
+            Attachment weight included: {attachmentWeight.toLocaleString()} lbs
           </div>
         )}
       </div>
@@ -454,14 +451,23 @@ export default function QuoteResultsCard({
             )}
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={onLogQuote}
-            disabled={isSaving}
-            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-xl transition disabled:bg-slate-800 cursor-pointer shadow-md"
-          >
-            {isSaving ? 'Saving Quote...' : 'Save & Log Quote'}
-          </button>
+          <div className="space-y-2">
+            <button type="button" onClick={handleLogQuote} disabled={isSaving} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-xl transition disabled:bg-slate-800 cursor-pointer shadow-md">
+              {isSaving ? 'Saving Quote...' : 'Save & Log Quote'}
+            </button>
+            {showAttachmentPrompt && (
+              <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3 space-y-2 text-left">
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">Attach BOL (PDF or image, optional)</label>
+                <input ref={fileInputRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={handleAttachmentChange} className="block w-full text-[11px] text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600/20 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-blue-300" />
+                {attachmentError && <p className="text-[10px] text-red-400">{attachmentError}</p>}
+                {selectedAttachment && <p className="text-[10px] text-emerald-400">Selected: {selectedAttachment.name}</p>}
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={handleLogQuote} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">Log quote</button>
+                  <button type="button" onClick={() => { setShowAttachmentPrompt(false); setSelectedAttachment(null); setAttachmentError(''); }} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {saveStatus && (

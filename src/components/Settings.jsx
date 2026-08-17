@@ -68,6 +68,8 @@ export const DEFAULT_CONFIG = {
   client_portal: {
     contact_phone: '(555) 555-0199',
     contact_email: 'quotes@yourcompany.com',
+    send_jobs_to_contact_email: true,
+    dispatch_email: '',
     approval_threshold: 80001,
     rounding_interval: 25,
     disclosure: 'These quotes are electronically generated estimates based on the information provided and may be affected by route conditions, permit requirements, or equipment-specific variables. Please confirm final pricing with a company representative before dispatch.',
@@ -165,6 +167,8 @@ const normalizeConfig = (rawValue = {}) => {
   client_portal: {
     contact_phone: value.client_portal?.contact_phone || DEFAULT_CONFIG.client_portal.contact_phone,
     contact_email: value.client_portal?.contact_email || DEFAULT_CONFIG.client_portal.contact_email,
+    send_jobs_to_contact_email: value.client_portal?.send_jobs_to_contact_email !== false,
+    dispatch_email: value.client_portal?.dispatch_email || '',
     approval_threshold: Number(value.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
     rounding_interval: ROUNDING_OPTIONS.includes(Number(value.client_portal?.rounding_interval)) ? Number(value.client_portal?.rounding_interval) : 25,
     disclosure: value.client_portal?.disclosure || DEFAULT_CONFIG.client_portal.disclosure,

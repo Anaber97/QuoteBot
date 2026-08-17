@@ -4,7 +4,7 @@ import { Search, ShieldAlert, Truck, MapPin } from 'lucide-react';
 import { searchEquipmentSpecs, calculatePermitRequirements } from '../services/equipmentSpecs';
 import { loadGoogleMaps } from '../lib/googleMaps';
 
-export default function ClientQuoteForm({ companyRates, onCalculate, isCalculating, title = 'Client Self-Service Quote Portal', onReset }) {
+export default function ClientQuoteForm({ companyRates, onCalculate, isCalculating, title = 'Client Self-Service Quote Portal', onReset, initialQuote = null }) {
   const confidenceStyles = {
     low: 'bg-red-500',
     medium: 'bg-amber-400',
@@ -36,6 +36,19 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const [permitInfo, setPermitInfo] = useState(null);
   const [attachmentType, setAttachmentType] = useState('');
   const [attachmentWeight, setAttachmentWeight] = useState('');
+
+  useEffect(() => {
+    if (!initialQuote?.id) return;
+    const details = initialQuote.quote_details || {};
+    setSearchQuery(details.name || details.equipmentName || '');
+    setSelectedEquipmentName(details.name || details.equipmentName || '');
+    setMake(details.make || ''); setModel(details.model || ''); setSerialNumber(details.serialNumber || '');
+    setWeight(details.weight ?? ''); setWidth(details.width ?? details.widthFt ?? ''); setHeight(details.height ?? details.heightFt ?? '');
+    setAttachmentType(details.attachmentType || ''); setAttachmentWeight(details.attachmentWeight ?? '');
+    setPickupAddr(initialQuote.pickup_address || ''); setDropoffAddr(initialQuote.dropoff_address || '');
+    const stops = Array.isArray(initialQuote.all_waypoints) ? initialQuote.all_waypoints.slice(1, -1) : [];
+    setWaypoints(stops);
+  }, [initialQuote]);
 
   const runEquipmentSearch = async (queryOverride = searchQuery) => {
     const trimmedQuery = (queryOverride || '').trim();
