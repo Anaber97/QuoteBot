@@ -374,14 +374,14 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-emerald-400" /> Pickup Address
+              <MapPin className="w-3.5 h-3.5 text-emerald-400" /> Pickup Location
             </label>
             <input
               ref={pickupInputRef}
               type="text"
               value={pickupAddr}
               onChange={(e) => setPickupAddr(e.target.value)}
-              placeholder="Enter pick-up location..."
+              placeholder="Business, address, city, or municipality..."
               className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
           </div>
@@ -394,14 +394,14 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
           <button type="button" onClick={() => setWaypoints((current) => [...current, ''])} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400 hover:bg-blue-500/10">+ Add waypoint</button>
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-rose-400" /> Dropoff Address
+              <MapPin className="w-3.5 h-3.5 text-rose-400" /> Dropoff Location
             </label>
             <input
               ref={dropoffInputRef}
               type="text"
               value={dropoffAddr}
               onChange={(e) => setDropoffAddr(e.target.value)}
-              placeholder="Optional — leave blank for a round-trip quote"
+              placeholder="Business, address, city, or municipality..."
               className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
           </div>

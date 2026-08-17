@@ -93,7 +93,7 @@ const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRe
         <input
           ref={setRef}
           type="text"
-          placeholder={isPickUp ? 'Enter pick-up location...' : isDropOff ? 'Optional — leave blank for a round-trip quote' : `Enter ${label.toLowerCase()}...`}
+          placeholder={isPickUp ? 'Business, address, city, or municipality...' : isDropOff ? 'Business, address, city, or municipality...' : `Enter ${label.toLowerCase()}...`}
           value={value}
           onChange={(e) => onChange(index, e.target.value)}
           className="w-full flex-1 bg-[#080c14] border border-slate-800 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-sm shadow-inner"
