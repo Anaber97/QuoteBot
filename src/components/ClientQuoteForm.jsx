@@ -102,9 +102,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         }
 
         if (pickupInputRef.current && !pickupInputRef.current.dataset.autocompleteBound) {
-          const pickupAutocomplete = new google.maps.places.Autocomplete(pickupInputRef.current, {
-            types: ['address'],
-          });
+          const pickupAutocomplete = new google.maps.places.Autocomplete(pickupInputRef.current);
           pickupAutocomplete.addListener('place_changed', () => {
             const place = pickupAutocomplete.getPlace();
             setPickupAddr(place.formatted_address || place.name || pickupInputRef.current?.value || '');
@@ -113,9 +111,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         }
 
         if (dropoffInputRef.current && !dropoffInputRef.current.dataset.autocompleteBound) {
-          const dropoffAutocomplete = new google.maps.places.Autocomplete(dropoffInputRef.current, {
-            types: ['address'],
-          });
+          const dropoffAutocomplete = new google.maps.places.Autocomplete(dropoffInputRef.current);
           dropoffAutocomplete.addListener('place_changed', () => {
             const place = dropoffAutocomplete.getPlace();
             setDropoffAddr(place.formatted_address || place.name || dropoffInputRef.current?.value || '');
