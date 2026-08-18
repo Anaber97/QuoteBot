@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     const action = ['share', 'action', 'bol_attached'].includes(body.action) ? body.action : 'action';
     if (!quoteId) return res.status(400).json({ error: 'quoteId is required.' });
     const { admin, profile } = await requireUser(req);
-    enforceRateLimit(`quote-email:${profile.id}`, { limit: 30, windowMs: 60 * 60 * 1000 });
+    await enforceRateLimit(admin, `quote-email:${profile.id}`, { limit: 30, windowMs: 60 * 60 * 1000 });
 
     const { data: quote, error: quoteError } = await admin.from('quote_logs').select('*').eq('id', quoteId).eq('company_id', profile.company_id).single();
     if (quoteError || !quote) return res.status(404).json({ error: 'Quote not found.' });

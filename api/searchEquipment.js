@@ -368,7 +368,7 @@ export default async function handler(req, res) {
     if (rawQuery.length < 2 || rawQuery.length > 80) return res.status(400).json({ error: 'Search must be 2 to 80 characters.' });
     const query = rawQuery.replace(/[,%()]/g, ' ').replace(/\s+/g, ' ').trim();
     const { admin, profile } = await requireUser(req);
-    enforceRateLimit(`equipment-search:${profile.id}`, { limit: 120, windowMs: 60 * 60 * 1000 });
+    await enforceRateLimit(admin, `equipment-search:${profile.id}`, { limit: 120, windowMs: 60 * 60 * 1000 });
 
     const cacheKey = `${profile.company_id}:${query.toLowerCase()}`;
     const cached = responseCache.get(cacheKey);
@@ -400,19 +400,15 @@ export default async function handler(req, res) {
       source = 'fallback';
     }
 
-    const geminiKey = getEnvValue(
-      'GEMINI_API_KEY',
-      'VITE_GEMINI_API_KEY',
-      'VITE_GOOGLE_GEMINI_API_KEY'
-    );
+    const geminiKey = getEnvValue('GEMINI_API_KEY');
 
     if (results.length === 0) {
-      enforceRateLimit(`gemini:${profile.id}`, { limit: 20, windowMs: 24 * 60 * 60 * 1000 });
+      await enforceRateLimit(admin, `gemini:${profile.id}`, { limit: 20, windowMs: 24 * 60 * 60 * 1000 });
       if (!geminiKey) {
         return res.status(200).json({
           results: [],
           source: '',
-          error: 'Gemini key not configured. Add VITE_GOOGLE_GEMINI_API_KEY to .env.',
+          error: 'Gemini key not configured. Add GEMINI_API_KEY to the server environment.',
         });
       }
 

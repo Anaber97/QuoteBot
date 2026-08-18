@@ -4,7 +4,7 @@
 import React, { useReducer, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { authenticatedFetch } from './lib/api';
-import { calculateQuoteData, calculateFinalQuotes } from './services/quoteCalculator';
+import { calculateQuoteData } from './services/quoteCalculator';
 
 import Header from './components/Header';
 import LoginCard from './components/LoginCard';
@@ -474,35 +474,6 @@ export default function App() {
 
       const permitFee = Number(permitInfo?.permitFee || 0);
 
-      if (data.approvalRequired) {
-        try {
-          await authenticatedFetch('/api/notifyApproval', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              companyName: profile?.company_name || 'your company',
-              email: companyRates?.client_portal?.contact_email || profile?.email || '',
-              equipmentName: equipmentName || 'Custom Load',
-              make: make || '',
-              model: model || '',
-              serialNumber: serialNumber || '',
-              weight: Number(weight) + Number(attachmentWeight || 0),
-              pickupAddr,
-              dropoffAddr,
-              contactPhone: state.customerPhone || companyRates?.client_portal?.contact_phone || '(555) 555-0199',
-              contactEmail: profile?.email || companyRates?.client_portal?.contact_email || 'quotes@yourcompany.com',
-              quoteAmount: data.baseMinQuote,
-              quoteRange: `${data.baseMinQuote} - ${data.baseMaxQuote}`,
-              permitFlags: permitInfo?.flags || [],
-              attachmentTypeLabel: attachmentType || '',
-              attachmentWeight: Number(attachmentWeight || 0),
-            }),
-          });
-        } catch (approvalErr) {
-          console.warn('Approval email notification could not be sent:', approvalErr);
-        }
-      }
-
       setQuoteData({
         ...data,
         permitFee,
@@ -534,47 +505,32 @@ export default function App() {
 
   // Log Quote Handler
   const handleLogQuote = async ({ attachmentFile = null } = {}) => {
-    if (!session || !profile) return;
+    if (!session || !profile || !quoteData) return;
 
     try {
-      const { currentMinQuote, currentMaxQuote, customCalculatedQuote } = calculateFinalQuotes(
-        quoteData,
-        state.activeOverrides,
-        parseFloat(state.customRateInput) || null,
-        companyRates
-      );
-
       const waypointsArr = Array.isArray(state.waypoints) ? state.waypoints : ['', ''];
-
-      const payload = {
-        company_id: profile.company_id,
-        user_id: session.user.id,
-        client_id: isClientPortalUser ? profile.client_id : null,
-        quote_source: isClientPortalUser ? 'client_portal' : (showEquipmentCalculator ? 'equipment_calculator' : 'main_calculator'),
-        customer_name: state.customerName,
-        customer_phone: state.customerPhone,
-        pickup_address: waypointsArr[0] || '',
-        dropoff_address: waypointsArr[waypointsArr.length - 1] || '',
-        all_waypoints: waypointsArr,
-        base_yard_id: state.selectedBaseId,
-        truck_class: state.selectedTruckClassId,
-        total_miles: quoteData.totalMiles,
-        total_hours: quoteData.rawTotalHours,
-        min_quote: currentMinQuote,
-        max_quote: currentMaxQuote,
-        custom_quote: customCalculatedQuote,
-        applied_surcharges: {
-          afterHours: quoteData.hasAfterHours && state.activeOverrides.afterHours,
-          roadClub: quoteData.hasRoadClub && state.activeOverrides.roadClub,
-          metro: quoteData.hasMetroZone && state.activeOverrides.metro,
-          hazard: quoteData.hasHazardZone && state.activeOverrides.hazard,
-        },
-        quote_details: quoteData?.equipmentMeta || {},
-      };
-
-      const { data: loggedQuote, error: logErr } = await supabase.from('quote_logs').insert([payload]).select('*').single();
-
-      if (logErr) throw logErr;
+      const response = await authenticatedFetch('/api/createQuote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseId: state.selectedBaseId,
+          waypoints: waypointsArr,
+          quoteSource: showEquipmentCalculator ? 'equipment_calculator' : 'main_calculator',
+          selectedTruckClassId: state.selectedTruckClassId,
+          isHeavy: quoteData.isHeavy,
+          isAfterHours: quoteData.hasAfterHours,
+          isRoadClub: quoteData.hasRoadClub,
+          activeOverrides: state.activeOverrides,
+          customRate: state.customRateInput,
+          customLoadUnloadMins: state.customLoadUnloadMins,
+          customerName: state.customerName,
+          customerPhone: state.customerPhone,
+          equipment: quoteData.equipmentMeta || {},
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.quote) throw new Error(result.error || 'The authoritative quote could not be saved.');
+      const loggedQuote = result.quote;
 
       if (attachmentFile) {
         const safeName = attachmentFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -583,104 +539,15 @@ export default function App() {
         if (uploadError) throw uploadError;
         const { error: updateError } = await supabase.from('quote_logs').update({ bol_path: bolPath, bol_name: attachmentFile.name, bol_type: attachmentFile.type }).eq('id', loggedQuote.id);
         if (updateError) throw updateError;
-        const response = await authenticatedFetch('/api/sendQuoteEmail', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ quoteId: loggedQuote.id, action: 'bol_attached' }),
-        });
-        if (!response.ok) throw new Error((await response.json()).error || 'The BOL was saved, but the notification email failed.');
       }
 
-      alert(attachmentFile ? 'Quote logged, BOL attached, and host company notified!' : 'Quote successfully logged!');
+      const warning = result.notificationWarning ? ` ${result.notificationWarning}` : '';
+      alert(`${attachmentFile ? 'Quote logged with BOL attached!' : 'Quote successfully logged!'}${warning}`);
       dispatch({ type: 'RESET_FORM' });
       setQuoteData(null);
     } catch (err) {
       console.error(err);
       alert('Failed to log quote: ' + err.message);
-    }
-  };
-
-  const _handleAcceptClientQuote = async ({ attachmentFile = null } = {}) => {
-    if (!session || !profile || !quoteData) return;
-
-    const { currentMinQuote, currentMaxQuote, customCalculatedQuote } = calculateFinalQuotes(
-      quoteData,
-      state.activeOverrides,
-      0,
-      companyRates
-    );
-
-    const waypointsArr = Array.isArray(state.waypoints) ? state.waypoints : ['', ''];
-    const pickupAddress = waypointsArr[0] || '';
-    const dropoffAddress = waypointsArr[waypointsArr.length - 1] || '';
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const payload = {
-        company_id: profile.company_id,
-        user_id: session.user.id,
-        customer_name: state.customerName,
-        customer_phone: state.customerPhone,
-        pickup_address: pickupAddress,
-        dropoff_address: dropoffAddress,
-        all_waypoints: waypointsArr,
-        base_yard_id: state.selectedBaseId,
-        truck_class: state.selectedTruckClassId,
-        total_miles: quoteData.totalMiles,
-        total_hours: quoteData.rawTotalHours,
-        min_quote: currentMinQuote,
-        max_quote: currentMaxQuote,
-        custom_quote: customCalculatedQuote,
-        applied_surcharges: {
-          afterHours: quoteData.hasAfterHours && state.activeOverrides.afterHours,
-          roadClub: quoteData.hasRoadClub && state.activeOverrides.roadClub,
-          metro: quoteData.hasMetroZone && state.activeOverrides.metro,
-          hazard: quoteData.hasHazardZone && state.activeOverrides.hazard,
-        },
-        notes: `Client portal approval request${attachmentFile ? `; attachment: ${attachmentFile.name}` : ''}`,
-      };
-
-      const { error: logErr } = await supabase.from('quote_logs').insert([payload]);
-      if (logErr) throw logErr;
-
-      const notificationEmail = companyRates?.client_portal?.contact_email || profile?.email || '';
-      if (notificationEmail) {
-        await authenticatedFetch('/api/notifyApproval', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: notificationEmail,
-            companyName: profile?.company_name || 'your company',
-            equipmentName: quoteData?.equipmentMeta?.name || 'Custom Load',
-            make: quoteData?.equipmentMeta?.make || '',
-            model: quoteData?.equipmentMeta?.model || '',
-            serialNumber: quoteData?.equipmentMeta?.serialNumber || '',
-            weight: quoteData?.equipmentMeta?.weight || 0,
-            pickupAddr: pickupAddress,
-            dropoffAddr: dropoffAddress,
-            contactPhone: state.customerPhone || companyRates?.client_portal?.contact_phone || '(555) 555-0199',
-            contactEmail: profile?.email || companyRates?.client_portal?.contact_email || 'quotes@yourcompany.com',
-            quoteAmount: currentMinQuote,
-            quoteRange: `${currentMinQuote} - ${currentMaxQuote}`,
-            attachmentName: attachmentFile?.name || null,
-            attachmentType: attachmentFile?.type || null,
-            attachmentData: attachmentFile?.data || null,
-            permitFlags: quoteData?.equipmentMeta?.permitFlags || [],
-            attachmentTypeLabel: quoteData?.equipmentMeta?.attachmentType || '',
-            attachmentWeight: quoteData?.equipmentMeta?.attachmentWeight || 0,
-          }),
-        });
-      }
-
-      alert('Quote accepted. The approval request has been sent.');
-      dispatch({ type: 'RESET_FORM' });
-      setQuoteData(null);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to submit quote: ' + err.message);
-    } finally {
-      setLoading(false);
     }
   };
 

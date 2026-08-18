@@ -1,6 +1,6 @@
 // src/utils/geofenceEngine.js
 // @ts-check
-import { GEOFENCES, HAZARD_ZONES } from "../config/geofences";
+import { GEOFENCES, HAZARD_ZONES } from "../config/geofences.js";
 
 function isPointInPolygon(point, polygon) {
   if (!polygon || polygon.length < 3) return false;
@@ -75,7 +75,7 @@ function matchesLocality(address, zone) {
   return false;
 }
 
-export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList = []) {
+export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList = [], routePoints = []) {
   const cleanAddresses = (addresses || []).filter((addr) => typeof addr === 'string' && addr.trim().length > 0);
 
   if (cleanAddresses.length < 2) return false;
@@ -96,44 +96,16 @@ export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList =
   const directHit = coordsList.some((c) => c && isPointInBox(c.lat, c.lng));
   if (directHit) return true;
 
-  if (typeof window === 'undefined' || !window.google || !window.google.maps) {
-    return false;
-  }
-
-  // Check route steps via DirectionsService
-  return new Promise((resolve) => {
-    const directionsService = new window.google.maps.DirectionsService();
-    directionsService.route(
-      {
-        origin: cleanAddresses[0],
-        destination: cleanAddresses[cleanAddresses.length - 1],
-        waypoints: cleanAddresses.slice(1, -1).map((addr) => ({ location: addr, stopover: true })),
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === 'OK' && result?.routes?.[0]) {
-          const passesThrough = result.routes[0].legs.some((leg) => {
-            const startIn = isPointInBox(leg.start_location.lat(), leg.start_location.lng());
-            const endIn = isPointInBox(leg.end_location.lat(), leg.end_location.lng());
-            if (startIn || endIn) return true;
-            return (leg.steps || []).some((step) =>
-              (step.path || []).some((pt) => isPointInBox(pt.lat(), pt.lng()))
-            );
-          });
-          resolve(passesThrough);
-        } else {
-          resolve(false);
-        }
-      }
-    );
-  });
+  // Route geometry is obtained once by the quote calculator and reused for
+  // every zone. Geofence evaluation itself never makes a billable Maps call.
+  return routePoints.some((point) => point && isPointInBox(point.lat, point.lng));
 }
 
-async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, companyRates = {}) {
+async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, companyRates = {}, routePoints = []) {
   const activeZones = getActiveZones(baseZones, companyRates);
   const results = await Promise.all(
     activeZones.map(async (zone) => {
-      const matched = await checkGeofenceZone(zone, cleanWaypoints, coordsList);
+      const matched = await checkGeofenceZone(zone, cleanWaypoints, coordsList, routePoints);
       const customZone = companyRates?.geofences?.customZones?.find((item) => item.id === zone.id);
       const customShape = customZone?.shape;
 
@@ -150,12 +122,12 @@ async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, compan
   return results.filter(Boolean);
 }
 
-export async function evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates = {}) {
-  return evaluateZoneMatches(GEOFENCES, cleanWaypoints, coordsList, companyRates);
+export async function evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates = {}, routePoints = []) {
+  return evaluateZoneMatches(GEOFENCES, cleanWaypoints, coordsList, companyRates, routePoints);
 }
 
-export async function evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates = {}) {
-  return evaluateZoneMatches(HAZARD_ZONES, cleanWaypoints, coordsList, companyRates);
+export async function evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates = {}, routePoints = []) {
+  return evaluateZoneMatches(HAZARD_ZONES, cleanWaypoints, coordsList, companyRates, routePoints);
 }
 
 export async function evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates = {}) {

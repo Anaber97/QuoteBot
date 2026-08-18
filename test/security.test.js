@@ -10,8 +10,10 @@ test('authenticated routes reject requests without a bearer token', async () => 
   await assert.rejects(() => requireAuth({ headers: {} }), (error) => error.status === 401);
 });
 
-test('rate limiter rejects requests after the configured budget', () => {
-  const key = `test-${Date.now()}`;
-  enforceRateLimit(key, { limit: 1, windowMs: 1000 });
-  assert.throws(() => enforceRateLimit(key, { limit: 1, windowMs: 1000 }), (error) => error.status === 429);
+test('persistent rate limiter rejects requests after the configured budget', async () => {
+  const admin = { rpc: async () => ({ data: [{ allowed: false, retry_after: 42 }], error: null }) };
+  await assert.rejects(
+    () => enforceRateLimit(admin, 'test-key', { limit: 1, windowMs: 1000 }),
+    (error) => error.status === 429 && error.retryAfter === 42
+  );
 });

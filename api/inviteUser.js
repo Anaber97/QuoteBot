@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     if (!companyId || !['manager', 'dispatch', 'client'].includes(role)) return res.status(400).json({ error: 'A valid company and role are required.' });
 
     const { admin, profile } = await requireUser(req, { companyId, manager: true });
-    enforceRateLimit(`invite:${profile.id}`, { limit: 10, windowMs: 60 * 60 * 1000 });
+    await enforceRateLimit(admin, `invite:${profile.id}`, { limit: 10, windowMs: 60 * 60 * 1000 });
     if (clientId) {
       const { data: client } = await admin.from('clients').select('id').eq('id', clientId).eq('company_id', companyId).maybeSingle();
       if (!client) return res.status(400).json({ error: 'The selected client account is invalid.' });

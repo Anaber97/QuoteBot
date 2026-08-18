@@ -25,7 +25,7 @@ export default function QuoteLog({ onSelectQuote, profile }) {
     try {
       const response = await authenticatedFetch('/api/sendQuoteEmail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quoteId: log.id, action, recipient }) });
       const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Email could not be sent.');
-      alert(action === 'share' ? 'Quote emailed.' : action === 'bol_attached' ? 'BOL attached and dispatch notified.' : 'Quote sent for dispatch.');
+      alert(action === 'share' ? 'Quote emailed.' : 'Quote sent for dispatch.');
     } catch (emailError) { alert(emailError.message); } finally { setBusyId(null); }
   };
   const savePdf = (log) => { const win = window.open('', '_blank'); if (!win) return alert('Please allow pop-ups to save the quote as a PDF.'); win.document.write(quoteHtml(log)); win.document.close(); win.focus(); setTimeout(() => win.print(), 150); };
@@ -37,10 +37,23 @@ export default function QuoteLog({ onSelectQuote, profile }) {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_'); const path = `${profile.company_id}/${log.id}/${crypto.randomUUID()}-${safeName}`;
       const { error: uploadError } = await supabase.storage.from('quote-bols').upload(path, file, { contentType: file.type, upsert: false }); if (uploadError) throw uploadError;
       const { error: updateError } = await supabase.from('quote_logs').update({ bol_path: path, bol_name: file.name, bol_type: file.type }).eq('id', log.id); if (updateError) throw updateError;
-      await callEmail(log, 'bol_attached'); await fetchLogs();
+      await fetchLogs();
+      alert('BOL attached.');
     } catch (uploadError) { alert(uploadError.message); setBusyId(null); }
   };
   const openBol = async (log) => { const { data, error: signError } = await supabase.storage.from('quote-bols').createSignedUrl(log.bol_path, 60); if (signError) return alert(signError.message); window.open(data.signedUrl, '_blank', 'noopener,noreferrer'); };
+  const removeBol = async (log) => {
+    if (!log.bol_path || !window.confirm(`Remove ${log.bol_name || 'this BOL'} from the quote?`)) return;
+    setBusyId(log.id);
+    try {
+      const { error: removeError } = await supabase.storage.from('quote-bols').remove([log.bol_path]);
+      if (removeError) throw removeError;
+      const { error: updateError } = await supabase.from('quote_logs').update({ bol_path: null, bol_name: null, bol_type: null }).eq('id', log.id);
+      if (updateError) throw updateError;
+      await fetchLogs();
+      alert('BOL removed.');
+    } catch (removeError) { alert(removeError.message); } finally { setBusyId(null); }
+  };
 
   if (loading) return <div className="py-12 text-center text-slate-400 text-sm"><div className="animate-spin inline-block w-6 h-6 border-2 border-current border-t-transparent text-blue-500 rounded-full mb-2" /><p>Loading saved quotes...</p></div>;
   if (error) return <div className="p-4 bg-red-950/40 text-red-400 border border-red-800/50 rounded-xl text-xs font-medium">Failed to load quote log: {error}</div>;
@@ -55,10 +68,11 @@ export default function QuoteLog({ onSelectQuote, profile }) {
       return <div key={log.id} className="bg-[#0b0f17] border border-slate-800 rounded-xl p-4 text-xs space-y-2">
       <div className="flex justify-between items-start"><div><span className="font-bold text-white text-sm">{log.customer_name || 'N/A'}</span><span className="block text-slate-500 text-[10px]">{log.customer_phone || 'No phone'}</span></div>{!isClientPortal && <span className="font-extrabold text-emerald-400 text-sm">${log.min_quote} – ${log.max_quote}</span>}</div>
       <div className="text-slate-400 space-y-0.5">{isClientQuote && <p><strong className="text-slate-300">Equipment:</strong> {equipmentLabel}{equipment.serialNumber ? ` · S/N ${equipment.serialNumber}` : ''}</p>}{!isClientQuote && <p><strong className="text-slate-300">Base:</strong> {log.base_yard_id || 'N/A'}</p>}<p><strong className="text-slate-300">Waypoints:</strong> {Array.isArray(log.all_waypoints) ? log.all_waypoints.join(' ➔ ') : 'N/A'}</p>{!isClientQuote && <p><strong className="text-slate-300">Hours:</strong> {Number(log.total_hours || 0).toFixed(2)} hrs</p>}{isClientQuote && <p><strong className="text-slate-300">BOL:</strong> {log.bol_name || 'Not attached'}</p>}</div>
-      <div className={`grid grid-cols-2 ${isClientQuote ? 'sm:grid-cols-4' : ''} gap-1.5 pt-1`}>
+      <div className={`grid grid-cols-2 ${isClientQuote ? (log.bol_path ? 'sm:grid-cols-5' : 'sm:grid-cols-4') : ''} gap-1.5 pt-1`}>
         <button type="button" onClick={() => onSelectQuote?.(log)} className="rounded-lg border border-blue-500/30 px-2 py-2 font-semibold text-blue-300">Open</button>
         <button type="button" onClick={() => setShareId(shareId === log.id ? null : log.id)} className="rounded-lg border border-blue-500/30 px-2 py-2 font-semibold text-blue-300">Share</button>
         {isClientQuote && <button type="button" onClick={() => log.bol_path ? openBol(log) : attachBol(log)} disabled={busyId === log.id} className="rounded-lg border border-slate-700 px-2 py-2 font-semibold text-slate-300">{log.bol_path ? 'View BOL' : 'Attach BOL'}</button>}
+        {isClientQuote && log.bol_path && <button type="button" onClick={() => removeBol(log)} disabled={busyId === log.id} className="rounded-lg border border-red-500/30 px-2 py-2 font-semibold text-red-300">Remove BOL</button>}
         {isClientQuote && <button type="button" onClick={() => callEmail(log, 'action')} disabled={busyId === log.id} className="rounded-lg border border-amber-500/30 px-2 py-2 font-semibold text-amber-300">Send for Dispatch</button>}
       </div>
       {shareId === log.id && <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-800 bg-[#080c14] p-2"><button type="button" onClick={() => savePdf(log)} className="rounded bg-slate-800 px-2 py-2 font-semibold text-white">Save as PDF</button><button type="button" onClick={() => { const email = window.prompt('Email this quote to:'); if (email) callEmail(log, 'share', email); }} className="rounded bg-blue-600 px-2 py-2 font-semibold text-white">Send as Email</button></div>}

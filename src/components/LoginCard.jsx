@@ -97,17 +97,13 @@ export default function LoginCard() {
     setError(null);
 
     try {
-      const { error: reqErr } = await supabase.from('account_requests').insert([
-        {
-          full_name: requestName.trim(),
-          company_name: requestCompanyName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: requestPhone.trim(),
-          status: 'pending',
-        },
-      ]);
-
-      if (reqErr) throw reqErr;
+      const response = await fetch('/api/submitAccountRequest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName: requestName, companyName: requestCompanyName, email, phone: requestPhone }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Failed to submit request.');
       setSuccessMessage('Access request received! Our team will review and email your company credentials shortly.');
     } catch (err) {
       setError(err.message || 'Failed to submit request.');
