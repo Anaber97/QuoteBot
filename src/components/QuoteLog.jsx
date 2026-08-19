@@ -11,6 +11,7 @@ const PAGE_SIZE = 20;
 const LIST_COLUMNS = 'id, company_id, client_id, quote_source, customer_name, customer_phone, all_waypoints, base_yard_id, truck_class, total_hours, total_miles, min_quote, max_quote, status, bol_path, bol_name, bol_type, created_at';
 const quoteReference = (log) => log.quote_reference || `Q-${String(log.id || '').slice(0, 8).toUpperCase()}`;
 const statusLabel = (status) => String(status || 'submitted').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+const QUOTE_STATUSES = ['draft', 'submitted', 'approval_required', 'approved', 'dispatched', 'completed', 'cancelled'];
 
 export default function QuoteLog({ onSelectQuote, profile }) {
   const [logs, setLogs] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(null);
@@ -70,6 +71,18 @@ export default function QuoteLog({ onSelectQuote, profile }) {
       setNotice({ message: 'BOL removed.' });
     } catch (removeError) { setNotice({ tone: 'error', message: removeError.message }); } finally { setBusyId(null); }
   };
+  const updateStatus = async (log, status) => {
+    setBusyId(log.id);
+    try {
+      const response = await authenticatedFetch('/api/updateQuoteStatus', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quoteId: log.id, status }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Status could not be updated.');
+      setLogs((current) => current.map((item) => item.id === log.id ? { ...item, status } : item));
+      setNotice({ message: `Quote marked ${statusLabel(status)}.` });
+    } catch (statusError) {
+      setNotice({ tone: 'error', message: statusError.message });
+    } finally { setBusyId(null); }
+  };
 
   if (loading) return <div className="py-12 text-center text-slate-400 text-sm"><div className="animate-spin inline-block w-6 h-6 border-2 border-current border-t-transparent text-blue-500 rounded-full mb-2" /><p>Loading saved quotes...</p></div>;
   if (error) return <div className="p-4 bg-red-950/40 text-red-400 border border-red-800/50 rounded-xl text-xs font-medium">Failed to load quote log: {error}</div>;
@@ -81,7 +94,8 @@ export default function QuoteLog({ onSelectQuote, profile }) {
       const equipmentLabel = log.truck_class || 'Equipment details available when opened';
       return <div key={log.id} className="bg-[#0b0f17] border border-slate-800 rounded-xl p-4 text-xs space-y-2">
       <div className="flex justify-between items-start gap-3"><div><span className="font-bold text-white text-sm">{log.customer_name || 'N/A'}</span><span className="block text-slate-500 text-[10px]">{quoteReference(log)} · {new Date(log.created_at).toLocaleString()}</span><span className="mt-1 inline-block rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[9px] font-bold text-blue-300">{statusLabel(log.status)}</span></div>{!isClientPortal && <span className="font-extrabold text-emerald-400 text-sm">${log.min_quote} – ${log.max_quote}</span>}</div>
-      <div className="text-slate-400 space-y-0.5">{isClientQuote && <p><strong className="text-slate-300">Equipment:</strong> {equipmentLabel}{equipment.serialNumber ? ` · S/N ${equipment.serialNumber}` : ''}</p>}{!isClientQuote && <p><strong className="text-slate-300">Base:</strong> {log.base_yard_id || 'N/A'}</p>}<p><strong className="text-slate-300">Waypoints:</strong> {Array.isArray(log.all_waypoints) ? log.all_waypoints.join(' ➔ ') : 'N/A'}</p>{!isClientQuote && <p><strong className="text-slate-300">Hours:</strong> {Number(log.total_hours || 0).toFixed(2)} hrs</p>}{isClientQuote && <p><strong className="text-slate-300">BOL:</strong> {log.bol_name || 'Not attached'}</p>}</div>
+      <div className="text-slate-400 space-y-0.5">{isClientQuote && <p><strong className="text-slate-300">Equipment:</strong> {equipmentLabel}</p>}{!isClientQuote && <p><strong className="text-slate-300">Base:</strong> {log.base_yard_id || 'N/A'}</p>}<p><strong className="text-slate-300">Waypoints:</strong> {Array.isArray(log.all_waypoints) ? log.all_waypoints.join(' ➔ ') : 'N/A'}</p>{!isClientQuote && <p><strong className="text-slate-300">Hours:</strong> {Number(log.total_hours || 0).toFixed(2)} hrs</p>}{isClientQuote && <p><strong className="text-slate-300">BOL:</strong> {log.bol_name || 'Not attached'}</p>}</div>
+      {!isClientPortal && <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Status<select value={log.status || 'submitted'} disabled={busyId === log.id} onChange={(event) => updateStatus(log, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs normal-case text-white">{QUOTE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>}
       <div className={`grid grid-cols-2 ${isClientQuote ? (log.bol_path ? 'sm:grid-cols-5' : 'sm:grid-cols-4') : ''} gap-1.5 pt-1`}>
         <button type="button" onClick={() => openQuote(log)} disabled={busyId === log.id} className="rounded-lg border border-blue-500/30 px-2 py-2 font-semibold text-blue-300">{busyId === log.id ? 'Opening…' : 'Open'}</button>
         <button type="button" onClick={() => setShareId(shareId === log.id ? null : log.id)} className="rounded-lg border border-blue-500/30 px-2 py-2 font-semibold text-blue-300">Share</button>

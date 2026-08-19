@@ -24,6 +24,7 @@ test('quote permissions isolate companies and client accounts by role', () => {
   assert.equal(canAccessQuote({ role: 'dispatch', company_id: 'company-a' }, quote, 'read'), true);
   assert.equal(canAccessQuote({ role: 'dispatch', company_id: 'company-a' }, quote, 'manage_company'), false);
   assert.equal(canAccessQuote({ role: 'client', company_id: 'company-a', client_id: 'client-a' }, quote, 'read'), true);
+  assert.equal(canAccessQuote({ role: 'client', company_id: 'company-a', client_id: 'client-a' }, quote, 'change_status'), false);
   assert.equal(canAccessQuote({ role: 'client', company_id: 'company-a', client_id: 'client-b' }, quote, 'read'), false);
   assert.equal(canAccessQuote({ role: 'manager', company_id: 'company-b' }, quote, 'read'), false);
 });
