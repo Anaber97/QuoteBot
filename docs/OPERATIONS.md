@@ -44,7 +44,7 @@ Supported statuses are `draft`, `submitted`, `approval_required`, `approved`, `d
 2. Apply new migrations to a non-production Supabase project or branch first.
 3. Run `npm test`, `npm run lint`, `npm run build`, and `npm audit --omit=dev`.
 4. Test dispatcher and client quote flows in the Vercel Preview.
-5. Confirm `/api/health`, the protected synthetic check, email, Maps, Gemini, storage uploads, and database writes.
+5. Confirm `/api/ops`, the protected `/api/ops?check=synthetic` check, email, Maps, Gemini, storage uploads, and database writes.
 6. Review Supabase security/performance advisors and Vercel runtime errors.
 7. Merge only after the preview and checks pass. Apply schema migrations before application code that requires them.
 
@@ -57,4 +57,4 @@ Supported statuses are `draft`, `submitted`, `approval_required`, `approved`, `d
 
 ## Alerts
 
-Monitor `/api/health` publicly and `/api/syntheticQuote` with its bearer token. Route structured Vercel errors to the configured monitoring webhook and alert on `provider` values for `email`, `gemini`, `maps`, `storage`, and `database`. Provider billing/quota alerts remain configured in their own dashboards because application code cannot enforce account-level spend caps.
+Monitor `/api/ops` publicly and `/api/ops?check=synthetic` with its bearer token. Route structured Vercel errors to the configured monitoring webhook and alert on `provider` values for `email`, `gemini`, `maps`, `storage`, and `database`. Provider billing/quota alerts remain configured in their own dashboards because application code cannot enforce account-level spend caps.

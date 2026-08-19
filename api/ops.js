@@ -1,8 +1,21 @@
 import { calculateAuthoritativeQuote } from './_quoteEngine.js';
 import { getServerEnv } from './_env.js';
+import { createAdminClient } from './_security.js';
 
-export default async function handler(req, res) {
-  if (req.method !== 'GET') return res.status(405).json({ status: 'error' });
+async function health(res) {
+  const started = Date.now();
+  try {
+    const admin = createAdminClient();
+    const { error } = await admin.from('companies').select('id', { head: true, count: 'exact' }).limit(1);
+    if (error) throw error;
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json({ status: 'ok', database: 'ok', latencyMs: Date.now() - started });
+  } catch {
+    return res.status(503).json({ status: 'degraded', database: 'unavailable', latencyMs: Date.now() - started });
+  }
+}
+
+function synthetic(req, res) {
   const expected = getServerEnv('SYNTHETIC_CHECK_TOKEN');
   if (!expected || req.headers?.authorization !== `Bearer ${expected}`) return res.status(401).json({ status: 'unauthorized' });
   try {
@@ -18,3 +31,9 @@ export default async function handler(req, res) {
     return res.status(503).json({ status: 'degraded', calculation: 'failed' });
   }
 }
+
+export default async function handler(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ status: 'error' });
+  return req.query?.check === 'synthetic' ? synthetic(req, res) : health(res);
+}
+

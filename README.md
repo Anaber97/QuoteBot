@@ -23,8 +23,8 @@ The same commands run automatically for every pull request through `.github/work
 
 ## Operational endpoints
 
-- `GET /api/health` checks that the application can reach its database. It returns no customer data.
-- `GET /api/syntheticQuote` runs a deterministic quote calculation and requires `Authorization: Bearer <SYNTHETIC_CHECK_TOKEN>`.
+- `GET /api/ops` checks that the application can reach its database. It returns no customer data.
+- `GET /api/ops?check=synthetic` runs a deterministic quote calculation and requires `Authorization: Bearer <SYNTHETIC_CHECK_TOKEN>`.
 
 Runtime errors are emitted as structured, privacy-scrubbed JSON in Vercel logs. If `ERROR_WEBHOOK_URL` is set, server errors are also forwarded to that monitoring destination without quote inputs, names, addresses, phone numbers, or email addresses.
 
