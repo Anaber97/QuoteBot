@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportFrontendError } from '../lib/monitoring.js';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -11,7 +12,7 @@ export class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('Unhandled UI Error:', error, errorInfo);
+    reportFrontendError(error, { component: errorInfo?.componentStack ? 'react-boundary' : 'react' });
   }
 
   handleReset = () => {

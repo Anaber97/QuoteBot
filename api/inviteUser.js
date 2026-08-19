@@ -33,6 +33,6 @@ export default async function handler(req, res) {
     }
     return res.status(200).json({ success: true, message: `Invitation successfully sent to ${email}`, inviteToken });
   } catch (error) {
-    return sendApiError(res, error, 'Unable to send invitation.');
+    return sendApiError(res, error, 'Unable to send invitation.', { route: '/api/inviteUser', provider: 'email' });
   }
 }

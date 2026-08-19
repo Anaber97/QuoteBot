@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Building, Plus, Save, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import Dialog from '../Dialog';
 
 const emptyPricing = { use_custom_pricing: false, rounding_interval: 25, weight_tiers: [] };
 
@@ -21,6 +22,7 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal,
   const [newEmail, setNewEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [pendingDelete, setPendingDelete] = useState(null);
   const defaultWeightTiers = formData.client_portal?.weight_tiers || [];
 
   const loadClients = useCallback(async () => {
@@ -82,7 +84,6 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal,
     if (saveError) setError(saveError.message); else setSuccess(`${client.client_name} saved.`);
   };
   const deleteClient = async (id) => {
-    if (!window.confirm('Remove this client account? Assigned users will no longer have a client account.')) return;
     const { error: deleteError } = await supabase.from('clients').delete().eq('id', id).eq('company_id', profile.company_id);
     if (deleteError) return setError(deleteError.message);
     setClients((current) => current.filter((client) => client.id !== id));
@@ -137,8 +138,11 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal,
             <button type="button" onClick={() => removeClientTier(client.id, tierIndex)} className="rounded border border-red-500/30 px-2 text-red-300" title="Delete class"><Trash2 className="h-3.5 w-3.5" /></button>
           </div>)}
         </div>}
-        <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => deleteClient(client.id)} className="rounded-lg border border-red-500/30 px-3 py-2 text-red-300"><Trash2 className="inline h-3.5 w-3.5" /> Delete</button><button type="button" onClick={() => saveClient(client)} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-emerald-300"><Save className="inline h-3.5 w-3.5" /> Save client</button></div>
+        <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => setPendingDelete(client)} className="rounded-lg border border-red-500/30 px-3 py-2 text-red-300"><Trash2 className="inline h-3.5 w-3.5" /> Delete</button><button type="button" onClick={() => saveClient(client)} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-emerald-300"><Save className="inline h-3.5 w-3.5" /> Save client</button></div>
       </details>)}
     </div>
+    <Dialog open={Boolean(pendingDelete)} title="Remove client account?" confirmLabel="Remove account" destructive onClose={() => setPendingDelete(null)} onConfirm={() => { const id = pendingDelete?.id; setPendingDelete(null); if (id) deleteClient(id); }}>
+      <p>Remove <strong>{pendingDelete?.client_name}</strong>? Assigned users will no longer have a client account.</p>
+    </Dialog>
   </div>;
 }

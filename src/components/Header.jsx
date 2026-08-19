@@ -9,8 +9,6 @@ export default function Header({ activeTab, setActiveTab, profile, onSignOut, th
   const role = rawRole.toLowerCase().trim();
 
   // Debug log to browser console
-  console.log('Current User Profile in Header:', profile);
-  console.log('Parsed Role:', role);
 
   const isManager = role === 'manager';
 

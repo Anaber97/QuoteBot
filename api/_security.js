@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getServerEnv } from './_env.js';
+import { reportOperationalError } from './_monitoring.js';
 
 export function createAdminClient() {
   const supabaseUrl = getServerEnv('SUPABASE_URL') || getServerEnv('VITE_SUPABASE_URL');
@@ -71,6 +72,19 @@ export async function requireUser(req, { companyId = null, manager = false } = {
   return { admin, user, profile, token };
 }
 
+export function canAccessQuote(profile, quote, action = 'read') {
+  if (!profile || !quote || profile.company_id !== quote.company_id) return false;
+  if (profile.role === 'manager') return true;
+  if (profile.role === 'dispatch') return action !== 'manage_company';
+  if (profile.role === 'client') {
+    return quote.quote_source === 'client_portal'
+      && Boolean(profile.client_id)
+      && profile.client_id === quote.client_id
+      && ['read', 'attach_bol', 'request_dispatch'].includes(action);
+  }
+  return false;
+}
+
 export async function enforceRateLimit(admin, key, { limit, windowMs }) {
   const { data, error: rateError } = await admin.rpc('consume_api_rate_limit', {
     p_key: String(key),
@@ -87,10 +101,10 @@ export async function enforceRateLimit(admin, key, { limit, windowMs }) {
   }
 }
 
-export function sendApiError(res, error, fallback = 'Internal server error.') {
+export function sendApiError(res, error, fallback = 'Internal server error.', context = {}) {
   const status = Number(error?.status) || 500;
   if (error?.retryAfter) res.setHeader('Retry-After', String(error.retryAfter));
-  if (status >= 500) console.error(fallback, error);
+  if (status >= 500) void reportOperationalError(error, context);
   return res.status(status).json({ error: status >= 500 ? fallback : error.message });
 }
 

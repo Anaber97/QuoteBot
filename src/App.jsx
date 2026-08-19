@@ -1,7 +1,7 @@
 // src/App.jsx
 
 // @ts-check
-import React, { useReducer, useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useReducer, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { authenticatedFetch } from './lib/api';
 import { calculateQuoteData } from './services/quoteCalculator';
@@ -11,10 +11,13 @@ import LoginCard from './components/LoginCard';
 import SurchargeToggles from './components/SurchargeToggles';
 import WaypointList from './components/WaypointList';
 import QuoteResultsCard from './components/QuoteResultsCard';
-import QuoteLog from './components/QuoteLog';
 import Settings, { DEFAULT_CONFIG } from './components/Settings';
-import InviteRegister from './components/InviteRegister';
-import ClientQuoteForm from './components/ClientQuoteForm';
+import Toast from './components/Toast';
+
+const QuoteLog = lazy(() => import('./components/QuoteLog'));
+const InviteRegister = lazy(() => import('./components/InviteRegister'));
+const ClientQuoteForm = lazy(() => import('./components/ClientQuoteForm'));
+const LoadingPanel = () => <div className="p-8 text-center text-sm text-slate-400" role="status">Loading…</div>;
 
 const getInitialBaseId = () => {
   const savedBase = localStorage.getItem('dispatch_default_base');
@@ -214,6 +217,7 @@ function appReducer(state, action) {
 }
 
 export default function App() {
+  const [notice, setNotice] = useState(null);
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [theme, setTheme] = useState(() => localStorage.getItem('towcalc_theme') || 'dark');
   const [isInviteRoute, setIsInviteRoute] = useState(false);
@@ -542,17 +546,17 @@ export default function App() {
       }
 
       const warning = result.notificationWarning ? ` ${result.notificationWarning}` : '';
-      alert(`${attachmentFile ? 'Quote logged with BOL attached!' : 'Quote successfully logged!'}${warning}`);
+      setNotice({ message: `${attachmentFile ? 'Quote logged with BOL attached!' : 'Quote successfully logged!'}${warning}` });
       dispatch({ type: 'RESET_FORM' });
       setQuoteData(null);
     } catch (err) {
       console.error(err);
-      alert('Failed to log quote: ' + err.message);
+      setNotice({ tone: 'error', message: `Failed to log quote: ${err.message}` });
     }
   };
 
   if (isInviteRoute) {
-    return <InviteRegister />;
+    return <Suspense fallback={<LoadingPanel />}><InviteRegister /></Suspense>;
   }
 
   return (
@@ -574,7 +578,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {state.activeTab === 'logs' && <QuoteLog profile={profile} onSelectQuote={handleOpenLoggedQuote} />}
+            {state.activeTab === 'logs' && <Suspense fallback={<LoadingPanel />}><QuoteLog profile={profile} onSelectQuote={handleOpenLoggedQuote} /></Suspense>}
 
             {state.activeTab === 'settings' && (
               <Settings
@@ -590,12 +594,12 @@ export default function App() {
                 /* CLIENT PORTAL VIEW */
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                   <div className="lg:col-span-7">
-                    <ClientQuoteForm
+                    <Suspense fallback={<LoadingPanel />}><ClientQuoteForm
                       companyRates={companyRates}
                       onCalculate={handleClientCalculateQuote}
                       isCalculating={loading}
                       initialQuote={openedLoggedQuote}
-                    />
+                    /></Suspense>
                   </div>
 
                   <div className="lg:col-span-5">
@@ -647,7 +651,7 @@ export default function App() {
                     )}
 
                     {showEquipmentCalculator ? (
-                      <ClientQuoteForm companyRates={companyRates} onCalculate={handleClientCalculateQuote} isCalculating={loading} title="Equipment Calculator" onReset={resetCalculatorState} initialQuote={openedLoggedQuote} />
+                      <Suspense fallback={<LoadingPanel />}><ClientQuoteForm companyRates={companyRates} onCalculate={handleClientCalculateQuote} isCalculating={loading} title="Equipment Calculator" onReset={resetCalculatorState} initialQuote={openedLoggedQuote} /></Suspense>
                     ) : <form onSubmit={handleCalculate} className="space-y-5">
                       {/* Base Shop Selector */}
                       <div>
@@ -762,6 +766,7 @@ export default function App() {
           </>
         )}
       </div>
+      <Toast notice={notice} onDismiss={() => setNotice(null)} />
     </div>
   );
 }

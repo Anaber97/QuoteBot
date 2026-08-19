@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
+import { reportOperationalError } from './_monitoring.js';
 
 const responseCache = new Map();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -494,6 +495,7 @@ export default async function handler(req, res) {
           });
         }
       } catch (geminiError) {
+        void reportOperationalError(geminiError, { event: 'provider_failure', route: '/api/searchEquipment', provider: 'gemini' });
         const fallbackMatches = getFallbackEquipmentMatches(query);
         return res.status(200).json({
           results: fallbackMatches.slice(0, 8),
@@ -511,6 +513,6 @@ export default async function handler(req, res) {
     responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
     return res.status(200).json(payload);
   } catch (error) {
-    return sendApiError(res, error, 'Equipment search failed.');
+    return sendApiError(res, error, 'Equipment search failed.', { route: '/api/searchEquipment', provider: 'gemini' });
   }
 }

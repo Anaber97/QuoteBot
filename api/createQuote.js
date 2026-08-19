@@ -93,6 +93,7 @@ export default async function handler(req, res) {
     }
     return res.status(201).json({ success: true, quote, notificationWarning });
   } catch (error) {
-    return sendApiError(res, error, 'Unable to create quote.');
+    const provider = String(error?.message || '').toLowerCase().includes('google') ? 'maps' : 'database';
+    return sendApiError(res, error, 'Unable to create quote.', { route: '/api/createQuote', provider });
   }
 }
