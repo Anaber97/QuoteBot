@@ -37,7 +37,11 @@ export const geocodeAll = async (addresses) => {
             geocoder.geocode({ address: addr }, (results, status) => {
               if (status === 'OK' && results && results[0]) {
                 const loc = results[0].geometry.location;
-                resolve({ lat: loc.lat(), lng: loc.lng() });
+                const components = results[0].address_components || [];
+                const component = (...types) => components.find((item) => types.some((type) => item.types?.includes(type)));
+                const city = component('locality', 'postal_town', 'administrative_area_level_3', 'sublocality')?.long_name || '';
+                const state = component('administrative_area_level_1')?.short_name || '';
+                resolve({ lat: loc.lat(), lng: loc.lng(), city, state, formattedAddress: results[0].formatted_address || addr });
               } else {
                 resolve(null);
               }
@@ -214,7 +218,8 @@ export async function calculateQuoteData({
   );
   const metroMatches = await evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates, customerRoutePoints);
   const hazardMatches = await evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates, customerRoutePoints);
-  const customMatches = await evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates);
+  const resolvedLocations = (companyRates?.geofences?.customZones || []).length > 0 ? await geocodeAll(cleanWaypoints) : [];
+  const customMatches = await evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates, resolvedLocations);
   const hitMetroZone = metroMatches.length > 0;
   const hitHazardZone = hazardMatches.length > 0;
   const hitCustomZone = customMatches.length > 0;
@@ -269,15 +274,23 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
   }
 
   if (quoteData.pricingMode === 'equipment-weight-tier' && Number.isFinite(Number(quoteData.fixedHourlyRate))) {
+    const customSurchargeTotal = (companyRates?.pricing?.custom_surcharges || [])
+      .filter((item) => item.active !== false && activeOverrides?.customSurcharges?.[item.id] === true)
+      .reduce((totals, item) => {
+        const value = Number(item.value) || 0;
+        return item.feeType === 'percent'
+          ? { ...totals, multiplier: totals.multiplier * (1 + value / 100) }
+          : { ...totals, flat: totals.flat + value };
+      }, { multiplier: 1, flat: 0 });
     const fixedQuote = roundToNearest(
-      Number(quoteData.rawTotalHours || 0) * Number(quoteData.fixedHourlyRate),
+      (Number(quoteData.rawTotalHours || 0) * Number(quoteData.fixedHourlyRate) * customSurchargeTotal.multiplier) + customSurchargeTotal.flat,
       Number(quoteData.roundingInterval || 25)
     );
     return {
       currentMinQuote: fixedQuote,
       currentMaxQuote: fixedQuote,
       customCalculatedQuote: null,
-      effectiveMultiplier: 1,
+      effectiveMultiplier: customSurchargeTotal.multiplier,
     };
   }
 

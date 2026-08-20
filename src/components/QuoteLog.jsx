@@ -8,7 +8,7 @@ const allowedBol = (file) => file && (['application/pdf', 'image/png', 'image/jp
 const escapeHtml = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 const quoteHtml = (log) => `<!doctype html><html><head><title>Quote ${escapeHtml(log.id)}</title><style>body{font-family:Arial,sans-serif;color:#172033;max-width:760px;margin:40px auto}h1{margin-bottom:4px}.price{font-size:28px;font-weight:700;color:#047857}.row{padding:10px 0;border-bottom:1px solid #ddd}small{color:#667085}@media print{button{display:none}}</style></head><body><h1>Transport Quote</h1><small>${escapeHtml(new Date(log.created_at).toLocaleString())}</small><p class="price">$${escapeHtml(log.min_quote)} – $${escapeHtml(log.max_quote)}</p><div class="row"><b>Customer:</b> ${escapeHtml(log.customer_name || 'N/A')}</div><div class="row"><b>Phone:</b> ${escapeHtml(log.customer_phone || 'N/A')}</div><div class="row"><b>Route:</b> ${escapeHtml((log.all_waypoints || []).join(' → '))}</div><div class="row"><b>Miles:</b> ${Number(log.total_miles || 0).toFixed(1)}</div><div class="row"><b>Hours:</b> ${Number(log.total_hours || 0).toFixed(2)}</div><button onclick="window.print()">Print / Save as PDF</button></body></html>`;
 const PAGE_SIZE = 20;
-const LIST_COLUMNS = 'id, company_id, client_id, quote_source, customer_name, customer_phone, all_waypoints, base_yard_id, truck_class, total_hours, total_miles, min_quote, max_quote, status, bol_path, bol_name, bol_type, created_at';
+const LIST_COLUMNS = 'id, company_id, client_id, quote_source, customer_name, customer_phone, all_waypoints, base_yard_id, truck_class, total_hours, total_miles, min_quote, max_quote, status, quote_details, notes, bol_path, bol_name, bol_type, created_at';
 const quoteReference = (log) => log.quote_reference || `Q-${String(log.id || '').slice(0, 8).toUpperCase()}`;
 const statusLabel = (status) => String(status || 'submitted').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 const QUOTE_STATUSES = ['draft', 'submitted', 'approval_required', 'approved', 'dispatched', 'completed', 'cancelled'];
@@ -17,16 +17,26 @@ export default function QuoteLog({ onSelectQuote, profile }) {
   const [logs, setLogs] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(null);
   const [busyId, setBusyId] = useState(null); const [shareId, setShareId] = useState(null);
   const [page, setPage] = useState(0); const [hasMore, setHasMore] = useState(false);
+  const [searchInput, setSearchInput] = useState(''); const [searchTerm, setSearchTerm] = useState('');
   const [notice, setNotice] = useState(null); const [dialog, setDialog] = useState(null); const [email, setEmail] = useState('');
   const fileRef = useRef(null); const pendingQuoteRef = useRef(null); const isClientPortal = profile?.role === 'client';
 
   const fetchLogs = useCallback(async (nextPage = 0) => {
     setLoading(true); setError(null);
+    if (searchTerm) {
+      try {
+        const response = await authenticatedFetch(`/api/searchQuoteLogs?q=${encodeURIComponent(searchTerm)}&page=${nextPage}`);
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || 'Quote search failed.');
+        setLogs(body.quotes || []); setHasMore(Boolean(body.hasMore)); setPage(nextPage);
+      } catch (searchError) { setError(searchError.message); }
+      setLoading(false); return;
+    }
     let query = supabase.from('quote_logs').select(LIST_COLUMNS).order('created_at', { ascending: false }).range(nextPage * PAGE_SIZE, nextPage * PAGE_SIZE + PAGE_SIZE);
     if (isClientPortal) query = query.eq('quote_source', 'client_portal').eq('client_id', profile.client_id);
     const { data, error: loadError } = await query;
     if (loadError) setError(loadError.message); else { setLogs((data || []).slice(0, PAGE_SIZE)); setHasMore((data || []).length > PAGE_SIZE); setPage(nextPage); } setLoading(false);
-  }, [isClientPortal, profile?.client_id]);
+  }, [isClientPortal, profile?.client_id, searchTerm]);
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
   const openQuote = async (log) => {
@@ -84,18 +94,25 @@ export default function QuoteLog({ onSelectQuote, profile }) {
     } finally { setBusyId(null); }
   };
 
+  const searchForm = <form onSubmit={(event) => { event.preventDefault(); const next = searchInput.trim(); setPage(0); if (next === searchTerm) fetchLogs(0); else setSearchTerm(next); }} className="flex flex-col gap-2 sm:flex-row">
+    <input type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search ID, POC name/number, Make/Model, or equipment" className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-[#0b0f17] px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" />
+    <button type="submit" className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-500">Search</button>
+    {(searchTerm || searchInput) && <button type="button" onClick={() => { setSearchInput(''); setSearchTerm(''); setPage(0); }} className="rounded-xl border border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-300">Clear</button>}
+  </form>;
+
   if (loading) return <div className="py-12 text-center text-slate-400 text-sm"><div className="animate-spin inline-block w-6 h-6 border-2 border-current border-t-transparent text-blue-500 rounded-full mb-2" /><p>Loading saved quotes...</p></div>;
   if (error) return <div className="p-4 bg-red-950/40 text-red-400 border border-red-800/50 rounded-xl text-xs font-medium">Failed to load quote log: {error}</div>;
-  if (!logs.length) return <div className="py-12 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl"><p className="text-sm font-semibold text-slate-400 mb-1">No Quotes Logged Yet 📊</p><p className="text-xs">Saved quotes will appear here.</p></div>;
+  if (!logs.length) return <div className="space-y-3">{searchForm}<div className="py-12 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl"><p className="text-sm font-semibold text-slate-400 mb-1">{searchTerm ? 'No matching quotes' : 'No Quotes Logged Yet 📊'}</p><p className="text-xs">{searchTerm ? 'Try another ID, contact, or equipment search.' : 'Saved quotes will appear here.'}</p></div></div>;
 
-  return <div className="space-y-3 max-h-[650px] overflow-y-auto pr-1"><input ref={fileRef} type="file" hidden accept="application/pdf,image/png,image/jpeg,image/webp" onChange={handleBolFile} />
+  return <div className="space-y-3 max-h-[650px] overflow-y-auto pr-1">{searchForm}<input ref={fileRef} type="file" hidden accept="application/pdf,image/png,image/jpeg,image/webp" onChange={handleBolFile} />
     {logs.map((log) => {
       const isClientQuote = log.quote_source === 'client_portal';
-      const equipmentLabel = log.truck_class || 'Equipment details available when opened';
+      const equipment = log.quote_details && typeof log.quote_details === 'object' ? log.quote_details : {};
+      const equipmentLabel = [equipment.make, equipment.model].filter(Boolean).join(' ') || equipment.name || equipment.equipmentName || log.truck_class || 'Equipment details available when opened';
       return <div key={log.id} className="bg-[#0b0f17] border border-slate-800 rounded-xl p-4 text-xs space-y-2">
-      <div className="flex justify-between items-start gap-3"><div><span className="font-bold text-white text-sm">{log.customer_name || 'N/A'}</span><span className="block text-slate-500 text-[10px]">{quoteReference(log)} · {new Date(log.created_at).toLocaleString()}</span><span className="mt-1 inline-block rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[9px] font-bold text-blue-300">{statusLabel(log.status)}</span></div>{!isClientPortal && <span className="font-extrabold text-emerald-400 text-sm">${log.min_quote} – ${log.max_quote}</span>}</div>
+      <div className="flex justify-between items-start gap-3"><div><span className="font-bold text-white text-sm">{log.customer_name || 'N/A'}</span><span className="block text-slate-500 text-[10px]">{quoteReference(log)} · {new Date(log.created_at).toLocaleString()}</span>{isClientQuote && <span className="mt-1 inline-block rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[9px] font-bold text-blue-300">{statusLabel(log.status)}</span>}</div>{!isClientPortal && <span className="font-extrabold text-emerald-400 text-sm">${log.min_quote} – ${log.max_quote}</span>}</div>
       <div className="text-slate-400 space-y-0.5">{isClientQuote && <p><strong className="text-slate-300">Equipment:</strong> {equipmentLabel}</p>}{!isClientQuote && <p><strong className="text-slate-300">Base:</strong> {log.base_yard_id || 'N/A'}</p>}<p><strong className="text-slate-300">Waypoints:</strong> {Array.isArray(log.all_waypoints) ? log.all_waypoints.join(' ➔ ') : 'N/A'}</p>{!isClientQuote && <p><strong className="text-slate-300">Hours:</strong> {Number(log.total_hours || 0).toFixed(2)} hrs</p>}{isClientQuote && <p><strong className="text-slate-300">BOL:</strong> {log.bol_name || 'Not attached'}</p>}</div>
-      {!isClientPortal && <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Status<select value={log.status || 'submitted'} disabled={busyId === log.id} onChange={(event) => updateStatus(log, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs normal-case text-white">{QUOTE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>}
+      {!isClientPortal && isClientQuote && <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Status<select value={log.status || 'submitted'} disabled={busyId === log.id} onChange={(event) => updateStatus(log, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs normal-case text-white">{QUOTE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>}
       <div className={`grid grid-cols-2 ${isClientQuote ? (log.bol_path ? 'sm:grid-cols-5' : 'sm:grid-cols-4') : ''} gap-1.5 pt-1`}>
         <button type="button" onClick={() => openQuote(log)} disabled={busyId === log.id} className="rounded-lg border border-blue-500/30 px-2 py-2 font-semibold text-blue-300">{busyId === log.id ? 'Opening…' : 'Open'}</button>
         <button type="button" onClick={() => setShareId(shareId === log.id ? null : log.id)} className="rounded-lg border border-blue-500/30 px-2 py-2 font-semibold text-blue-300">Share</button>

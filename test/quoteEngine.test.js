@@ -187,3 +187,16 @@ test('client-specific pricing overrides company tiers and timing', () => {
   assert.equal(result.totalHours, 1);
   assert.equal(result.minQuote, 175);
 });
+
+test('equipment pricing ignores municipality rates but keeps selected custom surcharges', () => {
+  const equipmentConfig = structuredClone(config);
+  equipmentConfig.geofences.customZones = [{ id: 'henderson', city: 'Henderson', state: 'TX', pricingMode: 'flat_rate', price: 100 }];
+  equipmentConfig.pricing.custom_surcharges = [{ id: 'lift', name: 'Special lift', feeType: 'flat', value: 50, active: true }];
+  const result = quote({
+    config: equipmentConfig,
+    route: { ...route, localities: [{ city: 'Henderson', state: 'TX' }, { city: 'Henderson', state: 'TX' }] },
+    input: { quoteSource: 'equipment_calculator', activeOverrides: { customSurcharges: { lift: true } } },
+  });
+  assert.equal(result.minQuote, 200);
+  assert.equal(result.maxQuote, 200);
+});

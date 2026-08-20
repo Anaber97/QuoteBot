@@ -58,21 +58,14 @@ function normalizeText(value) {
     .trim();
 }
 
-function matchesLocality(address, zone) {
-  const addressText = normalizeText(address);
-  if (!addressText) return false;
-
+function matchesLocality(location, zone) {
+  if (!location || typeof location !== 'object') return false;
+  const resolvedCity = normalizeText(location.city);
+  const resolvedState = normalizeText(location.state);
   const cityText = normalizeText(zone?.city);
   const stateText = normalizeText(zone?.state);
-  const localityText = normalizeText(zone?.localityQuery || [zone?.city, zone?.state].filter(Boolean).join(', '));
-
-  if (localityText && addressText.includes(localityText)) return true;
-  if (cityText && stateText) {
-    return addressText.includes(cityText) && addressText.includes(stateText);
-  }
-  if (cityText) return addressText.includes(cityText);
-  if (stateText) return addressText.includes(stateText);
-  return false;
+  if (!resolvedCity || !cityText || resolvedCity !== cityText) return false;
+  return !stateText || resolvedState === stateText;
 }
 
 export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList = [], routePoints = []) {
@@ -130,26 +123,26 @@ export async function evaluateHazardGeofences(cleanWaypoints, coordsList, compan
   return evaluateZoneMatches(HAZARD_ZONES, cleanWaypoints, coordsList, companyRates, routePoints);
 }
 
-export async function evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates = {}) {
+export async function evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates = {}, resolvedLocations = []) {
   const disabledZoneIds = new Set((companyRates?.geofences?.disabledZones || []).map((id) => String(id)));
   const customZones = (companyRates?.geofences?.customZones || []).filter((zone) => !disabledZoneIds.has(String(zone.id)));
   const pickupPoint = coordsList?.[0] || null;
   const dropoffPoint = coordsList?.[coordsList.length - 1] || null;
-  const pickupAddress = cleanWaypoints?.[0] || '';
-  const dropoffAddress = cleanWaypoints?.[cleanWaypoints.length - 1] || '';
+  const pickupLocation = resolvedLocations?.[0] || null;
+  const dropoffLocation = resolvedLocations?.[resolvedLocations.length - 1] || null;
 
   const results = await Promise.all(
     customZones.map(async (zone) => {
       const legacyShape = Array.isArray(zone.shape) && zone.shape.length >= 3;
       const containsPickup = legacyShape
         ? (pickupPoint ? isPointInPolygon(pickupPoint, zone.shape) : false)
-        : matchesLocality(pickupAddress, zone);
+        : matchesLocality(pickupLocation, zone);
       const containsDropoff = legacyShape
         ? (dropoffPoint ? isPointInPolygon(dropoffPoint, zone.shape) : false)
-        : matchesLocality(dropoffAddress, zone);
+        : matchesLocality(dropoffLocation, zone);
       const anyRoutePointInside = legacyShape
         ? coordsList.some((point) => point && isPointInPolygon(point, zone.shape))
-        : cleanWaypoints.some((address) => matchesLocality(address, zone));
+        : resolvedLocations.some((location) => matchesLocality(location, zone));
 
       const pricingMode = zone.pricingMode || (String(zone.feeType || 'percent') === 'flat' ? 'flat_rate' : 'surcharge');
       if (pricingMode === 'flat_rate') {

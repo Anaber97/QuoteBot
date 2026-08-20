@@ -3,6 +3,32 @@ import { decodePolyline } from './_quoteEngine.js';
 
 const parseDuration = (value) => Number.parseFloat(String(value || '0').replace(/s$/, '')) || 0;
 
+export async function resolveGoogleLocalities(addresses, { apiKey } = {}) {
+  const key = apiKey || getServerEnv('GOOGLE_MAPS_API_KEY');
+  if (!key) throw new Error('Missing server-side Google Maps API key.');
+  return Promise.all((addresses || []).map(async (address) => {
+    const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+    url.searchParams.set('address', String(address || ''));
+    url.searchParams.set('key', key);
+    const response = await fetch(url);
+    if (!response.ok) throw Object.assign(new Error(`Google Geocoding failed (${response.status}).`), { status: 502 });
+    const payload = await response.json();
+    if (payload?.status === 'ZERO_RESULTS') return null;
+    if (payload?.status !== 'OK') {
+      throw Object.assign(new Error(payload?.error_message || `Google Geocoding failed (${payload?.status || 'unknown status'}).`), { status: 502 });
+    }
+    const result = payload?.results?.[0];
+    if (!result) return null;
+    const components = result.address_components || [];
+    const component = (...types) => components.find((item) => types.some((type) => item.types?.includes(type)));
+    return {
+      city: component('locality', 'postal_town', 'administrative_area_level_3', 'sublocality')?.long_name || '',
+      state: component('administrative_area_level_1')?.short_name || '',
+      formattedAddress: result.formatted_address || String(address || ''),
+    };
+  }));
+}
+
 export async function computeServerRoute(addresses, { apiKey } = {}) {
   const key = apiKey || getServerEnv('GOOGLE_MAPS_API_KEY');
   if (!key) throw new Error('Missing server-side Google Maps API key.');

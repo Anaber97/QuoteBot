@@ -1,5 +1,5 @@
 import { calculateAuthoritativeQuote } from './_quoteEngine.js';
-import { computeServerRoute } from './_routes.js';
+import { computeServerRoute, resolveGoogleLocalities } from './_routes.js';
 import { sendStoredApprovalEmail } from './_approvalEmail.js';
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
 
@@ -27,6 +27,7 @@ export function normalizeQuoteInput(body, profile) {
     customLoadUnloadMins: client ? null : (body.customLoadUnloadMins == null ? null : number(body.customLoadUnloadMins, 10080)),
     customerName: text(body.customerName, 160),
     customerPhone: text(body.customerPhone, 60),
+    notes: text(body.notes, 2000),
     equipment: {
       name: text(body.equipment?.name || body.equipment?.equipmentName, 160),
       make: text(body.equipment?.make, 120), model: text(body.equipment?.model, 120), serialNumber: text(body.equipment?.serialNumber, 120),
@@ -71,6 +72,9 @@ export default async function handler(req, res) {
 
     const routeAddresses = [base.address, ...input.waypoints, base.address];
     const route = await computeServerRoute(routeAddresses);
+    route.localities = (config?.geofences?.customZones || []).length > 0
+      ? await resolveGoogleLocalities(input.waypoints)
+      : [];
     const calculated = calculateAuthoritativeQuote({ input, config, clientConfig, route, role: profile.role });
     const payload = {
       company_id: profile.company_id, user_id: profile.id, client_id: profile.role === 'client' ? profile.client_id : null,
@@ -80,6 +84,7 @@ export default async function handler(req, res) {
       total_miles: calculated.totalMiles, total_hours: calculated.totalHours,
       min_quote: calculated.minQuote, max_quote: calculated.maxQuote, custom_quote: calculated.customQuote,
       status: calculated.approvalRequired ? 'approval_required' : 'submitted',
+      notes: input.notes,
       applied_surcharges: calculated.appliedSurcharges,
       quote_details: { ...calculated.quoteDetails, approvalRequired: calculated.approvalRequired, metroCodes: calculated.metroCodes, routeLegs: calculated.routeLegs },
     };

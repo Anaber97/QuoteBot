@@ -142,6 +142,9 @@ const initialState = {
   showDetails: false,
   customerName: '',
   customerPhone: '',
+  quoteMake: '',
+  quoteModel: '',
+  quoteNotes: '',
   customRateInput: '',
   customLoadUnloadMins: '',
 };
@@ -186,6 +189,8 @@ function appReducer(state, action) {
       return { ...state, showDetails: !state.showDetails };
     case 'SET_CUSTOMER_INFO':
       return { ...state, [action.payload.field]: action.payload.value };
+    case 'SET_QUOTE_META_FIELDS':
+      return { ...state, ...action.payload };
     case 'SET_CUSTOM_RATE':
       return { ...state, customRateInput: action.payload };
     case 'SET_CUSTOM_LOAD_UNLOAD':
@@ -203,6 +208,9 @@ function appReducer(state, action) {
           : [action.payload.pickup_address || '', action.payload.dropoff_address || ''],
         customerName: action.payload.customer_name || '',
         customerPhone: action.payload.customer_phone || '',
+        quoteMake: action.payload.quote_details?.make || '',
+        quoteModel: action.payload.quote_details?.model || '',
+        quoteNotes: action.payload.notes || '',
       };
     case 'RESET_FORM':
       return {
@@ -461,6 +469,7 @@ export default function App() {
 
     try {
       const activeClientConfig = getActiveClientConfig(profile, companyRates);
+      dispatch({ type: 'SET_QUOTE_META_FIELDS', payload: { quoteMake: make || '', quoteModel: model || '' } });
       const data = await calculateQuoteData({
         currentBase,
         waypoints: routeWaypoints,
@@ -529,7 +538,12 @@ export default function App() {
           customLoadUnloadMins: state.customLoadUnloadMins,
           customerName: state.customerName,
           customerPhone: state.customerPhone,
-          equipment: quoteData.equipmentMeta || {},
+          notes: state.quoteNotes,
+          equipment: {
+            ...(quoteData.equipmentMeta || {}),
+            make: state.quoteMake || quoteData.equipmentMeta?.make || '',
+            model: state.quoteModel || quoteData.equipmentMeta?.model || '',
+          },
         }),
       });
       const result = await response.json().catch(() => ({}));

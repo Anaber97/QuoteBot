@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { checkGeofenceZone } from '../src/utils/geofenceEngine.js';
+import { checkGeofenceZone, evaluateCustomGeofences } from '../src/utils/geofenceEngine.js';
 
 const zone = {
   id: 'test-zone',
@@ -29,4 +29,23 @@ test('geofence checks return false when points and route miss the zone', async (
   );
 
   assert.equal(matched, false);
+});
+
+test('custom municipality zones use exact Google locality metadata, not address text', async () => {
+  const companyRates = { geofences: { customZones: [{ id: 'henderson', city: 'Henderson', state: 'TX', pricingMode: 'flat_rate', price: 100 }] } };
+  const falsePositive = await evaluateCustomGeofences(
+    ['100 Henderson Rd, Longview, TX', '200 Henderson Rd, Longview, TX'],
+    [{ lat: 32.5, lng: -94.7 }, { lat: 32.6, lng: -94.8 }],
+    companyRates,
+    [{ city: 'Longview', state: 'TX' }, { city: 'Longview', state: 'TX' }]
+  );
+  assert.equal(falsePositive.length, 0);
+
+  const exactMatch = await evaluateCustomGeofences(
+    ['Pickup', 'Dropoff'],
+    [{ lat: 32.1, lng: -94.8 }, { lat: 32.2, lng: -94.7 }],
+    companyRates,
+    [{ city: 'Henderson', state: 'TX' }, { city: 'Henderson', state: 'TX' }]
+  );
+  assert.equal(exactMatch.length, 1);
 });
