@@ -25,7 +25,7 @@ export default function QuoteLog({ onSelectQuote, profile }) {
     setLoading(true); setError(null);
     if (searchTerm) {
       try {
-        const response = await authenticatedFetch(`/api/searchQuoteLogs?q=${encodeURIComponent(searchTerm)}&page=${nextPage}`);
+        const response = await authenticatedFetch(`/api/ops?check=quote-search&q=${encodeURIComponent(searchTerm)}&page=${nextPage}`);
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || 'Quote search failed.');
         setLogs(body.quotes || []); setHasMore(Boolean(body.hasMore)); setPage(nextPage);
