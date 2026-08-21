@@ -1,10 +1,11 @@
 // src/components/Header.jsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { LogOut, Calculator, Moon, Sun } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export default function Header({ activeTab, setActiveTab, profile, onSignOut, theme = 'dark', onToggleTheme }) {
   const [imgError, setImgError] = useState(false);
+  const logoSrc = theme === 'dark' ? '/towcalc_fulllogo_light.svg' : '/towcalc_fulllogo_dark.svg';
   const rawRole = profile?.role || '';
   const role = rawRole.toLowerCase().trim();
 
@@ -28,6 +29,10 @@ export default function Header({ activeTab, setActiveTab, profile, onSignOut, th
     await supabase.auth.signOut();
   };
 
+  useEffect(() => {
+    setImgError(false);
+  }, [logoSrc]);
+
   return (
     <div className="app-header border-b border-slate-800/80 bg-[#121824]/60 backdrop-blur-md sticky top-0 z-50 px-3 sm:px-6 py-3 sm:py-5">
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-stretch lg:items-center justify-start gap-3 lg:gap-6">
@@ -35,9 +40,9 @@ export default function Header({ activeTab, setActiveTab, profile, onSignOut, th
         {/* Logo & Title */}
         <div className="brand-lockup flex items-center justify-center lg:justify-start gap-3 sm:gap-5">
           {!imgError ? (
-            <span className="brand-logo-surface inline-flex rounded-xl px-2 py-1">
+            <span className="inline-flex px-2 py-1">
               <img
-                src="/logo-trn.png"
+                src={logoSrc}
                 alt="TowCalc Pro Logo"
                 onError={() => setImgError(true)}
                 className="h-12 sm:h-16 w-auto object-contain py-0"
