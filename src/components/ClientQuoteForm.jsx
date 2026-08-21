@@ -36,6 +36,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const [permitInfo, setPermitInfo] = useState(null);
   const [attachmentType, setAttachmentType] = useState('');
   const [attachmentWeight, setAttachmentWeight] = useState('');
+  const [pickupError, setPickupError] = useState('');
 
   useEffect(() => {
     if (!initialQuote?.id) return;
@@ -146,9 +147,11 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!pickupAddr) {
-      alert('Please enter a pickup location.');
+      setPickupError('Please enter a pickup location.');
+      pickupInputRef.current?.focus();
       return;
     }
+    setPickupError('');
     const effectiveDropoff = dropoffAddr || pickupAddr;
 
     onCalculate({
@@ -380,10 +383,13 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               ref={pickupInputRef}
               type="text"
               value={pickupAddr}
-              onChange={(e) => setPickupAddr(e.target.value)}
+              onChange={(e) => { setPickupAddr(e.target.value); if (e.target.value.trim()) setPickupError(''); }}
+              aria-invalid={Boolean(pickupError)}
+              aria-describedby={pickupError ? 'pickup-error' : undefined}
               placeholder="Business, address, city, or municipality..."
               className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
+            {pickupError && <p id="pickup-error" role="alert" className="mt-1 text-xs font-medium text-red-400">{pickupError}</p>}
           </div>
           {waypoints.map((waypoint, index) => (
             <div key={index} className="flex gap-2">

@@ -1,11 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { getServerEnv } from './_env.js';
-
-const rateBuckets = new Map();
+import { reportOperationalError } from './_monitoring.js';
 
 export function createAdminClient() {
   const supabaseUrl = getServerEnv('SUPABASE_URL') || getServerEnv('VITE_SUPABASE_URL');
-  const serviceRoleKey = getServerEnv('SUPABASE_SERVICE_ROLE_KEY') || getServerEnv('VITE_SUPABASE_SERVICE_ROLE_KEY');
+  const serviceRoleKey = getServerEnv('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('Missing server-side Supabase environment variables.');
@@ -73,26 +72,39 @@ export async function requireUser(req, { companyId = null, manager = false } = {
   return { admin, user, profile, token };
 }
 
-export function enforceRateLimit(key, { limit, windowMs }) {
-  const now = Date.now();
-  const bucket = rateBuckets.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
-    return;
+export function canAccessQuote(profile, quote, action = 'read') {
+  if (!profile || !quote || profile.company_id !== quote.company_id) return false;
+  if (profile.role === 'manager') return true;
+  if (profile.role === 'dispatch') return action !== 'manage_company';
+  if (profile.role === 'client') {
+    return quote.quote_source === 'client_portal'
+      && Boolean(profile.client_id)
+      && profile.client_id === quote.client_id
+      && ['read', 'attach_bol', 'request_dispatch'].includes(action);
   }
-  if (bucket.count >= limit) {
-    const error = new Error('Too many requests. Please try again later.');
-    error.status = 429;
-    error.retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
-    throw error;
-  }
-  bucket.count += 1;
+  return false;
 }
 
-export function sendApiError(res, error, fallback = 'Internal server error.') {
+export async function enforceRateLimit(admin, key, { limit, windowMs }) {
+  const { data, error: rateError } = await admin.rpc('consume_api_rate_limit', {
+    p_key: String(key),
+    p_limit: Number(limit),
+    p_window_seconds: Math.max(1, Math.ceil(Number(windowMs) / 1000)),
+  });
+  if (rateError) throw new Error('Rate limit service unavailable.');
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result?.allowed) {
+    const error = new Error('Too many requests. Please try again later.');
+    error.status = 429;
+    error.retryAfter = Number(result?.retry_after) || 60;
+    throw error;
+  }
+}
+
+export function sendApiError(res, error, fallback = 'Internal server error.', context = {}) {
   const status = Number(error?.status) || 500;
   if (error?.retryAfter) res.setHeader('Retry-After', String(error.retryAfter));
-  if (status >= 500) console.error(fallback, error);
+  if (status >= 500) void reportOperationalError(error, context);
   return res.status(status).json({ error: status >= 500 ? fallback : error.message });
 }
 

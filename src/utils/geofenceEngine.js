@@ -1,6 +1,6 @@
 // src/utils/geofenceEngine.js
 // @ts-check
-import { GEOFENCES, HAZARD_ZONES } from "../config/geofences";
+import { GEOFENCES, HAZARD_ZONES } from "../config/geofences.js";
 
 function isPointInPolygon(point, polygon) {
   if (!polygon || polygon.length < 3) return false;
@@ -58,24 +58,17 @@ function normalizeText(value) {
     .trim();
 }
 
-function matchesLocality(address, zone) {
-  const addressText = normalizeText(address);
-  if (!addressText) return false;
-
+function matchesLocality(location, zone) {
+  if (!location || typeof location !== 'object') return false;
+  const resolvedCity = normalizeText(location.city);
+  const resolvedState = normalizeText(location.state);
   const cityText = normalizeText(zone?.city);
   const stateText = normalizeText(zone?.state);
-  const localityText = normalizeText(zone?.localityQuery || [zone?.city, zone?.state].filter(Boolean).join(', '));
-
-  if (localityText && addressText.includes(localityText)) return true;
-  if (cityText && stateText) {
-    return addressText.includes(cityText) && addressText.includes(stateText);
-  }
-  if (cityText) return addressText.includes(cityText);
-  if (stateText) return addressText.includes(stateText);
-  return false;
+  if (!resolvedCity || !cityText || resolvedCity !== cityText) return false;
+  return !stateText || resolvedState === stateText;
 }
 
-export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList = []) {
+export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList = [], routePoints = []) {
   const cleanAddresses = (addresses || []).filter((addr) => typeof addr === 'string' && addr.trim().length > 0);
 
   if (cleanAddresses.length < 2) return false;
@@ -96,44 +89,16 @@ export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList =
   const directHit = coordsList.some((c) => c && isPointInBox(c.lat, c.lng));
   if (directHit) return true;
 
-  if (typeof window === 'undefined' || !window.google || !window.google.maps) {
-    return false;
-  }
-
-  // Check route steps via DirectionsService
-  return new Promise((resolve) => {
-    const directionsService = new window.google.maps.DirectionsService();
-    directionsService.route(
-      {
-        origin: cleanAddresses[0],
-        destination: cleanAddresses[cleanAddresses.length - 1],
-        waypoints: cleanAddresses.slice(1, -1).map((addr) => ({ location: addr, stopover: true })),
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === 'OK' && result?.routes?.[0]) {
-          const passesThrough = result.routes[0].legs.some((leg) => {
-            const startIn = isPointInBox(leg.start_location.lat(), leg.start_location.lng());
-            const endIn = isPointInBox(leg.end_location.lat(), leg.end_location.lng());
-            if (startIn || endIn) return true;
-            return (leg.steps || []).some((step) =>
-              (step.path || []).some((pt) => isPointInBox(pt.lat(), pt.lng()))
-            );
-          });
-          resolve(passesThrough);
-        } else {
-          resolve(false);
-        }
-      }
-    );
-  });
+  // Route geometry is obtained once by the quote calculator and reused for
+  // every zone. Geofence evaluation itself never makes a billable Maps call.
+  return routePoints.some((point) => point && isPointInBox(point.lat, point.lng));
 }
 
-async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, companyRates = {}) {
+async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, companyRates = {}, routePoints = []) {
   const activeZones = getActiveZones(baseZones, companyRates);
   const results = await Promise.all(
     activeZones.map(async (zone) => {
-      const matched = await checkGeofenceZone(zone, cleanWaypoints, coordsList);
+      const matched = await checkGeofenceZone(zone, cleanWaypoints, coordsList, routePoints);
       const customZone = companyRates?.geofences?.customZones?.find((item) => item.id === zone.id);
       const customShape = customZone?.shape;
 
@@ -150,34 +115,34 @@ async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, compan
   return results.filter(Boolean);
 }
 
-export async function evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates = {}) {
-  return evaluateZoneMatches(GEOFENCES, cleanWaypoints, coordsList, companyRates);
+export async function evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates = {}, routePoints = []) {
+  return evaluateZoneMatches(GEOFENCES, cleanWaypoints, coordsList, companyRates, routePoints);
 }
 
-export async function evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates = {}) {
-  return evaluateZoneMatches(HAZARD_ZONES, cleanWaypoints, coordsList, companyRates);
+export async function evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates = {}, routePoints = []) {
+  return evaluateZoneMatches(HAZARD_ZONES, cleanWaypoints, coordsList, companyRates, routePoints);
 }
 
-export async function evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates = {}) {
+export async function evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates = {}, resolvedLocations = []) {
   const disabledZoneIds = new Set((companyRates?.geofences?.disabledZones || []).map((id) => String(id)));
   const customZones = (companyRates?.geofences?.customZones || []).filter((zone) => !disabledZoneIds.has(String(zone.id)));
   const pickupPoint = coordsList?.[0] || null;
   const dropoffPoint = coordsList?.[coordsList.length - 1] || null;
-  const pickupAddress = cleanWaypoints?.[0] || '';
-  const dropoffAddress = cleanWaypoints?.[cleanWaypoints.length - 1] || '';
+  const pickupLocation = resolvedLocations?.[0] || null;
+  const dropoffLocation = resolvedLocations?.[resolvedLocations.length - 1] || null;
 
   const results = await Promise.all(
     customZones.map(async (zone) => {
       const legacyShape = Array.isArray(zone.shape) && zone.shape.length >= 3;
       const containsPickup = legacyShape
         ? (pickupPoint ? isPointInPolygon(pickupPoint, zone.shape) : false)
-        : matchesLocality(pickupAddress, zone);
+        : matchesLocality(pickupLocation, zone);
       const containsDropoff = legacyShape
         ? (dropoffPoint ? isPointInPolygon(dropoffPoint, zone.shape) : false)
-        : matchesLocality(dropoffAddress, zone);
+        : matchesLocality(dropoffLocation, zone);
       const anyRoutePointInside = legacyShape
         ? coordsList.some((point) => point && isPointInPolygon(point, zone.shape))
-        : cleanWaypoints.some((address) => matchesLocality(address, zone));
+        : resolvedLocations.some((location) => matchesLocality(location, zone));
 
       const pricingMode = zone.pricingMode || (String(zone.feeType || 'percent') === 'flat' ? 'flat_rate' : 'surcharge');
       if (pricingMode === 'flat_rate') {

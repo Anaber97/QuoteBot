@@ -1,4 +1,4 @@
-import { enforceRateLimit, escapeHtml, requireUser, sendApiError } from './_security.js';
+import { canAccessQuote, enforceRateLimit, escapeHtml, requireUser, sendApiError } from './_security.js';
 
 const validEmail = (value) => /^\S+@\S+\.\S+$/.test(String(value || '').trim());
 
@@ -10,11 +10,11 @@ export default async function handler(req, res) {
     const action = ['share', 'action', 'bol_attached'].includes(body.action) ? body.action : 'action';
     if (!quoteId) return res.status(400).json({ error: 'quoteId is required.' });
     const { admin, profile } = await requireUser(req);
-    enforceRateLimit(`quote-email:${profile.id}`, { limit: 30, windowMs: 60 * 60 * 1000 });
+    await enforceRateLimit(admin, `quote-email:${profile.id}`, { limit: 30, windowMs: 60 * 60 * 1000 });
 
     const { data: quote, error: quoteError } = await admin.from('quote_logs').select('*').eq('id', quoteId).eq('company_id', profile.company_id).single();
     if (quoteError || !quote) return res.status(404).json({ error: 'Quote not found.' });
-    if (profile.role === 'client' && (quote.quote_source !== 'client_portal' || quote.client_id !== profile.client_id)) return res.status(403).json({ error: 'You do not have access to this quote.' });
+    if (!canAccessQuote(profile, quote, action === 'action' ? 'request_dispatch' : 'read')) return res.status(403).json({ error: 'You do not have access to this quote.' });
 
     const { data: config } = await admin.from('app_config').select('client_portal').eq('company_id', profile.company_id).maybeSingle();
     const portal = config?.client_portal || {};
@@ -48,5 +48,5 @@ export default async function handler(req, res) {
     const { error: emailError } = await admin.functions.invoke('send-quote-approval-email', { body: { to: recipient, subject: `${subjectPrefix} — ${String(quote.customer_name || quote.id).slice(0, 100)}`, html } });
     if (emailError) throw emailError;
     return res.status(200).json({ success: true });
-  } catch (error) { return sendApiError(res, error, 'Quote email failed.'); }
+  } catch (error) { return sendApiError(res, error, 'Quote email failed.', { route: '/api/sendQuoteEmail', provider: 'email' }); }
 }

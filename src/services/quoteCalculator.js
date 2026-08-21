@@ -8,8 +8,8 @@ import { loadGoogleMaps } from '../lib/googleMaps';
  * Ensures Google Maps JS API is fully initialized.
  */
 async function verifyGoogleMapsLoaded() {
-  await loadGoogleMaps();
-  if (typeof window === 'undefined' || !window.google?.maps?.DistanceMatrixService) {
+  await loadGoogleMaps({ requireDistanceMatrix: false });
+  if (typeof window === 'undefined' || !window.google?.maps?.DirectionsService) {
     throw new Error('Google Maps API is disconnected or not loaded yet. Check VITE_GOOGLE_MAPS_API_KEY in .env.');
   }
 }
@@ -37,7 +37,11 @@ export const geocodeAll = async (addresses) => {
             geocoder.geocode({ address: addr }, (results, status) => {
               if (status === 'OK' && results && results[0]) {
                 const loc = results[0].geometry.location;
-                resolve({ lat: loc.lat(), lng: loc.lng() });
+                const components = results[0].address_components || [];
+                const component = (...types) => components.find((item) => types.some((type) => item.types?.includes(type)));
+                const city = component('locality', 'postal_town', 'administrative_area_level_3', 'sublocality')?.long_name || '';
+                const state = component('administrative_area_level_1')?.short_name || '';
+                resolve({ lat: loc.lat(), lng: loc.lng(), city, state, formattedAddress: results[0].formatted_address || addr });
               } else {
                 resolve(null);
               }
@@ -95,50 +99,44 @@ export async function calculateQuoteData({
   const baseLoadMins = Number(clientPricing.load_unload_base_mins ?? pricing.load_unload_base_mins ?? companyRates.load_unload_base_mins) || 30;
   const extraStopMins = Number(clientPricing.extra_stop_mins ?? pricing.extra_stop_mins ?? companyRates.extra_stop_mins) || 15;
 
-  // Build the full route once and request one batched Distance Matrix for all route legs.
-  // This keeps billing lower than issuing one matrix call per leg as the route grows.
+  // Request the route once and reuse its legs and geometry for quote math and all
+  // geofence checks. A previous implementation made a separate Directions call
+  // for every configured zone and requested an N x N matrix for N route legs.
   const fullRouteAddresses = [currentBase.address, ...cleanWaypoints, currentBase.address];
-  const service = new window.google.maps.DistanceMatrixService();
-
-  const origins = fullRouteAddresses.slice(0, -1);
-  const destinations = fullRouteAddresses.slice(1);
-  const routeLegCount = Math.min(origins.length, destinations.length);
-
-  const matrixResponse = await new Promise((resolve, reject) => {
+  const directionsService = new window.google.maps.DirectionsService();
+  const directionsResult = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      reject(new Error('Google Distance Matrix request timed out. Check network or address validity.'));
+      reject(new Error('Google route request timed out. Check network or address validity.'));
     }, 12000);
 
-    service.getDistanceMatrix(
+    directionsService.route(
       {
-        origins,
-        destinations,
+        origin: fullRouteAddresses[0],
+        destination: fullRouteAddresses[fullRouteAddresses.length - 1],
+        waypoints: fullRouteAddresses.slice(1, -1).map((address) => ({
+          location: address,
+          stopover: true,
+        })),
         travelMode: window.google.maps.TravelMode.DRIVING,
-        unitSystem: window.google.maps.UnitSystem.IMPERIAL,
+        optimizeWaypoints: false,
       },
-      (response, status) => {
+      (result, status) => {
         clearTimeout(timeout);
-        if (status === 'OK' && response) {
-          resolve(response);
+        if (status === 'OK' && result?.routes?.[0]) {
+          resolve(result);
         } else {
-          reject(new Error(`Google Distance Matrix API failed with status: ${status}.`));
+          reject(new Error(`Google Directions API failed with status: ${status}.`));
         }
       }
     );
   });
 
-  let rawTotalMins = 0;
-  let totalMeters = 0;
-
-  for (let i = 0; i < routeLegCount; i++) {
-    const element = matrixResponse.rows[i]?.elements[i];
-    if (element && element.status === 'OK') {
-      rawTotalMins += element.duration.value / 60;
-      totalMeters += element.distance.value;
-    } else {
-      throw new Error(`Unable to calculate route from "${origins[i]}" to "${destinations[i]}". Status: ${element?.status || 'UNKNOWN'}`);
-    }
+  const routeLegs = directionsResult.routes[0].legs || [];
+  if (routeLegs.length !== fullRouteAddresses.length - 1) {
+    throw new Error('Google returned an incomplete route. Please verify all addresses and try again.');
   }
+  const rawTotalMins = routeLegs.reduce((total, leg) => total + Number(leg.duration?.value || 0) / 60, 0);
+  const totalMeters = routeLegs.reduce((total, leg) => total + Number(leg.distance?.value || 0), 0);
 
   let baseMinRate = Number(pricing.hourly_min || companyRates.hourly_min) || 125;
   let baseMaxRate = Number(pricing.hourly_max || companyRates.hourly_max) || 135;
@@ -184,10 +182,10 @@ export async function calculateQuoteData({
   const rawTotalHours = (bufferedDriveMins + totalOnSiteMins) / 60;
   const totalMiles = totalMeters * 0.000621371;
 
-  const legsDetails = origins.map((_, index) => {
-    const durationMinutes = Number(((matrixResponse.rows[index]?.elements[index]?.duration?.value || 0) / 60).toFixed(1));
+  const legsDetails = routeLegs.map((leg, index) => {
+    const durationMinutes = Number(((leg.duration?.value || 0) / 60).toFixed(1));
     const startLabel = index === 0 ? 'Base' : (cleanWaypoints[index - 1] || `Stop ${index}`);
-    const endLabel = index === origins.length - 1 ? 'Base' : (cleanWaypoints[index] || `Stop ${index + 1}`);
+    const endLabel = index === routeLegs.length - 1 ? 'Base' : (cleanWaypoints[index] || `Stop ${index + 1}`);
     return { label: `${startLabel} → ${endLabel}`, minutes: durationMinutes };
   });
 
@@ -208,10 +206,20 @@ export async function calculateQuoteData({
   const baseMaxQuote = Math.round(rawTotalHours * baseMaxRate);
 
   // Geofence evaluations
-  const coordsList = await geocodeAll(cleanWaypoints);
-  const metroMatches = await evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates);
-  const hazardMatches = await evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates);
-  const customMatches = await evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates);
+  const toPoint = (location) => location && typeof location.lat === 'function'
+    ? { lat: location.lat(), lng: location.lng() }
+    : null;
+  // Each outbound leg ends at the corresponding customer waypoint.
+  const coordsList = routeLegs.slice(0, cleanWaypoints.length).map((leg) => toPoint(leg.end_location));
+  // Exclude the base-to-pickup and dropoff-to-base legs: surcharges apply to
+  // the customer-requested journey, matching the prior geofence behavior.
+  const customerRoutePoints = routeLegs.slice(1, cleanWaypoints.length).flatMap((leg) =>
+    (leg.steps || []).flatMap((step) => (step.path || []).map(toPoint).filter(Boolean))
+  );
+  const metroMatches = await evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates, customerRoutePoints);
+  const hazardMatches = await evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates, customerRoutePoints);
+  const resolvedLocations = (companyRates?.geofences?.customZones || []).length > 0 ? await geocodeAll(cleanWaypoints) : [];
+  const customMatches = await evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates, resolvedLocations);
   const hitMetroZone = metroMatches.length > 0;
   const hitHazardZone = hazardMatches.length > 0;
   const hitCustomZone = customMatches.length > 0;
@@ -266,15 +274,23 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
   }
 
   if (quoteData.pricingMode === 'equipment-weight-tier' && Number.isFinite(Number(quoteData.fixedHourlyRate))) {
+    const customSurchargeTotal = (companyRates?.pricing?.custom_surcharges || [])
+      .filter((item) => item.active !== false && activeOverrides?.customSurcharges?.[item.id] === true)
+      .reduce((totals, item) => {
+        const value = Number(item.value) || 0;
+        return item.feeType === 'percent'
+          ? { ...totals, multiplier: totals.multiplier * (1 + value / 100) }
+          : { ...totals, flat: totals.flat + value };
+      }, { multiplier: 1, flat: 0 });
     const fixedQuote = roundToNearest(
-      Number(quoteData.rawTotalHours || 0) * Number(quoteData.fixedHourlyRate),
+      (Number(quoteData.rawTotalHours || 0) * Number(quoteData.fixedHourlyRate) * customSurchargeTotal.multiplier) + customSurchargeTotal.flat,
       Number(quoteData.roundingInterval || 25)
     );
     return {
       currentMinQuote: fixedQuote,
       currentMaxQuote: fixedQuote,
       customCalculatedQuote: null,
-      effectiveMultiplier: 1,
+      effectiveMultiplier: customSurchargeTotal.multiplier,
     };
   }
 

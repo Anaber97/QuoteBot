@@ -386,6 +386,11 @@ export default function QuoteResultsCard({
             className="bg-[#080c14] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
+        {isDispatcherView && <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input type="text" placeholder="Equipment Make" value={state?.quoteMake ?? ''} onChange={(e) => dispatch?.({ type: 'SET_QUOTE_META_FIELDS', payload: { quoteMake: e.target.value } })} className="bg-[#080c14] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          <input type="text" placeholder="Equipment Model" value={state?.quoteModel ?? ''} onChange={(e) => dispatch?.({ type: 'SET_QUOTE_META_FIELDS', payload: { quoteModel: e.target.value } })} className="bg-[#080c14] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+        </div>}
+        <textarea placeholder="Quote notes" value={state?.quoteNotes ?? ''} onChange={(e) => dispatch?.({ type: 'SET_QUOTE_META_FIELDS', payload: { quoteNotes: e.target.value } })} rows={3} className="w-full resize-y bg-[#080c14] border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500" />
 
         {quoteData?.approvalRequired && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">

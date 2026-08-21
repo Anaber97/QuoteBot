@@ -1,20 +1,23 @@
 // src/App.jsx
 
 // @ts-check
-import React, { useReducer, useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useReducer, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { authenticatedFetch } from './lib/api';
-import { calculateQuoteData, calculateFinalQuotes } from './services/quoteCalculator';
+import { calculateQuoteData } from './services/quoteCalculator';
 
 import Header from './components/Header';
 import LoginCard from './components/LoginCard';
 import SurchargeToggles from './components/SurchargeToggles';
 import WaypointList from './components/WaypointList';
 import QuoteResultsCard from './components/QuoteResultsCard';
-import QuoteLog from './components/QuoteLog';
 import Settings, { DEFAULT_CONFIG } from './components/Settings';
-import InviteRegister from './components/InviteRegister';
-import ClientQuoteForm from './components/ClientQuoteForm';
+import Toast from './components/Toast';
+
+const QuoteLog = lazy(() => import('./components/QuoteLog'));
+const InviteRegister = lazy(() => import('./components/InviteRegister'));
+const ClientQuoteForm = lazy(() => import('./components/ClientQuoteForm'));
+const LoadingPanel = () => <div className="p-8 text-center text-sm text-slate-400" role="status">Loading…</div>;
 
 const getInitialBaseId = () => {
   const savedBase = localStorage.getItem('dispatch_default_base');
@@ -139,6 +142,9 @@ const initialState = {
   showDetails: false,
   customerName: '',
   customerPhone: '',
+  quoteMake: '',
+  quoteModel: '',
+  quoteNotes: '',
   customRateInput: '',
   customLoadUnloadMins: '',
 };
@@ -183,6 +189,8 @@ function appReducer(state, action) {
       return { ...state, showDetails: !state.showDetails };
     case 'SET_CUSTOMER_INFO':
       return { ...state, [action.payload.field]: action.payload.value };
+    case 'SET_QUOTE_META_FIELDS':
+      return { ...state, ...action.payload };
     case 'SET_CUSTOM_RATE':
       return { ...state, customRateInput: action.payload };
     case 'SET_CUSTOM_LOAD_UNLOAD':
@@ -200,6 +208,9 @@ function appReducer(state, action) {
           : [action.payload.pickup_address || '', action.payload.dropoff_address || ''],
         customerName: action.payload.customer_name || '',
         customerPhone: action.payload.customer_phone || '',
+        quoteMake: action.payload.quote_details?.make || '',
+        quoteModel: action.payload.quote_details?.model || '',
+        quoteNotes: action.payload.notes || '',
       };
     case 'RESET_FORM':
       return {
@@ -214,6 +225,7 @@ function appReducer(state, action) {
 }
 
 export default function App() {
+  const [notice, setNotice] = useState(null);
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [theme, setTheme] = useState(() => localStorage.getItem('towcalc_theme') || 'dark');
   const [isInviteRoute, setIsInviteRoute] = useState(false);
@@ -457,6 +469,7 @@ export default function App() {
 
     try {
       const activeClientConfig = getActiveClientConfig(profile, companyRates);
+      dispatch({ type: 'SET_QUOTE_META_FIELDS', payload: { quoteMake: make || '', quoteModel: model || '' } });
       const data = await calculateQuoteData({
         currentBase,
         waypoints: routeWaypoints,
@@ -473,35 +486,6 @@ export default function App() {
       });
 
       const permitFee = Number(permitInfo?.permitFee || 0);
-
-      if (data.approvalRequired) {
-        try {
-          await authenticatedFetch('/api/notifyApproval', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              companyName: profile?.company_name || 'your company',
-              email: companyRates?.client_portal?.contact_email || profile?.email || '',
-              equipmentName: equipmentName || 'Custom Load',
-              make: make || '',
-              model: model || '',
-              serialNumber: serialNumber || '',
-              weight: Number(weight) + Number(attachmentWeight || 0),
-              pickupAddr,
-              dropoffAddr,
-              contactPhone: state.customerPhone || companyRates?.client_portal?.contact_phone || '(555) 555-0199',
-              contactEmail: profile?.email || companyRates?.client_portal?.contact_email || 'quotes@yourcompany.com',
-              quoteAmount: data.baseMinQuote,
-              quoteRange: `${data.baseMinQuote} - ${data.baseMaxQuote}`,
-              permitFlags: permitInfo?.flags || [],
-              attachmentTypeLabel: attachmentType || '',
-              attachmentWeight: Number(attachmentWeight || 0),
-            }),
-          });
-        } catch (approvalErr) {
-          console.warn('Approval email notification could not be sent:', approvalErr);
-        }
-      }
 
       setQuoteData({
         ...data,
@@ -534,47 +518,37 @@ export default function App() {
 
   // Log Quote Handler
   const handleLogQuote = async ({ attachmentFile = null } = {}) => {
-    if (!session || !profile) return;
+    if (!session || !profile || !quoteData) return;
 
     try {
-      const { currentMinQuote, currentMaxQuote, customCalculatedQuote } = calculateFinalQuotes(
-        quoteData,
-        state.activeOverrides,
-        parseFloat(state.customRateInput) || null,
-        companyRates
-      );
-
       const waypointsArr = Array.isArray(state.waypoints) ? state.waypoints : ['', ''];
-
-      const payload = {
-        company_id: profile.company_id,
-        user_id: session.user.id,
-        client_id: isClientPortalUser ? profile.client_id : null,
-        quote_source: isClientPortalUser ? 'client_portal' : (showEquipmentCalculator ? 'equipment_calculator' : 'main_calculator'),
-        customer_name: state.customerName,
-        customer_phone: state.customerPhone,
-        pickup_address: waypointsArr[0] || '',
-        dropoff_address: waypointsArr[waypointsArr.length - 1] || '',
-        all_waypoints: waypointsArr,
-        base_yard_id: state.selectedBaseId,
-        truck_class: state.selectedTruckClassId,
-        total_miles: quoteData.totalMiles,
-        total_hours: quoteData.rawTotalHours,
-        min_quote: currentMinQuote,
-        max_quote: currentMaxQuote,
-        custom_quote: customCalculatedQuote,
-        applied_surcharges: {
-          afterHours: quoteData.hasAfterHours && state.activeOverrides.afterHours,
-          roadClub: quoteData.hasRoadClub && state.activeOverrides.roadClub,
-          metro: quoteData.hasMetroZone && state.activeOverrides.metro,
-          hazard: quoteData.hasHazardZone && state.activeOverrides.hazard,
-        },
-        quote_details: quoteData?.equipmentMeta || {},
-      };
-
-      const { data: loggedQuote, error: logErr } = await supabase.from('quote_logs').insert([payload]).select('*').single();
-
-      if (logErr) throw logErr;
+      const response = await authenticatedFetch('/api/createQuote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseId: state.selectedBaseId,
+          waypoints: waypointsArr,
+          quoteSource: showEquipmentCalculator ? 'equipment_calculator' : 'main_calculator',
+          selectedTruckClassId: state.selectedTruckClassId,
+          isHeavy: quoteData.isHeavy,
+          isAfterHours: quoteData.hasAfterHours,
+          isRoadClub: quoteData.hasRoadClub,
+          activeOverrides: state.activeOverrides,
+          customRate: state.customRateInput,
+          customLoadUnloadMins: state.customLoadUnloadMins,
+          customerName: state.customerName,
+          customerPhone: state.customerPhone,
+          notes: state.quoteNotes,
+          equipment: {
+            ...(quoteData.equipmentMeta || {}),
+            make: state.quoteMake || quoteData.equipmentMeta?.make || '',
+            model: state.quoteModel || quoteData.equipmentMeta?.model || '',
+          },
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.quote) throw new Error(result.error || 'The authoritative quote could not be saved.');
+      const loggedQuote = result.quote;
 
       if (attachmentFile) {
         const safeName = attachmentFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -583,109 +557,20 @@ export default function App() {
         if (uploadError) throw uploadError;
         const { error: updateError } = await supabase.from('quote_logs').update({ bol_path: bolPath, bol_name: attachmentFile.name, bol_type: attachmentFile.type }).eq('id', loggedQuote.id);
         if (updateError) throw updateError;
-        const response = await authenticatedFetch('/api/sendQuoteEmail', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ quoteId: loggedQuote.id, action: 'bol_attached' }),
-        });
-        if (!response.ok) throw new Error((await response.json()).error || 'The BOL was saved, but the notification email failed.');
       }
 
-      alert(attachmentFile ? 'Quote logged, BOL attached, and host company notified!' : 'Quote successfully logged!');
+      const warning = result.notificationWarning ? ` ${result.notificationWarning}` : '';
+      setNotice({ message: `${attachmentFile ? 'Quote logged with BOL attached!' : 'Quote successfully logged!'}${warning}` });
       dispatch({ type: 'RESET_FORM' });
       setQuoteData(null);
     } catch (err) {
       console.error(err);
-      alert('Failed to log quote: ' + err.message);
-    }
-  };
-
-  const _handleAcceptClientQuote = async ({ attachmentFile = null } = {}) => {
-    if (!session || !profile || !quoteData) return;
-
-    const { currentMinQuote, currentMaxQuote, customCalculatedQuote } = calculateFinalQuotes(
-      quoteData,
-      state.activeOverrides,
-      0,
-      companyRates
-    );
-
-    const waypointsArr = Array.isArray(state.waypoints) ? state.waypoints : ['', ''];
-    const pickupAddress = waypointsArr[0] || '';
-    const dropoffAddress = waypointsArr[waypointsArr.length - 1] || '';
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const payload = {
-        company_id: profile.company_id,
-        user_id: session.user.id,
-        customer_name: state.customerName,
-        customer_phone: state.customerPhone,
-        pickup_address: pickupAddress,
-        dropoff_address: dropoffAddress,
-        all_waypoints: waypointsArr,
-        base_yard_id: state.selectedBaseId,
-        truck_class: state.selectedTruckClassId,
-        total_miles: quoteData.totalMiles,
-        total_hours: quoteData.rawTotalHours,
-        min_quote: currentMinQuote,
-        max_quote: currentMaxQuote,
-        custom_quote: customCalculatedQuote,
-        applied_surcharges: {
-          afterHours: quoteData.hasAfterHours && state.activeOverrides.afterHours,
-          roadClub: quoteData.hasRoadClub && state.activeOverrides.roadClub,
-          metro: quoteData.hasMetroZone && state.activeOverrides.metro,
-          hazard: quoteData.hasHazardZone && state.activeOverrides.hazard,
-        },
-        notes: `Client portal approval request${attachmentFile ? `; attachment: ${attachmentFile.name}` : ''}`,
-      };
-
-      const { error: logErr } = await supabase.from('quote_logs').insert([payload]);
-      if (logErr) throw logErr;
-
-      const notificationEmail = companyRates?.client_portal?.contact_email || profile?.email || '';
-      if (notificationEmail) {
-        await authenticatedFetch('/api/notifyApproval', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: notificationEmail,
-            companyName: profile?.company_name || 'your company',
-            equipmentName: quoteData?.equipmentMeta?.name || 'Custom Load',
-            make: quoteData?.equipmentMeta?.make || '',
-            model: quoteData?.equipmentMeta?.model || '',
-            serialNumber: quoteData?.equipmentMeta?.serialNumber || '',
-            weight: quoteData?.equipmentMeta?.weight || 0,
-            pickupAddr: pickupAddress,
-            dropoffAddr: dropoffAddress,
-            contactPhone: state.customerPhone || companyRates?.client_portal?.contact_phone || '(555) 555-0199',
-            contactEmail: profile?.email || companyRates?.client_portal?.contact_email || 'quotes@yourcompany.com',
-            quoteAmount: currentMinQuote,
-            quoteRange: `${currentMinQuote} - ${currentMaxQuote}`,
-            attachmentName: attachmentFile?.name || null,
-            attachmentType: attachmentFile?.type || null,
-            attachmentData: attachmentFile?.data || null,
-            permitFlags: quoteData?.equipmentMeta?.permitFlags || [],
-            attachmentTypeLabel: quoteData?.equipmentMeta?.attachmentType || '',
-            attachmentWeight: quoteData?.equipmentMeta?.attachmentWeight || 0,
-          }),
-        });
-      }
-
-      alert('Quote accepted. The approval request has been sent.');
-      dispatch({ type: 'RESET_FORM' });
-      setQuoteData(null);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to submit quote: ' + err.message);
-    } finally {
-      setLoading(false);
+      setNotice({ tone: 'error', message: `Failed to log quote: ${err.message}` });
     }
   };
 
   if (isInviteRoute) {
-    return <InviteRegister />;
+    return <Suspense fallback={<LoadingPanel />}><InviteRegister /></Suspense>;
   }
 
   return (
@@ -707,7 +592,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {state.activeTab === 'logs' && <QuoteLog profile={profile} onSelectQuote={handleOpenLoggedQuote} />}
+            {state.activeTab === 'logs' && <Suspense fallback={<LoadingPanel />}><QuoteLog profile={profile} onSelectQuote={handleOpenLoggedQuote} /></Suspense>}
 
             {state.activeTab === 'settings' && (
               <Settings
@@ -723,12 +608,12 @@ export default function App() {
                 /* CLIENT PORTAL VIEW */
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                   <div className="lg:col-span-7">
-                    <ClientQuoteForm
+                    <Suspense fallback={<LoadingPanel />}><ClientQuoteForm
                       companyRates={companyRates}
                       onCalculate={handleClientCalculateQuote}
                       isCalculating={loading}
                       initialQuote={openedLoggedQuote}
-                    />
+                    /></Suspense>
                   </div>
 
                   <div className="lg:col-span-5">
@@ -780,7 +665,7 @@ export default function App() {
                     )}
 
                     {showEquipmentCalculator ? (
-                      <ClientQuoteForm companyRates={companyRates} onCalculate={handleClientCalculateQuote} isCalculating={loading} title="Equipment Calculator" onReset={resetCalculatorState} initialQuote={openedLoggedQuote} />
+                      <Suspense fallback={<LoadingPanel />}><ClientQuoteForm companyRates={companyRates} onCalculate={handleClientCalculateQuote} isCalculating={loading} title="Equipment Calculator" onReset={resetCalculatorState} initialQuote={openedLoggedQuote} /></Suspense>
                     ) : <form onSubmit={handleCalculate} className="space-y-5">
                       {/* Base Shop Selector */}
                       <div>
@@ -895,6 +780,7 @@ export default function App() {
           </>
         )}
       </div>
+      <Toast notice={notice} onDismiss={() => setNotice(null)} />
     </div>
   );
 }
