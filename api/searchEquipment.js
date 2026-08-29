@@ -315,7 +315,7 @@ export default async function handler(req, res) {
     const cached = responseCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return res.status(200).json(cached.payload);
 
-    const supabaseUrl = getEnvValue('VITE_SUPABASE_URL', 'SUPABASE_URL');
+    const supabaseUrl = getServerEnv('SUPABASE_URL') || getServerEnv('VITE_SUPABASE_URL');
 
     let results = [];
     let source = '';
