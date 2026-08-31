@@ -478,8 +478,11 @@ export default async function handler(req, res) {
       }
 
       try {
+        // Responses API gives the model access to live web search. Chat
+        // Completions alone can only use its training data, which meant an
+        // otherwise valid new model (for example, JLG 860AJ) came back empty.
         const gatewayResponse = await fetch(
-          'https://ai-gateway.vercel.sh/v1/chat/completions',
+          'https://ai-gateway.vercel.sh/v1/responses',
           {
             method: 'POST',
             headers: {
@@ -488,17 +491,17 @@ export default async function handler(req, res) {
             },
             body: JSON.stringify({
               model: gatewayModel,
-              messages: [
+              input: [
                 {
                   role: 'system',
-                  content: 'You identify heavy equipment for towing quotes. Never invent specifications. Use high confidence only when the make, exact model, operating weight, width, and height are known for that exact model. Use medium for model-family estimates and low for broad inferences.',
+                  content: 'You identify heavy equipment for towing quotes. Use the web search tool to find current manufacturer or reputable dealer specifications for the exact make and model. Never invent specifications. Use high confidence only when the make, exact model, operating weight, width, and height are known for that exact model. Use medium for model-family estimates and low for broad inferences.',
                 },
                 {
                   role: 'user',
-                  content: `Find up to 3 likely equipment matches for "${query}". Express weight in pounds and dimensions in inches. Return an empty results array when there is not enough information.`,
+                  content: `Find up to 3 likely equipment matches for "${query}". Search the web before deciding there are no matches. Express weight in pounds and dimensions in inches. Return an empty results array only when reliable specifications cannot be found.`,
                 },
               ],
-              stream: false,
+              tools: [{ type: 'web_search_preview' }],
               providerOptions: {
                 gateway: {
                   models: [gatewayFallbackModel],
@@ -506,9 +509,9 @@ export default async function handler(req, res) {
                   tags: ['feature:equipment-search'],
                 },
               },
-              response_format: {
-                type: 'json_schema',
-                json_schema: {
+              text: {
+                format: {
+                  type: 'json_schema',
                   name: 'equipment_search_results',
                   strict: true,
                   schema: {
@@ -544,7 +547,12 @@ export default async function handler(req, res) {
 
         if (gatewayResponse.ok) {
           const gatewayPayload = await gatewayResponse.json();
-          const rawText = gatewayPayload?.choices?.[0]?.message?.content || '{"results":[]}';
+          const rawText = gatewayPayload?.output_text
+            || gatewayPayload?.output?.flatMap((item) => item.content || [])
+              .map((part) => part.text || part.value || '')
+              .find(Boolean)
+            || gatewayPayload?.choices?.[0]?.message?.content
+            || '{"results":[]}';
 
           try {
             const parsedPayload = JSON.parse(rawText);
@@ -600,3 +608,4 @@ export default async function handler(req, res) {
     return sendApiError(res, error, 'Equipment search failed.', { route: '/api/searchEquipment', provider: 'ai-gateway' });
   }
 }
+
