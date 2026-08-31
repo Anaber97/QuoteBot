@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { LogOut, Calculator, Moon, Sun } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-export default function Header({ activeTab, setActiveTab, profile, onSignOut, theme = 'dark', onToggleTheme }) {
+export default function Header({ session, activeTab, setActiveTab, profile, onSignOut, theme = 'dark', onToggleTheme }) {
   const [imgError, setImgError] = useState(false);
   const logoSrc = theme === 'dark' ? '/towcalc_fulllogo_light.png' : '/towcalc_fulllogo_dark.png';
   const rawRole = profile?.role || '';
@@ -62,46 +62,48 @@ export default function Header({ activeTab, setActiveTab, profile, onSignOut, th
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 w-full lg:w-auto overflow-x-auto">
-          <button
-            type="button"
-            onClick={() => setActiveTab('calculator')}
-            className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
-              activeTab === 'calculator'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Calculator
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('logs')}
-            className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
-              activeTab === 'logs'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Quote Log
-          </button>
-
-          {/* Render Settings for Managers */}
-          {isManager && (
+        {session && (
+          <div className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 w-full lg:w-auto overflow-x-auto">
             <button
               type="button"
-              onClick={() => setActiveTab('settings')}
+              onClick={() => setActiveTab('calculator')}
               className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
-                activeTab === 'settings'
+                activeTab === 'calculator'
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Settings
+              Calculator
             </button>
-          )}
-        </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('logs')}
+              className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+                activeTab === 'logs'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Quote Log
+            </button>
+
+            {/* Render Settings for Managers */}
+            {isManager && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('settings')}
+                className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+                  activeTab === 'settings'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Settings
+              </button>
+            )}
+          </div>
+        )}
 
         {/* User Badge & Logout */}
         {profile && (
@@ -135,3 +137,4 @@ export default function Header({ activeTab, setActiveTab, profile, onSignOut, th
     </div>
   );
 }
+
