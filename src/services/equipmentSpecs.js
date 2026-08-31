@@ -26,7 +26,7 @@ function normalizeDimensionResults(results) {
       height_ft: heightIn != null ? Number((heightIn / 12).toFixed(1)) : null,
       confidence: ['low', 'medium', 'high'].includes(String(item?.confidence || '').toLowerCase())
         ? String(item.confidence).toLowerCase()
-        : (item?.source === 'gemini' ? 'medium' : 'high'),
+        : (item?.source === 'ai-gateway' ? 'medium' : 'high'),
     };
   });
 }
@@ -70,7 +70,7 @@ export async function searchEquipmentSpecs(query) {
     const results = Array.isArray(payload) ? payload : payload.results || [];
     return {
       results: normalizeDimensionResults(results).slice(0, 8),
-      source: payload?.source || (results.length > 0 ? 'gemini' : ''),
+      source: payload?.source || (results.length > 0 ? 'ai-gateway' : ''),
       error: payload?.error || '',
     };
   } catch (error) {
