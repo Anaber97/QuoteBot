@@ -55,7 +55,7 @@ export default function Header({ activeTab, setActiveTab, profile, onSignOut, th
           )}
           <div>
             <h1 className="text-lg font-bold text-white tracking-tight leading-none flex items-center gap-2">
-                <span className="text-blue-500 font-semibold text-xs">Route-Based Towing Calculator</span>
+                <span className="text-[#afda00] font-semibold text-xs">Route-Based Towing Calculator</span>
             </h1>
             <p className="text-[11px] text-slate-400 mt-0.5">Instant. Accurate. Dispatched.</p>
           </div>
