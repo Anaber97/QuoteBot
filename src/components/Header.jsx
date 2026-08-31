@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 
 export default function Header({ activeTab, setActiveTab, profile, onSignOut, theme = 'dark', onToggleTheme }) {
   const [imgError, setImgError] = useState(false);
-  const logoSrc = theme === 'dark' ? '/towcalc_fulllogo_light.svg' : '/towcalc_fulllogo_dark.svg';
+  const logoSrc = theme === 'dark' ? '/towcalc_fulllogo_light.png' : '/towcalc_fulllogo_dark.png';
   const rawRole = profile?.role || '';
   const role = rawRole.toLowerCase().trim();
 

@@ -1,56 +1,9 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
 import { reportOperationalError } from './_monitoring.js';
+import { getServerEnv } from './_env.js';
 
 const responseCache = new Map();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-
-const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const envCandidates = [
-  path.resolve(moduleDir, '.env'),
-  path.resolve(process.cwd(), '.env'),
-  path.resolve(process.cwd(), '.env.local'),
-];
-
-function loadEnvFile() {
-  for (const envPath of envCandidates) {
-    if (!fs.existsSync(envPath)) {
-      continue;
-    }
-
-    const parsed = {};
-    for (const rawLine of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (!line || line.startsWith('#')) {
-        continue;
-      }
-
-      const separatorIndex = line.indexOf('=');
-      if (separatorIndex === -1) {
-        continue;
-      }
-
-      const key = line.slice(0, separatorIndex).trim();
-      let value = line.slice(separatorIndex + 1).trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-
-      parsed[key] = value;
-    }
-
-    return parsed;
-  }
-
-  return {};
-}
-
-let envValues = loadEnvFile();
 
 const LOCAL_FALLBACK_EQUIPMENT = [
   {
@@ -101,19 +54,6 @@ function getFallbackEquipmentMatches(query) {
 
     return haystack.includes(cleanQuery);
   }).map((item) => ({ ...item }));
-}
-
-function getEnvValue(...keys) {
-  envValues = loadEnvFile();
-
-  for (const key of keys) {
-    const value = envValues[key] || process.env[key];
-    if (value) {
-      return value;
-    }
-  }
-
-  return '';
 }
 
 function coerceString(value) {
@@ -375,7 +315,7 @@ export default async function handler(req, res) {
     const cached = responseCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return res.status(200).json(cached.payload);
 
-    const supabaseUrl = getEnvValue('VITE_SUPABASE_URL', 'SUPABASE_URL');
+    const supabaseUrl = getServerEnv('SUPABASE_URL') || getServerEnv('VITE_SUPABASE_URL');
 
     let results = [];
     let source = '';
@@ -401,7 +341,8 @@ export default async function handler(req, res) {
       source = 'fallback';
     }
 
-    const geminiKey = getEnvValue('GEMINI_API_KEY');
+    const geminiKey = getServerEnv('GEMINI_API_KEY');
+    const geminiModel = getServerEnv('GEMINI_MODEL') || 'gemini-3.5-flash-lite';
 
     if (results.length === 0) {
       await enforceRateLimit(admin, `gemini:${profile.id}`, { limit: 20, windowMs: 24 * 60 * 60 * 1000 });
@@ -415,7 +356,7 @@ export default async function handler(req, res) {
 
       try {
         const geminiResponse = await fetch(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`,
           {
             method: 'POST',
             headers: {
@@ -481,9 +422,16 @@ export default async function handler(req, res) {
           try {
             const parsedError = JSON.parse(errorText);
             const detail = parsedError?.error?.message || '';
-            providerMessage = /reported as leaked/i.test(detail)
-              ? 'Gemini API key has been revoked. Replace GEMINI_API_KEY in the deployment environment.'
-              : (detail || providerMessage);
+            const reason = parsedError?.error?.details?.find((item) => item?.reason)?.reason || '';
+            if (/reported as leaked/i.test(detail)) {
+              providerMessage = 'Gemini API key has been revoked. Replace GEMINI_API_KEY in the deployment environment.';
+            } else if (geminiResponse.status === 401 || /API_KEY_INVALID|API key not valid/i.test(`${reason} ${detail}`)) {
+              providerMessage = 'Gemini rejected GEMINI_API_KEY. Replace it with an active Gemini API key in Vercel, then redeploy.';
+            } else if (geminiResponse.status === 403) {
+              providerMessage = 'Gemini denied this key. Confirm it is enabled and restricted for the Gemini API, then redeploy.';
+            } else {
+              providerMessage = detail || providerMessage;
+            }
           } catch {
             // Keep the concise status message when the provider returns non-JSON.
           }

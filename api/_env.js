@@ -3,6 +3,20 @@ import path from 'node:path';
 
 let cachedEnv = null;
 
+function normalizeEnvValue(value) {
+  if (typeof value !== 'string') return value;
+
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+
+  return trimmed;
+}
+
 function parseEnvFile() {
   const envPath = path.resolve(process.cwd(), '.env');
   if (!fs.existsSync(envPath)) {
@@ -26,13 +40,14 @@ function parseEnvFile() {
 }
 
 export function getServerEnv(name) {
-  if (process.env[name]) {
-    return process.env[name];
+  const runtimeValue = normalizeEnvValue(process.env[name]);
+  if (runtimeValue) {
+    return runtimeValue;
   }
 
   if (!cachedEnv) {
     cachedEnv = parseEnvFile();
   }
 
-  return cachedEnv[name];
+  return normalizeEnvValue(cachedEnv[name]);
 }

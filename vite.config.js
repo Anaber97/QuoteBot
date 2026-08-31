@@ -101,8 +101,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: [
-        'towcalc_fulllogo_light.svg',
-        'towcalc_fulllogo_dark.svg',
+        'towcalc_fulllogo_light.png',
+        'towcalc_fulllogo_dark.png',
         'pwa-192x192.png',
         'pwa-512x512.png',
       ],
