@@ -464,7 +464,7 @@ export default async function handler(req, res) {
     const gatewayToken = getServerEnv('AI_GATEWAY_API_KEY')
       || getServerEnv('VERCEL_OIDC_TOKEN')
       || requestOidcToken;
-    const gatewayModel = getServerEnv('AI_GATEWAY_MODEL') || 'openai/gpt-5-nano';
+    const gatewayModel = getServerEnv('AI_GATEWAY_MODEL') || 'google/gemini-3.5-flash-lite';
     const gatewayFallbackModel = getServerEnv('AI_GATEWAY_FALLBACK_MODEL') || 'google/gemini-3.5-flash-lite';
 
     if (results.length === 0) {
@@ -482,27 +482,27 @@ export default async function handler(req, res) {
         // Completions alone can only use its training data, which meant an
         // otherwise valid new model (for example, JLG 860AJ) came back empty.
         const gatewayResponse = await fetch(
-          'https://ai-gateway.vercel.sh/v1/responses',
+          'https://ai-gateway.vercel.sh/v1/chat/completions',
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${gatewayToken}`,
             },
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(30000),
             body: JSON.stringify({
               model: gatewayModel,
-              input: [
+              messages: [
                 {
                   role: 'system',
-                  content: 'You identify heavy equipment for towing quotes. Use the web search tool to find current manufacturer or reputable dealer specifications for the exact make and model. Never invent specifications. Use high confidence only when the make, exact model, operating weight, width, and height are known for that exact model. Use medium for model-family estimates and low for broad inferences.',
+                  content: 'You identify heavy equipment for towing quotes. Never invent specifications. Return only high-confidence exact-model matches with known operating weight, width, and height.',
                 },
                 {
                   role: 'user',
-                  content: `Find up to 3 likely equipment matches for "${query}". Search the web before deciding there are no matches. Express weight in pounds and dimensions in inches. Return an empty results array only when reliable specifications cannot be found.`,
+                  content: `Find up to 3 equipment matches for "${query}". Express weight in pounds and dimensions in inches. Return an empty results array when there is not enough information.`,
                 },
               ],
-              tools: [{ type: 'web_search_preview' }],
+              stream: false,
               providerOptions: {
                 gateway: {
                   models: [gatewayFallbackModel],
@@ -510,9 +510,9 @@ export default async function handler(req, res) {
                   tags: ['feature:equipment-search'],
                 },
               },
-              text: {
-                format: {
-                  type: 'json_schema',
+              response_format: {
+                type: 'json_schema',
+                json_schema: {
                   name: 'equipment_search_results',
                   strict: true,
                   schema: {
@@ -548,11 +548,7 @@ export default async function handler(req, res) {
 
         if (gatewayResponse.ok) {
           const gatewayPayload = await gatewayResponse.json();
-          const rawText = gatewayPayload?.output_text
-            || gatewayPayload?.output?.flatMap((item) => item.content || [])
-              .map((part) => part.text || part.value || '')
-              .find(Boolean)
-            || gatewayPayload?.choices?.[0]?.message?.content
+          const rawText = gatewayPayload?.choices?.[0]?.message?.content
             || '{"results":[]}';
 
           try {
