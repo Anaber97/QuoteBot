@@ -392,7 +392,7 @@ export default async function handler(req, res) {
       || getServerEnv('VERCEL_OIDC_TOKEN')
       || requestOidcToken;
     const gatewayModel = getServerEnv('AI_GATEWAY_MODEL') || 'openai/gpt-5-nano';
-    const gatewayFallbackModel = getServerEnv('AI_GATEWAY_FALLBACK_MODEL') || 'anthropic/claude-haiku-4.5';
+    const gatewayFallbackModel = getServerEnv('AI_GATEWAY_FALLBACK_MODEL') || 'google/gemini-3.5-flash-lite';
 
     if (results.length === 0) {
       await enforceRateLimit(admin, `ai-gateway:${profile.id}`, { limit: 20, windowMs: 24 * 60 * 60 * 1000 });
