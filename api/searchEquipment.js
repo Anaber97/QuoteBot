@@ -600,4 +600,3 @@ export default async function handler(req, res) {
     return sendApiError(res, error, 'Equipment search failed.', { route: '/api/searchEquipment', provider: 'ai-gateway' });
   }
 }
-
