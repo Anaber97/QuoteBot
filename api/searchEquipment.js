@@ -253,6 +253,49 @@ function normalizeSearchText(value) {
   return coerceString(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+export function matchesEquipmentSearch(item, query = '') {
+  const queryTokens = normalizeSearchText(query).split(' ').filter(Boolean);
+  const candidateTokens = normalizeSearchText([
+    item?.make,
+    item?.model,
+    item?.serial_number,
+    item?.name,
+  ].filter(Boolean).join(' ')).split(' ').filter(Boolean);
+
+  if (queryTokens.length === 0 || candidateTokens.length === 0) {
+    return false;
+  }
+
+  return queryTokens.every((queryToken) => candidateTokens.some((candidateToken) => (
+    candidateToken === queryToken
+    || (queryToken.length >= 3 && candidateToken.startsWith(queryToken))
+  )));
+}
+
+export function normalizeQuoteHistoryEquipment(quoteDetails) {
+  if (!quoteDetails || typeof quoteDetails !== 'object') {
+    return null;
+  }
+
+  const make = coerceString(quoteDetails.make);
+  const model = coerceString(quoteDetails.model);
+  if (!make || !model) {
+    return null;
+  }
+
+  return normalizeEquipmentItem({
+    make,
+    model,
+    name: coerceString(quoteDetails.name) || `${make} ${model}`,
+    serial_number: coerceString(quoteDetails.serialNumber || quoteDetails.serial_number) || null,
+    operating_weight_lbs: extractNumericValue(quoteDetails, ['weight', 'operating_weight_lbs']),
+    width_in: extractNumericValue(quoteDetails, ['width', 'width_in']),
+    height_in: extractNumericValue(quoteDetails, ['height', 'height_in']),
+    source: 'quote-history',
+    confidence: 'high',
+  });
+}
+
 function hasPlausibleSpecs(item) {
   const weight = Number(item?.operating_weight_lbs);
   const width = Number(item?.width_in);
@@ -365,16 +408,46 @@ export default async function handler(req, res) {
     let error = '';
 
     if (supabaseUrl) {
-      const { data, error: supabaseError } = await admin
+      const searchTokens = normalizeSearchText(query).split(' ').filter(Boolean).slice(0, 6);
+      let equipmentQuery = admin
         .from('equipment_specs')
         .select('*')
-        .or(`company_id.is.null,company_id.eq.${profile.company_id}`)
-        .or(`make.ilike.%${query.toLowerCase()}%,model.ilike.%${query.toLowerCase()}%,serial_number.ilike.%${query.toLowerCase()}%`)
-        .limit(8);
+        .or(`company_id.is.null,company_id.eq.${profile.company_id}`);
+
+      for (const token of searchTokens) {
+        equipmentQuery = equipmentQuery.or(`make.ilike.%${token}%,model.ilike.%${token}%,serial_number.ilike.%${token}%`);
+      }
+
+      const { data, error: supabaseError } = await equipmentQuery.limit(8);
 
       if (!supabaseError) {
         results = data || [];
         source = results.length > 0 ? 'supabase' : '';
+      }
+
+      if (results.length === 0) {
+        const { data: quoteRows, error: quoteHistoryError } = await admin
+          .from('quote_logs')
+          .select('quote_details')
+          .eq('company_id', profile.company_id)
+          .eq('quote_source', 'client_portal')
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (!quoteHistoryError) {
+          const seen = new Set();
+          results = (quoteRows || [])
+            .map((row) => normalizeQuoteHistoryEquipment(row?.quote_details))
+            .filter((item) => item && matchesEquipmentSearch(item, query))
+            .filter((item) => {
+              const key = normalizeSearchText(`${item.make} ${item.model} ${item.serial_number || ''}`);
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            })
+            .slice(0, 8);
+          source = results.length > 0 ? 'quote-history' : '';
+        }
       }
     }
 

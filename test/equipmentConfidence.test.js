@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isHighConfidenceEquipmentResult } from '../api/searchEquipment.js';
+import {
+  isHighConfidenceEquipmentResult,
+  matchesEquipmentSearch,
+  normalizeQuoteHistoryEquipment,
+} from '../api/searchEquipment.js';
 
 const validResult = {
   make: 'Caterpillar',
@@ -31,3 +35,31 @@ test('rejects implausible specifications', () => {
 test('accepts an exact serial-number search', () => {
   assert.equal(isHighConfidenceEquipmentResult({ ...validResult, serial_number: 'ABC-123' }, 'ABC-123'), true);
 });
+
+test('matches a combined make and model search across separate fields', () => {
+  assert.equal(matchesEquipmentSearch({ make: 'Hyundai', model: '50D-9' }, 'Hyundai 50D-9'), true);
+});
+
+test('matches a partial historical model search', () => {
+  assert.equal(matchesEquipmentSearch({ make: 'Caterpillar', model: '320D' }, 'CAT 320'), true);
+});
+
+test('normalizes searchable equipment from quote history', () => {
+  assert.deepEqual(
+    normalizeQuoteHistoryEquipment({ make: 'Caterpillar', model: '320', weight: 45000, width: 102, height: 138 }),
+    {
+      make: 'Caterpillar',
+      model: '320',
+      name: 'Caterpillar 320',
+      serial_number: null,
+      operating_weight_lbs: 45000,
+      width_in: 102,
+      height_in: 138,
+      source: 'quote-history',
+      confidence: 'high',
+      width_ft: 8.5,
+      height_ft: 11.5,
+    }
+  );
+});
+
