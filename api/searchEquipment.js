@@ -384,7 +384,13 @@ export default async function handler(req, res) {
       source = 'fallback';
     }
 
-    const gatewayToken = getServerEnv('AI_GATEWAY_API_KEY') || getServerEnv('VERCEL_OIDC_TOKEN');
+    const oidcHeader = typeof req.headers?.get === 'function'
+      ? req.headers.get('x-vercel-oidc-token')
+      : req.headers?.['x-vercel-oidc-token'];
+    const requestOidcToken = String(Array.isArray(oidcHeader) ? oidcHeader[0] : oidcHeader || '').trim();
+    const gatewayToken = getServerEnv('AI_GATEWAY_API_KEY')
+      || getServerEnv('VERCEL_OIDC_TOKEN')
+      || requestOidcToken;
     const gatewayModel = getServerEnv('AI_GATEWAY_MODEL') || 'openai/gpt-5-nano';
     const gatewayFallbackModel = getServerEnv('AI_GATEWAY_FALLBACK_MODEL') || 'anthropic/claude-haiku-4.5';
 
