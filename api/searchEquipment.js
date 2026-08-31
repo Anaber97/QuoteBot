@@ -489,6 +489,7 @@ export default async function handler(req, res) {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${gatewayToken}`,
             },
+            signal: AbortSignal.timeout(15000),
             body: JSON.stringify({
               model: gatewayModel,
               input: [
