@@ -171,7 +171,7 @@ function normalizeEquipmentItem(item) {
   };
 }
 
-function parseGeminiPayload(rawText) {
+function parseAiPayload(rawText) {
   const cleaned = coerceString(rawText).replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
 
   try {
@@ -192,14 +192,14 @@ function parseGeminiPayload(rawText) {
       return [parsed];
     }
   } catch (error) {
-    console.warn('Gemini payload was not valid JSON:', error);
+    console.warn('AI Gateway payload was not valid JSON:', error);
   }
 
   return [];
 }
 
-function normalizeGeminiResults(payload, query = '') {
-  const items = Array.isArray(payload) ? payload : parseGeminiPayload(payload);
+function normalizeAiResults(payload, query = '') {
+  const items = Array.isArray(payload) ? payload : parseAiPayload(payload);
   const fallback = inferMakeModelFromQuery(query);
 
   return items
@@ -232,7 +232,7 @@ function normalizeGeminiResults(payload, query = '') {
         operating_weight_lbs: operatingWeightLbs,
         width_ft: item?.width_ft ?? nested?.width_ft ?? item?.width ?? nested?.width ?? null,
         height_ft: item?.height_ft ?? nested?.height_ft ?? item?.height ?? nested?.height ?? null,
-        source: item?.source || 'gemini',
+        source: 'ai-gateway',
         confidence,
       });
 
@@ -242,21 +242,64 @@ function normalizeGeminiResults(payload, query = '') {
         model,
         serial_number: serialNumber || null,
         operating_weight_lbs: operatingWeightLbs,
-        source: item?.source || 'gemini',
+        source: 'ai-gateway',
         confidence,
       };
     })
     .slice(0, 8);
 }
 
-async function persistGeminiResults(results, supabaseAdmin, companyId) {
+function normalizeSearchText(value) {
+  return coerceString(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function hasPlausibleSpecs(item) {
+  const weight = Number(item?.operating_weight_lbs);
+  const width = Number(item?.width_in);
+  const height = Number(item?.height_in);
+
+  return Number.isFinite(weight) && weight >= 500 && weight <= 500000
+    && Number.isFinite(width) && width >= 24 && width <= 300
+    && Number.isFinite(height) && height >= 24 && height <= 300;
+}
+
+export function isHighConfidenceEquipmentResult(item, query = '') {
+  if (coerceString(item?.confidence).toLowerCase() !== 'high' || !hasPlausibleSpecs(item)) {
+    return false;
+  }
+
+  const make = normalizeSearchText(item?.make);
+  const model = normalizeSearchText(item?.model);
+  const serial = normalizeSearchText(item?.serial_number);
+  const queryText = normalizeSearchText(query);
+  if (!make || !model || !queryText || make === 'unknown' || model === 'unknown') {
+    return false;
+  }
+
+  if (serial && queryText === serial) {
+    return true;
+  }
+
+  const queryTokens = queryText.split(' ').filter(Boolean);
+  const candidateTokens = `${make} ${model}`.split(' ').filter(Boolean);
+  if (queryTokens.length < 2) {
+    return false;
+  }
+
+  return queryTokens.every((queryToken) => candidateTokens.some((candidateToken) => (
+    candidateToken === queryToken
+    || (queryToken.length >= 3 && candidateToken.startsWith(queryToken))
+  )));
+}
+
+async function persistHighConfidenceResults(results, supabaseAdmin, companyId, queryText) {
   if (!Array.isArray(results) || results.length === 0 || !supabaseAdmin || !companyId) {
     return;
   }
 
   for (const item of results) {
     try {
-      if (!item?.make || !item?.model) {
+      if (!isHighConfidenceEquipmentResult(item, queryText)) {
         continue;
       }
 
@@ -268,7 +311,9 @@ async function persistGeminiResults(results, supabaseAdmin, companyId) {
         operating_weight_lbs: item.operating_weight_lbs ?? null,
         width_ft: item.width_ft ?? null,
         height_ft: item.height_ft ?? null,
-        source: item.source || 'gemini',
+        width_in: item.width_in ?? null,
+        height_in: item.height_in ?? null,
+        source: 'ai-gateway',
       };
 
       let query = supabaseAdmin.from('equipment_specs').select('id').eq('company_id', companyId).limit(1);
@@ -285,13 +330,11 @@ async function persistGeminiResults(results, supabaseAdmin, companyId) {
       }
 
       const existing = existingRows?.[0];
-      if (existing?.id) {
-        await supabaseAdmin.from('equipment_specs').update(candidate).eq('id', existing.id);
-      } else {
+      if (!existing?.id) {
         await supabaseAdmin.from('equipment_specs').insert(candidate);
       }
     } catch (error) {
-      console.warn('Failed to persist Gemini equipment result:', error);
+      console.warn('Failed to persist high-confidence AI equipment result:', error);
     }
   }
 }
@@ -341,55 +384,78 @@ export default async function handler(req, res) {
       source = 'fallback';
     }
 
-    const geminiKey = getServerEnv('GEMINI_API_KEY');
-    const geminiModel = getServerEnv('GEMINI_MODEL') || 'gemini-3.5-flash-lite';
+    const gatewayToken = getServerEnv('AI_GATEWAY_API_KEY') || getServerEnv('VERCEL_OIDC_TOKEN');
+    const gatewayModel = getServerEnv('AI_GATEWAY_MODEL') || 'openai/gpt-5-nano';
+    const gatewayFallbackModel = getServerEnv('AI_GATEWAY_FALLBACK_MODEL') || 'anthropic/claude-haiku-4.5';
 
     if (results.length === 0) {
-      await enforceRateLimit(admin, `gemini:${profile.id}`, { limit: 20, windowMs: 24 * 60 * 60 * 1000 });
-      if (!geminiKey) {
+      await enforceRateLimit(admin, `ai-gateway:${profile.id}`, { limit: 20, windowMs: 24 * 60 * 60 * 1000 });
+      if (!gatewayToken) {
         return res.status(200).json({
           results: [],
           source: '',
-          error: 'Gemini key not configured. Add GEMINI_API_KEY to the server environment.',
+          error: 'AI Gateway authentication is unavailable. Enable Vercel OIDC or set AI_GATEWAY_API_KEY.',
         });
       }
 
       try {
-        const geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`,
+        const gatewayResponse = await fetch(
+          'https://ai-gateway.vercel.sh/v1/chat/completions',
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-goog-api-key': geminiKey,
+              Authorization: `Bearer ${gatewayToken}`,
             },
             body: JSON.stringify({
-              contents: [
+              model: gatewayModel,
+              messages: [
                 {
-                  parts: [
-                    {
-                      text: `You are a towing-quote assistant. Find up to 3 likely equipment matches for "${query}". Use confidence "high" only for an exact model/spec match, "medium" for a model-family estimate, and "low" for a broad inference. Prefer published operating specifications and express dimensions in inches.`,
-                    },
-                  ],
+                  role: 'system',
+                  content: 'You identify heavy equipment for towing quotes. Never invent specifications. Use high confidence only when the make, exact model, operating weight, width, and height are known for that exact model. Use medium for model-family estimates and low for broad inferences.',
+                },
+                {
+                  role: 'user',
+                  content: `Find up to 3 likely equipment matches for "${query}". Express weight in pounds and dimensions in inches. Return an empty results array when there is not enough information.`,
                 },
               ],
-              generationConfig: {
-                responseMimeType: 'application/json',
-                responseSchema: {
-                  type: 'ARRAY',
-                  maxItems: 3,
-                  items: {
-                    type: 'OBJECT',
+              stream: false,
+              providerOptions: {
+                gateway: {
+                  models: [gatewayFallbackModel],
+                  user: profile.id,
+                  tags: ['feature:equipment-search'],
+                },
+              },
+              response_format: {
+                type: 'json_schema',
+                json_schema: {
+                  name: 'equipment_search_results',
+                  strict: true,
+                  schema: {
+                    type: 'object',
                     properties: {
-                      make: { type: 'STRING' },
-                      model: { type: 'STRING' },
-                      serial_number: { type: 'STRING', nullable: true },
-                      operating_weight_lbs: { type: 'NUMBER' },
-                      width_in: { type: 'NUMBER' },
-                      height_in: { type: 'NUMBER' },
-                      confidence: { type: 'STRING', enum: ['low', 'medium', 'high'] },
+                      results: {
+                        type: 'array',
+                        maxItems: 3,
+                        items: {
+                          type: 'object',
+                          properties: {
+                            make: { type: 'string' },
+                            model: { type: 'string' },
+                            serial_number: { type: ['string', 'null'] },
+                            operating_weight_lbs: { type: 'number' },
+                            width_in: { type: 'number' },
+                            height_in: { type: 'number' },
+                            confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
+                          },
+                          required: ['make', 'model', 'serial_number', 'operating_weight_lbs', 'width_in', 'height_in', 'confidence'],
+                          additionalProperties: false,
+                        },
+                      },
                     },
-                    required: ['make', 'model', 'operating_weight_lbs', 'width_in', 'height_in', 'confidence'],
+                    required: ['results'],
+                    additionalProperties: false,
                   },
                 },
               },
@@ -397,41 +463,32 @@ export default async function handler(req, res) {
           }
         );
 
-        if (geminiResponse.ok) {
-          const geminiPayload = await geminiResponse.json();
-          const rawText = geminiPayload?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+        if (gatewayResponse.ok) {
+          const gatewayPayload = await gatewayResponse.json();
+          const rawText = gatewayPayload?.choices?.[0]?.message?.content || '{"results":[]}';
 
           try {
-            results = normalizeGeminiResults(rawText, query);
-            source = results.length > 0 ? 'gemini' : '';
+            const parsedPayload = JSON.parse(rawText);
+            results = normalizeAiResults(parsedPayload?.results || [], query);
+            source = results.length > 0 ? 'ai-gateway' : '';
 
             if (results.length > 0) {
-              await persistGeminiResults(results, admin, profile.company_id);
+              await persistHighConfidenceResults(results, admin, profile.company_id, query);
             }
           } catch (parseErr) {
-            console.warn('Gemini response was not valid JSON:', parseErr);
+            console.warn('AI Gateway response was not valid JSON:', parseErr);
             return res.status(200).json({
               results: [],
               source: '',
-              error: `Gemini returned invalid JSON: ${parseErr.message}`,
+              error: `AI Gateway returned invalid data: ${parseErr.message}`,
             });
           }
         } else {
-          const errorText = await geminiResponse.text();
-          let providerMessage = `Gemini request failed (${geminiResponse.status}).`;
+          const errorText = await gatewayResponse.text();
+          let providerMessage = `AI Gateway request failed (${gatewayResponse.status}).`;
           try {
             const parsedError = JSON.parse(errorText);
-            const detail = parsedError?.error?.message || '';
-            const reason = parsedError?.error?.details?.find((item) => item?.reason)?.reason || '';
-            if (/reported as leaked/i.test(detail)) {
-              providerMessage = 'Gemini API key has been revoked. Replace GEMINI_API_KEY in the deployment environment.';
-            } else if (geminiResponse.status === 401 || /API_KEY_INVALID|API key not valid/i.test(`${reason} ${detail}`)) {
-              providerMessage = 'Gemini rejected GEMINI_API_KEY. Replace it with an active Gemini API key in Vercel, then redeploy.';
-            } else if (geminiResponse.status === 403) {
-              providerMessage = 'Gemini denied this key. Confirm it is enabled and restricted for the Gemini API, then redeploy.';
-            } else {
-              providerMessage = detail || providerMessage;
-            }
+            providerMessage = parsedError?.error?.message || parsedError?.message || providerMessage;
           } catch {
             // Keep the concise status message when the provider returns non-JSON.
           }
@@ -442,13 +499,13 @@ export default async function handler(req, res) {
             error: providerMessage,
           });
         }
-      } catch (geminiError) {
-        void reportOperationalError(geminiError, { event: 'provider_failure', route: '/api/searchEquipment', provider: 'gemini' });
+      } catch (gatewayError) {
+        void reportOperationalError(gatewayError, { event: 'provider_failure', route: '/api/searchEquipment', provider: 'ai-gateway' });
         const fallbackMatches = getFallbackEquipmentMatches(query);
         return res.status(200).json({
           results: fallbackMatches.slice(0, 8),
           source: fallbackMatches.length > 0 ? 'fallback' : '',
-          error: `Gemini request failed: ${geminiError.message}`,
+          error: `AI Gateway request failed: ${gatewayError.message}`,
         });
       }
     }
@@ -461,6 +518,6 @@ export default async function handler(req, res) {
     responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
     return res.status(200).json(payload);
   } catch (error) {
-    return sendApiError(res, error, 'Equipment search failed.', { route: '/api/searchEquipment', provider: 'gemini' });
+    return sendApiError(res, error, 'Equipment search failed.', { route: '/api/searchEquipment', provider: 'ai-gateway' });
   }
 }
