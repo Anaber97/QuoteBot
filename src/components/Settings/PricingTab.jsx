@@ -23,11 +23,16 @@ export default function PricingTab({
   const pricingMode = formData.pricing?.pricing_mode === 'mileage' ? 'mileage' : 'hourly';
   const isMileageMode = pricingMode === 'mileage';
   const rateUnit = isMileageMode ? '$/mi' : '$/hr';
-  const minField = isMileageMode ? 'mileage_min' : 'hourly_min';
-  const maxField = isMileageMode ? 'mileage_max' : 'hourly_max';
+  const rateField = isMileageMode ? 'mileage_min' : 'hourly_min';
+  const legacyMaxField = isMileageMode ? 'mileage_max' : 'hourly_max';
   const classTableColumns = isMileageMode
-    ? 'sm:grid-cols-[minmax(12rem,1fr)_8rem_8rem_2.25rem]'
-    : 'sm:grid-cols-[minmax(12rem,1fr)_7.5rem_7.5rem_8rem_6.5rem_2.25rem]';
+    ? 'sm:grid-cols-[minmax(12rem,1fr)_8rem_2.25rem]'
+    : 'sm:grid-cols-[minmax(12rem,1fr)_7.5rem_8rem_6.5rem_2.25rem]';
+  const updateStandardRate = (value) => {
+    const rate = parseFloat(value) || 0;
+    updatePricing(rateField, rate);
+    updatePricing(legacyMaxField, rate);
+  };
   const systemSurcharges = [
     { field: 'metro_multiplier', label: 'Metro', defaultValue: 28.57, trigger: 'Automatic · Metro Zone' },
     { field: 'hazard_multiplier', label: 'Hazard', defaultValue: 40, trigger: 'Automatic · Hazard Zone' },
@@ -200,8 +205,7 @@ export default function PricingTab({
         </div>
         <div className={`grid gap-2 bg-[#121824] p-2.5 rounded-lg border border-emerald-500/30 sm:items-end ${classTableColumns}`}>
           <div className="flex-1 text-xs font-semibold text-emerald-300">Standard Tow / Flatbed <span className="block text-[10px] font-normal text-slate-400">Default calculator class</span></div>
-          <label className="text-[10px] text-slate-400">Min {rateUnit}<input type="number" step={isMileageMode ? '0.01' : '1'} value={formData.pricing?.[minField] ?? (isMileageMode ? 5 : 125)} onChange={(e) => updatePricing(minField, parseFloat(e.target.value) || 0)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>
-          <label className="text-[10px] text-slate-400">Max {rateUnit}<input type="number" step={isMileageMode ? '0.01' : '1'} value={formData.pricing?.[maxField] ?? (isMileageMode ? 6 : 135)} onChange={(e) => updatePricing(maxField, parseFloat(e.target.value) || 0)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>
+          <label className="text-[10px] text-slate-400">Rate {rateUnit}<input type="number" step={isMileageMode ? '0.01' : '1'} value={formData.pricing?.[rateField] ?? (isMileageMode ? 5 : 125)} onChange={(e) => updateStandardRate(e.target.value)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>
           {!isMileageMode && <label className="text-[10px] text-slate-400">Drive buffer %<input type="number" value={formData.pricing?.drive_time_buffer ?? 10} onChange={(e) => updatePricing('drive_time_buffer', parseFloat(e.target.value) || 0)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>}
           {!isMileageMode && <label className="text-[10px] text-slate-400">Load mins<input type="number" value={formData.pricing?.load_unload_base_mins ?? 30} onChange={(e) => updatePricing('load_unload_base_mins', parseInt(e.target.value, 10) || 0)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>}
           <span className="pb-2 text-center text-[9px] uppercase tracking-wide text-slate-600">Default</span>
@@ -219,25 +223,15 @@ export default function PricingTab({
               }}
               className="w-full bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
             />
-              <label className="text-[10px] text-slate-400">Min {rateUnit}
+              <label className="text-[10px] text-slate-400">Rate {rateUnit}
                 <input
                   type="number"
                   value={isMileageMode ? (tc.minMileageRate ?? 5) : tc.minRate}
                   onChange={(e) => {
                     const updated = [...formData.pricing.custom_truck_classes];
-                    updated[idx][isMileageMode ? 'minMileageRate' : 'minRate'] = parseFloat(e.target.value) || 0;
-                    updatePricing('custom_truck_classes', updated);
-                  }}
-                  className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
-                />
-              </label>
-              <label className="text-[10px] text-slate-400">Max {rateUnit}
-                <input
-                  type="number"
-                  value={isMileageMode ? (tc.maxMileageRate ?? 6) : tc.maxRate}
-                  onChange={(e) => {
-                    const updated = [...formData.pricing.custom_truck_classes];
-                    updated[idx][isMileageMode ? 'maxMileageRate' : 'maxRate'] = parseFloat(e.target.value) || 0;
+                    const rate = parseFloat(e.target.value) || 0;
+                    updated[idx][isMileageMode ? 'minMileageRate' : 'minRate'] = rate;
+                    updated[idx][isMileageMode ? 'maxMileageRate' : 'maxRate'] = rate;
                     updatePricing('custom_truck_classes', updated);
                   }}
                   className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"

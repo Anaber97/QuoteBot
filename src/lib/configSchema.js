@@ -46,9 +46,9 @@ const asArray = (value) => (Array.isArray(value) ? value : []);
 export const DEFAULT_PRICING = {
   pricing_mode: 'hourly',
   hourly_min: RATES?.HOURLY_MIN || 125,
-  hourly_max: RATES?.HOURLY_MAX || 135,
+  hourly_max: RATES?.HOURLY_MIN || 125,
   mileage_min: 5,
-  mileage_max: 6,
+  mileage_max: 5,
   rounding_interval: RATES?.ROUNDING_INTERVAL || 25,
   drive_time_buffer: (RATES?.DRIVE_TIME_BUFFER - 1) * 100 || 10,
   after_hours_multiplier: (RATES?.AFTER_HOURS_MULTIPLIER - 1) * 100 || 25,
@@ -59,9 +59,9 @@ export const DEFAULT_PRICING = {
   load_unload_base_mins: RATES?.LOAD_UNLOAD_BASE_MINS || 30,
   extra_stop_mins: RATES?.EXTRA_STOP_MINS || 15,
   mileage_min_rate: 5,
-  mileage_max_rate: 6,
+  mileage_max_rate: 5,
   heavy_hourly_min: 200,
-  heavy_hourly_max: 250,
+  heavy_hourly_max: 200,
   surchargeModes: {
     after_hours_multiplier: 'percent',
     road_club_multiplier: 'percent',
@@ -69,10 +69,10 @@ export const DEFAULT_PRICING = {
     hazard_multiplier: 'percent',
   },
   custom_truck_classes: [
-    { id: '1', name: 'Standard Tow / Flatbed', minRate: RATES?.HOURLY_MIN || 125, maxRate: RATES?.HOURLY_MAX || 135, minMileageRate: 5, maxMileageRate: 6, drive_time_buffer: 10, load_unload_base_mins: 30 },
-    { id: '2', name: 'Medium Duty Flatbed', minRate: 150, maxRate: 180, minMileageRate: 6, maxMileageRate: 7, drive_time_buffer: 10, load_unload_base_mins: 30 },
-    { id: '3', name: 'Heavy Duty Towing', minRate: 200, maxRate: 250, minMileageRate: 8, maxMileageRate: 10, drive_time_buffer: 15, load_unload_base_mins: 45 },
-    { id: '4', name: 'Rotator / Heavy Recovery', minRate: 350, maxRate: 450, minMileageRate: 12, maxMileageRate: 15, drive_time_buffer: 15, load_unload_base_mins: 60 },
+    { id: '1', name: 'Standard Tow / Flatbed', minRate: RATES?.HOURLY_MIN || 125, maxRate: RATES?.HOURLY_MIN || 125, minMileageRate: 5, maxMileageRate: 5, drive_time_buffer: 10, load_unload_base_mins: 30 },
+    { id: '2', name: 'Medium Duty Flatbed', minRate: 150, maxRate: 150, minMileageRate: 6, maxMileageRate: 6, drive_time_buffer: 10, load_unload_base_mins: 30 },
+    { id: '3', name: 'Heavy Duty Towing', minRate: 200, maxRate: 200, minMileageRate: 8, maxMileageRate: 8, drive_time_buffer: 15, load_unload_base_mins: 45 },
+    { id: '4', name: 'Rotator / Heavy Recovery', minRate: 350, maxRate: 350, minMileageRate: 12, maxMileageRate: 12, drive_time_buffer: 15, load_unload_base_mins: 60 },
   ],
   custom_surcharges: [
     { id: 'after-hours', name: 'After Hours', feeType: 'percent', value: 25, active: true },
@@ -156,16 +156,20 @@ export const normalizeCustomSurcharge = (surcharge = {}, index = 0) => ({
 /**
  * Normalizes a custom truck class with all required fields and defaults.
  */
-export const normalizeCustomTruckClass = (truckClass = {}, index = 0) => ({
-  id: truckClass.id || `class-${index + 1}`,
-  name: truckClass.name || `Truck Class ${index + 1}`,
-  minRate: toFinite(truckClass.minRate, 125),
-  maxRate: toFinite(truckClass.maxRate, 135),
-  minMileageRate: toFinite(truckClass.minMileageRate, 5),
-  maxMileageRate: toFinite(truckClass.maxMileageRate, 6),
-  drive_time_buffer: toFinite(truckClass.drive_time_buffer, 10),
-  load_unload_base_mins: toFinite(truckClass.load_unload_base_mins, 30),
-});
+export const normalizeCustomTruckClass = (truckClass = {}, index = 0) => {
+  const hourlyRate = toFinite(truckClass.minRate, 125);
+  const mileageRate = toFinite(truckClass.minMileageRate, 5);
+  return {
+    id: truckClass.id || `class-${index + 1}`,
+    name: truckClass.name || `Truck Class ${index + 1}`,
+    minRate: hourlyRate,
+    maxRate: hourlyRate,
+    minMileageRate: mileageRate,
+    maxMileageRate: mileageRate,
+    drive_time_buffer: toFinite(truckClass.drive_time_buffer, 10),
+    load_unload_base_mins: toFinite(truckClass.load_unload_base_mins, 30),
+  };
+};
 
 /**
  * Comprehensive config normalization.
@@ -209,15 +213,18 @@ export function normalizeConfig(rawConfig = {}) {
     : DEFAULT_PRICING.custom_truck_classes;
 
   // Build normalized pricing
+  const hourlyRate = toFinite(baseConfig.pricing?.hourly_min ?? baseConfig.hourly_min, DEFAULT_PRICING.hourly_min);
+  const mileageRate = toFinite(baseConfig.pricing?.mileage_min, DEFAULT_PRICING.mileage_min);
+  const heavyHourlyRate = toFinite(baseConfig.pricing?.heavy_hourly_min, DEFAULT_PRICING.heavy_hourly_min);
   const normalizedPricing = {
     ...DEFAULT_PRICING,
     ...(baseConfig.pricing || {}),
     ...(baseConfig.surcharges || {}),
     pricing_mode: baseConfig.pricing?.pricing_mode ?? baseConfig.pricing_mode ?? DEFAULT_PRICING.pricing_mode,
-    hourly_min: toFinite(baseConfig.pricing?.hourly_min ?? baseConfig.hourly_min, DEFAULT_PRICING.hourly_min),
-    hourly_max: toFinite(baseConfig.pricing?.hourly_max ?? baseConfig.hourly_max, DEFAULT_PRICING.hourly_max),
-    mileage_min: toFinite(baseConfig.pricing?.mileage_min, DEFAULT_PRICING.mileage_min),
-    mileage_max: toFinite(baseConfig.pricing?.mileage_max, DEFAULT_PRICING.mileage_max),
+    hourly_min: hourlyRate,
+    hourly_max: hourlyRate,
+    mileage_min: mileageRate,
+    mileage_max: mileageRate,
     rounding_interval: toFinite(baseConfig.pricing?.rounding_interval ?? baseConfig.rounding_interval, DEFAULT_PRICING.rounding_interval),
     drive_time_buffer: normalizeDriveTimeBuffer(baseConfig.pricing?.drive_time_buffer ?? baseConfig.drive_time_buffer ?? DEFAULT_PRICING.drive_time_buffer),
     after_hours_multiplier: toFinite(baseConfig.pricing?.after_hours_multiplier ?? baseConfig.surcharges?.after_hours_multiplier ?? baseConfig.after_hours_multiplier, DEFAULT_PRICING.after_hours_multiplier),
@@ -227,8 +234,8 @@ export function normalizeConfig(rawConfig = {}) {
     base_permit_fee: toFinite(baseConfig.pricing?.base_permit_fee, DEFAULT_PRICING.base_permit_fee),
     load_unload_base_mins: toFinite(baseConfig.pricing?.load_unload_base_mins ?? baseConfig.load_unload_base_mins, DEFAULT_PRICING.load_unload_base_mins),
     extra_stop_mins: toFinite(baseConfig.pricing?.extra_stop_mins ?? baseConfig.extra_stop_mins, DEFAULT_PRICING.extra_stop_mins),
-    heavy_hourly_min: toFinite(baseConfig.pricing?.heavy_hourly_min, DEFAULT_PRICING.heavy_hourly_min),
-    heavy_hourly_max: toFinite(baseConfig.pricing?.heavy_hourly_max, DEFAULT_PRICING.heavy_hourly_max),
+    heavy_hourly_min: heavyHourlyRate,
+    heavy_hourly_max: heavyHourlyRate,
     surchargeModes: {
       ...DEFAULT_PRICING.surchargeModes,
       ...(baseConfig.pricing?.surchargeModes || baseConfig.surcharges?.surchargeModes || {}),

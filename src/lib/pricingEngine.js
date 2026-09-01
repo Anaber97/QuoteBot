@@ -25,6 +25,8 @@ const normalizeBuffer = (value) => {
 /**
  * Resolves base hourly or mileage rates based on pricing mode, tier, or truck class.
  * @param {Object} options
+ * Legacy min/max fields are retained for storage compatibility, but quotes use
+ * the former minimum as one deterministic rate.
  * @returns {Object} { minRate, maxRate, standardPricingMode }
  */
 export function resolveBaseRates({
@@ -43,22 +45,22 @@ export function resolveBaseRates({
 
   if (isMileageMode) {
     minRate = toFinite(selectedClass?.minMileageRate ?? pricing.mileage_min, 5);
-    maxRate = toFinite(selectedClass?.maxMileageRate ?? pricing.mileage_max, 6);
+    maxRate = minRate;
     standardPricingMode = 'mileage';
   } else if (useWeightTierPricing && tier) {
     minRate = maxRate = toFinite(tier.rate, 100);
     standardPricingMode = 'equipment-weight-tier';
   } else if (selectedClass) {
     minRate = toFinite(selectedClass.minRate ?? pricing.hourly_min ?? config.hourly_min, 125);
-    maxRate = toFinite(selectedClass.maxRate ?? pricing.hourly_max ?? config.hourly_max, 135);
+    maxRate = minRate;
     standardPricingMode = 'hourly';
   } else if (isHeavy) {
     minRate = toFinite(pricing.heavy_hourly_min ?? config.heavy_hourly_min, 200);
-    maxRate = toFinite(pricing.heavy_hourly_max ?? config.heavy_hourly_max, 250);
+    maxRate = minRate;
     standardPricingMode = 'hourly';
   } else {
     minRate = toFinite(pricing.hourly_min ?? config.hourly_min, 125);
-    maxRate = toFinite(pricing.hourly_max ?? config.hourly_max, 135);
+    maxRate = minRate;
     standardPricingMode = 'hourly';
   }
 

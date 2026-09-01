@@ -137,7 +137,9 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
         pricing: {
           ...configToSave.pricing,
           hourly_min: Number(configToSave.pricing?.hourly_min ?? 125),
-          hourly_max: Number(configToSave.pricing?.hourly_max ?? 135),
+          hourly_max: Number(configToSave.pricing?.hourly_min ?? 125),
+          mileage_min: Number(configToSave.pricing?.mileage_min ?? 5),
+          mileage_max: Number(configToSave.pricing?.mileage_min ?? 5),
           rounding_interval: Number(configToSave.pricing?.rounding_interval ?? 25),
           drive_time_buffer: normalizeDriveTimeBuffer(configToSave.pricing?.drive_time_buffer ?? 10),
           load_unload_base_mins: Number(configToSave.pricing?.load_unload_base_mins ?? 30),
@@ -417,7 +419,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   };
 
   const addTruckClass = () => {
-    const newClass = { id: Date.now().toString(), name: 'New Equipment Class', minRate: 150, maxRate: 200, drive_time_buffer: 10, load_unload_base_mins: 30 };
+    const newClass = { id: Date.now().toString(), name: 'New Equipment Class', minRate: 150, maxRate: 150, minMileageRate: 5, maxMileageRate: 5, drive_time_buffer: 10, load_unload_base_mins: 30 };
     setFormData(prev => ({
       ...prev,
       pricing: {

@@ -76,7 +76,7 @@ test('normalizeCustomTruckClass includes mileage rates', () => {
   const result = normalizeCustomTruckClass(truckClass, 0);
   assert.equal(result.name, 'Rotator');
   assert.equal(result.minRate, 350);
-  assert.equal(result.maxRate, 450);
+  assert.equal(result.maxRate, 350);
   assert(result.minMileageRate);
   assert(result.maxMileageRate);
   assert(result.drive_time_buffer);
@@ -136,7 +136,7 @@ test('normalizeConfig merges legacy and new config formats', () => {
   };
   const result = normalizeConfig(legacy);
   assert.equal(result.pricing.hourly_min, 100);
-  assert.equal(result.pricing.hourly_max, 140);
+  assert.equal(result.pricing.hourly_max, 100);
   assert.equal(result.bases.length, 1);
 });
 

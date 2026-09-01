@@ -78,7 +78,7 @@ test('resolveBaseRates applies correct rates for hourly mode', () => {
     config: baseConfig,
   });
   assert.equal(result.minRate, 125);
-  assert.equal(result.maxRate, 135);
+  assert.equal(result.maxRate, 125);
   assert.equal(result.standardPricingMode, 'hourly');
 });
 
@@ -90,7 +90,7 @@ test('resolveBaseRates applies correct rates for mileage mode', () => {
     config: baseConfig,
   });
   assert.equal(result.minRate, 5);
-  assert.equal(result.maxRate, 6);
+  assert.equal(result.maxRate, 5);
   assert.equal(result.standardPricingMode, 'mileage');
 });
 
@@ -117,7 +117,7 @@ test('resolveBaseRates applies heavy rates when flagged', () => {
     config: baseConfig,
   });
   assert.equal(result.minRate, 200);
-  assert.equal(result.maxRate, 250);
+  assert.equal(result.maxRate, 200);
 });
 
 test('calculateTimeMetrics applies drive time buffer correctly', () => {
