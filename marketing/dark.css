@@ -1,0 +1,12 @@
+:root{color-scheme:dark;--ink:#f4f6f0;--paper:#0b0d0c;--orange:#b6ee00;--orange-dark:#9bd000;--line:#343936;--muted:#a5aba6;--night:#111512}
+body{background:#0b0d0c;color:#f4f6f0}
+.site-header{background:#0b0d0ceb;border-color:#303531}
+.brand-logo{display:block;width:auto;height:46px}.footer-logo{height:50px}
+.brand-mark,.button,.feature-icon,.popular{color:#0b0d0c}
+.hero-grid{background-image:linear-gradient(#b6ee0012 1px,transparent 1px),linear-gradient(90deg,#b6ee0012 1px,transparent 1px)}
+.eyebrow{color:#b2b8b3}.hero-copy>p,.section-intro>p,.pricing-heading>p,.portal-copy>p{color:#a5aba6}.trust-line{color:#7f8781}
+.quote-card,.floating-chip,.rate-visual,.doc-visual,.portal-ui{background:#171b18;color:#f4f6f0;box-shadow:0 32px 80px #0008}
+.billing-modes{grid-template-columns:1fr 1fr;gap:9px;background:transparent;padding:0}.billing-mode{display:flex;min-width:0;flex-direction:column;gap:7px;padding:13px 11px;border:1px solid #3b423d;background:#121613}.billing-mode.active{border-color:var(--orange);box-shadow:inset 0 3px 0 var(--orange)}.billing-mode span{font-size:7px;font-weight:900;letter-spacing:.12em;color:#8f9891}.billing-mode.active span{color:var(--orange)}.billing-mode b{font-size:13px;white-space:nowrap}.billing-mode small{font-size:8px;line-height:1.35;color:#7f8781}
+.quote-card-top,.route-row{border-color:#343936}.quote-lines div{color:#a5aba6}.quote-total,.portal-result{background:#242a25}.status{color:#0b0d0c;background:#b6ee00}.quote-card button{background:#b6ee00;color:#0b0d0c}
+.proof-strip,.workflow,.why,footer{background:#070908}.features{background:#0e110f}.feature-card{background:#171b18}.feature-card.dark-card{background:#222824}.feature-card p,.dark-card p{color:#a5aba6}.rate-visual i,.doc-visual i{background:#3b423d}.map-visual{background-color:#101411}.map-visual b{background:#b6ee00;color:#0b0d0c}
+.portal-section{background:#111512}.portal-sidebar{background:#080a09}.portal-main label b{border-color:#3a403b}.pricing{background:#0b0d0c}.plan{background:#121613}.plan.featured{background:#171d18}.plan-eyebrow,.price span,.annual{color:#929a94}.onboarding{background:#171b18}.final-cta{background:#b6ee00;color:#0b0d0c}.final-cta .eyebrow{color:#0b0d0c}.final-cta .eyebrow>span{background:#0b0d0c}.final-cta .button{background:#0b0d0c;color:#f4f6f0}

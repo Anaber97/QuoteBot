@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 
 export default function Header({ session, activeTab, setActiveTab, profile, onSignOut, theme = 'dark', onToggleTheme }) {
   const [imgError, setImgError] = useState(false);
-  const logoSrc = theme === 'dark' ? '/towcalc_fulllogo_light.png' : '/towcalc_fulllogo_dark.png';
+  const logoSrc = theme === 'dark' ? '/towcalc_fulllogo_light.svg' : '/towcalc_fulllogo_dark.svg';
   const rawRole = profile?.role || '';
   const role = rawRole.toLowerCase().trim();
 
@@ -55,7 +55,9 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
           )}
           <div>
             <h1 className="text-lg font-bold text-white tracking-tight leading-none flex items-center gap-2">
-                <span className="text-[#afda00] font-semibold text-xs">Route-Based Towing Calculator</span>
+                <span className="text-[#afda00] font-semibold text-xs">
+  Route-Based Towing Calculator
+</span>
             </h1>
             <p className="text-[11px] text-slate-400 mt-0.5">Instant. Accurate. Dispatched.</p>
           </div>
@@ -64,44 +66,44 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
         {/* Navigation Tabs */}
         {session && (
           <div className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 w-full lg:w-auto overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveTab('calculator')}
+            className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+              activeTab === 'calculator'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Calculator
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('logs')}
+            className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+              activeTab === 'logs'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Quote Log
+          </button>
+
+          {/* Render Settings for Managers */}
+          {isManager && (
             <button
               type="button"
-              onClick={() => setActiveTab('calculator')}
+              onClick={() => setActiveTab('settings')}
               className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
-                activeTab === 'calculator'
+                activeTab === 'settings'
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Calculator
+              Settings
             </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('logs')}
-              className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
-                activeTab === 'logs'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Quote Log
-            </button>
-
-            {/* Render Settings for Managers */}
-            {isManager && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('settings')}
-                className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
-                  activeTab === 'settings'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Settings
-              </button>
-            )}
+          )}
           </div>
         )}
 
@@ -137,4 +139,3 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
     </div>
   );
 }
-

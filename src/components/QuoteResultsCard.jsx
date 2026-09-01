@@ -81,9 +81,8 @@ export default function QuoteResultsCard({
   const effectiveMaxQuote = currentMaxQuote + permitFee;
   const clientPrice = effectiveMinQuote;
   const isFixedEquipmentQuote = quoteData?.pricingMode === 'equipment-weight-tier';
+  const isMileageQuote = quoteData?.pricingMode === 'mileage';
   const dispatcherSurcharges = [
-    quoteData?.hasAfterHours ? { key: 'afterHours', active: activeOverrides?.afterHours } : null,
-    quoteData?.hasRoadClub ? { key: 'roadClub', active: activeOverrides?.roadClub } : null,
     quoteData?.hasMetroZone ? { key: 'metro', active: activeOverrides?.metro } : null,
     quoteData?.hasHazardZone ? { key: 'hazard', active: activeOverrides?.hazard } : null,
     quoteData?.hasCustomZone ? { key: 'custom', active: true } : null,
@@ -239,7 +238,7 @@ export default function QuoteResultsCard({
           {showDetails && routeLegs.length > 0 && (
             <div className="bg-[#080c14] border border-slate-800 rounded-xl p-4 space-y-2.5 text-xs mb-5 shadow-inner text-left">
               <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                Route & Time Breakdown
+                Route & {isMileageQuote ? 'Mileage' : 'Time'} Breakdown
               </h3>
               {routeLegs.map((leg, index) => (
                 <div
@@ -299,8 +298,8 @@ export default function QuoteResultsCard({
                 </span>
               </div>
               <div className="flex justify-between items-center pt-1 text-sm font-bold text-white">
-                <span>Total Billable Hours</span>
-                <span className="text-blue-400">{quoteData.totalHours} hrs</span>
+                <span>{isMileageQuote ? 'Total Billable Miles' : 'Total Billable Hours'}</span>
+                <span className="text-blue-400">{isMileageQuote ? `${Number(quoteData.totalMiles || 0).toFixed(1)} mi` : `${quoteData.totalHours} hrs`}</span>
               </div>
             </div>
           )}
@@ -327,20 +326,20 @@ export default function QuoteResultsCard({
         <div className="space-y-2">
           <div>
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              Custom Hourly Rate ($/hr)
+              Custom {isMileageQuote ? 'Mileage' : 'Hourly'} Rate ({isMileageQuote ? '$/mi' : '$/hr'})
             </label>
             <input
               type="number"
-              placeholder="Override hourly rate..."
+              placeholder={`Override ${isMileageQuote ? 'mileage' : 'hourly'} rate...`}
               value={state?.customRateInput ?? ''}
               onChange={(e) => dispatch?.({ type: 'SET_CUSTOM_RATE', payload: e.target.value })}
               className="w-full rounded-xl border border-slate-800 bg-[#080c14] px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
-          <div>
+          {!isMileageQuote && <div>
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">Custom Load / Unload Time (mins)</label>
             <input type="number" placeholder="Use class default" value={state?.customLoadUnloadMins ?? ''} onChange={(e) => dispatch?.({ type: 'SET_CUSTOM_LOAD_UNLOAD', payload: e.target.value })} className="w-full rounded-xl border border-slate-800 bg-[#080c14] px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          </div>
+          </div>}
           {customCalculatedQuote !== null && customCalculatedQuote !== undefined && (
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold text-emerald-300">
               Custom rate estimate: ${customCalculatedQuote}

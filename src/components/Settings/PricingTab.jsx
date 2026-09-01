@@ -1,5 +1,5 @@
 import React from 'react';
-import { DollarSign, Clock, Plus, Trash2, Percent } from 'lucide-react';
+import { DollarSign, Clock, Plus, Trash2 } from 'lucide-react';
 
 export default function PricingTab({
   formData,
@@ -9,6 +9,7 @@ export default function PricingTab({
   removeTruckClass,
   customSurchargeItems,
   addCustomSurcharge,
+  toggleCustomSurcharge,
   removeCustomSurcharge,
   updateCustomSurcharge,
   customSurchargeSearch,
@@ -19,34 +20,34 @@ export default function PricingTab({
   addClientPortalTier,
   removeClientPortalTier,
 }) {
-  const renderSurchargeControl = (field, label, defaultValue) => {
-    const feeType = formData.pricing?.surchargeModes?.[field] || 'percent';
-    const unitLabel = feeType === 'flat' ? '$' : '%';
-
-    return (
-      <div>
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <label className="text-[10px] text-slate-400 block">{label} ({unitLabel})</label>
-          <button
-            type="button"
-            onClick={() => updatePricingMode(field, feeType === 'flat' ? 'percent' : 'flat')}
-            className={`light-surcharge-type-toggle inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${feeType === 'flat' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-slate-700 bg-slate-900/60 text-slate-300'}`}
-          >
-            {feeType === 'flat' ? 'Flat $' : 'Percent %'}
-          </button>
-        </div>
-        <input
-          type="number"
-          value={formData.pricing?.[field] ?? defaultValue}
-          onChange={(e) => updatePricing(field, parseFloat(e.target.value) || 0)}
-          className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
-        />
-      </div>
-    );
-  };
+  const pricingMode = formData.pricing?.pricing_mode === 'mileage' ? 'mileage' : 'hourly';
+  const isMileageMode = pricingMode === 'mileage';
+  const rateUnit = isMileageMode ? '$/mi' : '$/hr';
+  const minField = isMileageMode ? 'mileage_min' : 'hourly_min';
+  const maxField = isMileageMode ? 'mileage_max' : 'hourly_max';
+  const classTableColumns = isMileageMode
+    ? 'sm:grid-cols-[minmax(12rem,1fr)_8rem_8rem_2.25rem]'
+    : 'sm:grid-cols-[minmax(12rem,1fr)_7.5rem_7.5rem_8rem_6.5rem_2.25rem]';
+  const systemSurcharges = [
+    { field: 'metro_multiplier', label: 'Metro', defaultValue: 28.57, trigger: 'Automatic · Metro Zone' },
+    { field: 'hazard_multiplier', label: 'Hazard', defaultValue: 40, trigger: 'Automatic · Hazard Zone' },
+  ].filter((item) => item.label.toLowerCase().includes(customSurchargeSearch.toLowerCase()));
 
   return (
     <div className="flex flex-col gap-5 text-xs">
+      <div className="-order-3 bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
+        <div>
+          <h4 className="font-bold text-slate-200 text-xs">Pricing Mode</h4>
+          <p className="text-[10px] text-slate-400">Choose whether standard quotes are based on billable time or total routed mileage.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 rounded-xl bg-[#121824] p-1 border border-slate-800">
+          {['hourly', 'mileage'].map((mode) => (
+            <button key={mode} type="button" onClick={() => updatePricing('pricing_mode', mode)} className={`rounded-lg px-3 py-2 text-[11px] font-bold transition ${pricingMode === mode ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
+              {mode === 'hourly' ? 'Hourly Mode' : 'Mileage Mode'}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="hidden">
         <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
           <DollarSign className="w-4 h-4 text-emerald-400" /> Truck & Equipment Classes — Standard Rates ($/hr)
@@ -82,7 +83,7 @@ export default function PricingTab({
           <input type="number" value={tier.rate} onChange={(e) => updateClientPortalTier(index, 'rate', e.target.value)} placeholder="$/hr" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <input type="number" value={tier.drive_time_buffer ?? 10} onChange={(e) => updateClientPortalTier(index, 'drive_time_buffer', e.target.value)} placeholder="Drive %" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <input type="number" value={tier.load_unload_base_mins ?? 30} onChange={(e) => updateClientPortalTier(index, 'load_unload_base_mins', e.target.value)} placeholder="Load mins" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <button type="button" onClick={() => removeClientPortalTier(index)} className="rounded border border-red-500/30 px-2 text-red-300"><Trash2 className="w-3.5 h-3.5" /></button>
+          <button type="button" onClick={() => removeClientPortalTier(index)} aria-label={`Delete equipment weight class ${index + 1}`} title="Delete class" className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5" /></button>
         </div>)}
       </div>
 
@@ -109,22 +110,10 @@ export default function PricingTab({
       </div>
 
       <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-        <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
-          <Percent className="w-4 h-4 text-amber-400" /> Standard Multipliers
-        </h4>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {renderSurchargeControl('after_hours_multiplier', 'After Hours', 25)}
-          {renderSurchargeControl('road_club_multiplier', 'Road Club', 15)}
-          {renderSurchargeControl('metro_multiplier', 'Metro', 28.57)}
-          {renderSurchargeControl('hazard_multiplier', 'Hazard', 40)}
-        </div>
-      </div>
-
-      <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
         <div className="flex justify-between items-center">
           <div>
-            <h4 className="font-bold text-slate-200 text-xs">Custom Surcharges</h4>
-            <p className="text-[10px] text-slate-400">Filter and toggle optional fees without leaving the pricing tab.</p>
+            <h4 className="font-bold text-slate-200 text-xs">Surcharges</h4>
+            <p className="text-[10px] text-slate-400">Automatic rules and optional fees—including hook-up and fuel charges—in one table.</p>
           </div>
           <button
             type="button"
@@ -152,18 +141,31 @@ export default function PricingTab({
             <option value="inactive">Inactive</option>
           </select>
         </div>
+        <div className="hidden grid-cols-[minmax(10rem,1fr)_8rem_7rem_minmax(10rem,1fr)_5rem] gap-2 px-2 text-[9px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+          <span>Surcharge</span><span>Type</span><span>Amount</span><span>Applied</span><span>Action</span>
+        </div>
         <div className="space-y-2">
-          {customSurchargeItems.map((item, idx) => (
-            <div key={item.id} className="flex flex-col gap-2 rounded-lg border border-slate-800 bg-[#121824] p-2.5 sm:flex-row sm:items-center">
+          {customSurchargeFilter !== 'inactive' && systemSurcharges.map((item) => {
+            const feeType = formData.pricing?.surchargeModes?.[item.field] || 'percent';
+            return <div key={item.field} className="grid gap-2 rounded-lg border border-amber-500/20 bg-[#121824] p-2.5 sm:grid-cols-[minmax(10rem,1fr)_8rem_7rem_minmax(10rem,1fr)_5rem] sm:items-center">
+              <div><span className="font-semibold text-slate-200">{item.label}</span></div>
+              <select value={feeType} onChange={(e) => updatePricingMode(item.field, e.target.value)} className="bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"><option value="flat">Flat $</option><option value="percent">Percent %</option></select>
+              <input type="number" value={formData.pricing?.[item.field] ?? item.defaultValue} onChange={(e) => updatePricing(item.field, parseFloat(e.target.value) || 0)} className="w-full bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs font-mono" />
+              <span className="text-[10px] text-slate-400">{item.trigger}</span>
+              <span className="w-full text-center text-[10px] text-slate-600">Locked</span>
+            </div>;
+          })}
+          {customSurchargeItems.map((item) => (
+            <div key={item.id} className="grid gap-2 rounded-lg border border-slate-800 bg-[#121824] p-2.5 sm:grid-cols-[minmax(10rem,1fr)_8rem_7rem_minmax(10rem,1fr)_5rem] sm:items-center">
               <input
                 type="text"
                 value={item.name}
-                onChange={(e) => updateCustomSurcharge(idx, 'name', e.target.value)}
+                onChange={(e) => updateCustomSurcharge(item.id, 'name', e.target.value)}
                 className="flex-1 bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
               />
               <select
                 value={item.feeType || 'flat'}
-                onChange={(e) => updateCustomSurcharge(idx, 'feeType', e.target.value)}
+                onChange={(e) => updateCustomSurcharge(item.id, 'feeType', e.target.value)}
                 className="bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
               >
                 <option value="flat">Flat</option>
@@ -172,10 +174,11 @@ export default function PricingTab({
               <input
                 type="number"
                 value={item.value ?? 0}
-                onChange={(e) => updateCustomSurcharge(idx, 'value', e.target.value)}
-                className="w-24 bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs font-mono"
+                onChange={(e) => updateCustomSurcharge(item.id, 'value', e.target.value)}
+                className="w-full bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs font-mono"
               />
-              <button type="button" onClick={() => removeCustomSurcharge(item.id)} className="ml-auto rounded-lg border border-red-500/30 px-2.5 py-1.5 text-red-300 hover:bg-red-500/10">Delete</button>
+              <button type="button" onClick={() => toggleCustomSurcharge(item.id)} className={`inline-flex items-center justify-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${item.active !== false ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15' : 'border-slate-600 bg-slate-900/70 text-slate-400 hover:border-slate-500 hover:text-slate-300'}`}><span className={`h-1.5 w-1.5 rounded-full ${item.active !== false ? 'bg-emerald-400' : 'bg-slate-500'}`} />{item.active !== false ? 'Enabled' : 'Disabled'}</button>
+              <button type="button" onClick={() => removeCustomSurcharge(item.id)} aria-label={`Delete ${item.name}`} title="Delete surcharge" className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           ))}
         </div>
@@ -184,8 +187,8 @@ export default function PricingTab({
       <div className="-order-2 bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
         <div className="flex justify-between items-center">
           <div>
-            <h4 className="font-bold text-slate-200 text-xs">Truck & Equipment Classes ($/hr)</h4>
-            <p className="text-[10px] text-slate-400">Standard is the calculator default; additional rows are selectable classes.</p>
+            <h4 className="font-bold text-slate-200 text-xs">Truck & Equipment Classes ({rateUnit})</h4>
+            <p className="text-[10px] text-slate-400">{isMileageMode ? 'Mileage quotes use only the routed miles and per-mile class rates.' : 'Standard is the calculator default; additional rows are selectable classes.'}</p>
           </div>
           <button
             type="button"
@@ -195,16 +198,16 @@ export default function PricingTab({
             <Plus className="w-3 h-3" /> Add Class
           </button>
         </div>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-[#121824] p-2.5 rounded-lg border border-emerald-500/30">
+        <div className={`grid gap-2 bg-[#121824] p-2.5 rounded-lg border border-emerald-500/30 sm:items-end ${classTableColumns}`}>
           <div className="flex-1 text-xs font-semibold text-emerald-300">Standard Tow / Flatbed <span className="block text-[10px] font-normal text-slate-400">Default calculator class</span></div>
-          <div className="flex items-center gap-1"><span className="text-[10px] text-slate-400">Min $/hr:</span><input type="number" value={formData.pricing?.hourly_min ?? 125} onChange={(e) => updatePricing('hourly_min', parseFloat(e.target.value) || 0)} className="w-20 bg-[#080c14] border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono" /></div>
-          <div className="flex items-center gap-1"><span className="text-[10px] text-slate-400">Max $/hr:</span><input type="number" value={formData.pricing?.hourly_max ?? 135} onChange={(e) => updatePricing('hourly_max', parseFloat(e.target.value) || 0)} className="w-20 bg-[#080c14] border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono" /></div>
-          <div className="flex items-center gap-1"><span className="text-[10px] text-slate-400">Drive buffer %:</span><input type="number" value={formData.pricing?.drive_time_buffer ?? 10} onChange={(e) => updatePricing('drive_time_buffer', parseFloat(e.target.value) || 0)} className="w-16 bg-[#080c14] border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono" /></div>
-          <div className="flex items-center gap-1"><span className="text-[10px] text-slate-400">Load mins:</span><input type="number" value={formData.pricing?.load_unload_base_mins ?? 30} onChange={(e) => updatePricing('load_unload_base_mins', parseInt(e.target.value, 10) || 0)} className="w-16 bg-[#080c14] border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono" /></div>
-          <span className="w-6 text-center text-[10px] text-slate-600">Default</span>
+          <label className="text-[10px] text-slate-400">Min {rateUnit}<input type="number" step={isMileageMode ? '0.01' : '1'} value={formData.pricing?.[minField] ?? (isMileageMode ? 5 : 125)} onChange={(e) => updatePricing(minField, parseFloat(e.target.value) || 0)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>
+          <label className="text-[10px] text-slate-400">Max {rateUnit}<input type="number" step={isMileageMode ? '0.01' : '1'} value={formData.pricing?.[maxField] ?? (isMileageMode ? 6 : 135)} onChange={(e) => updatePricing(maxField, parseFloat(e.target.value) || 0)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>
+          {!isMileageMode && <label className="text-[10px] text-slate-400">Drive buffer %<input type="number" value={formData.pricing?.drive_time_buffer ?? 10} onChange={(e) => updatePricing('drive_time_buffer', parseFloat(e.target.value) || 0)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>}
+          {!isMileageMode && <label className="text-[10px] text-slate-400">Load mins<input type="number" value={formData.pricing?.load_unload_base_mins ?? 30} onChange={(e) => updatePricing('load_unload_base_mins', parseInt(e.target.value, 10) || 0)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>}
+          <span className="pb-2 text-center text-[9px] uppercase tracking-wide text-slate-600">Default</span>
         </div>
         {formData.pricing?.custom_truck_classes?.map((tc, idx) => (
-          <div key={tc.id} className="flex flex-col sm:flex-row sm:items-center gap-2 bg-[#121824] p-2.5 rounded-lg border border-slate-800">
+          <div key={tc.id} className={`grid gap-2 bg-[#121824] p-2.5 rounded-lg border border-slate-800 sm:items-end ${classTableColumns}`}>
             <input
               type="text"
               placeholder="Class Name"
@@ -214,37 +217,33 @@ export default function PricingTab({
                 updated[idx].name = e.target.value;
                 updatePricing('custom_truck_classes', updated);
               }}
-              className="flex-1 bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
+              className="w-full bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
             />
-              <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-slate-400">Min $/hr:</span>
+              <label className="text-[10px] text-slate-400">Min {rateUnit}
                 <input
                   type="number"
-                  value={tc.minRate}
+                  value={isMileageMode ? (tc.minMileageRate ?? 5) : tc.minRate}
                   onChange={(e) => {
                     const updated = [...formData.pricing.custom_truck_classes];
-                    updated[idx].minRate = parseFloat(e.target.value) || 0;
+                    updated[idx][isMileageMode ? 'minMileageRate' : 'minRate'] = parseFloat(e.target.value) || 0;
                     updatePricing('custom_truck_classes', updated);
                   }}
-                  className="w-20 bg-[#080c14] border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono"
+                  className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
                 />
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-slate-400">Max $/hr:</span>
+              </label>
+              <label className="text-[10px] text-slate-400">Max {rateUnit}
                 <input
                   type="number"
-                  value={tc.maxRate}
+                  value={isMileageMode ? (tc.maxMileageRate ?? 6) : tc.maxRate}
                   onChange={(e) => {
                     const updated = [...formData.pricing.custom_truck_classes];
-                    updated[idx].maxRate = parseFloat(e.target.value) || 0;
+                    updated[idx][isMileageMode ? 'maxMileageRate' : 'maxRate'] = parseFloat(e.target.value) || 0;
                     updatePricing('custom_truck_classes', updated);
                   }}
-                  className="w-20 bg-[#080c14] border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono"
+                  className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
                 />
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-slate-400">Drive buffer %:</span>
+              </label>
+              {!isMileageMode && <label className="text-[10px] text-slate-400">Drive buffer %
                 <input
                   type="number"
                   step="1"
@@ -254,11 +253,10 @@ export default function PricingTab({
                     updated[idx].drive_time_buffer = parseFloat(e.target.value) || 0;
                     updatePricing('custom_truck_classes', updated);
                   }}
-                  className="w-16 bg-[#080c14] border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono"
+                  className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
                 />
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-slate-400">Load mins:</span>
+              </label>}
+              {!isMileageMode && <label className="text-[10px] text-slate-400">Load mins
                 <input
                   type="number"
                   value={tc.load_unload_base_mins ?? 30}
@@ -267,17 +265,18 @@ export default function PricingTab({
                     updated[idx].load_unload_base_mins = parseInt(e.target.value, 10) || 0;
                     updatePricing('custom_truck_classes', updated);
                   }}
-                  className="w-16 bg-[#080c14] border border-slate-700 rounded px-2 py-1 text-white text-xs font-mono"
+                  className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
                 />
-              </div>
+              </label>}
               <button
                 type="button"
                 onClick={() => removeTruckClass(tc.id)}
-                className="p-1 text-slate-500 hover:text-red-400 transition"
+                aria-label={`Delete ${tc.name}`}
+                title="Delete class"
+                className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
-            </div>
           </div>
         ))}
       </div>

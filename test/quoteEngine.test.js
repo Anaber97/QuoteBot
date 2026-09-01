@@ -129,10 +129,11 @@ test('extra stops add configured on-site time', () => {
 
 test('flat and percentage surcharges apply in the documented order before rounding', () => {
   const surchargeConfig = structuredClone(config);
-  surchargeConfig.pricing.after_hours_multiplier = 20;
-  surchargeConfig.pricing.road_club_multiplier = 30;
-  surchargeConfig.pricing.surchargeModes = { after_hours_multiplier: 'percent', road_club_multiplier: 'flat' };
-  const result = quote({ config: surchargeConfig, input: { isAfterHours: true, isRoadClub: true, activeOverrides: { afterHours: true, roadClub: true } } });
+  surchargeConfig.pricing.custom_surcharges = [
+    { id: 'after-hours', name: 'After Hours', feeType: 'percent', value: 20, active: true },
+    { id: 'road-club', name: 'Road Club', feeType: 'flat', value: 30, active: true },
+  ];
+  const result = quote({ config: surchargeConfig, input: { activeOverrides: { customSurcharges: { 'after-hours': true, 'road-club': true } } } });
   assert.equal(result.minQuote, 275);
 });
 
@@ -186,6 +187,25 @@ test('client-specific pricing overrides company tiers and timing', () => {
   const result = quote({ role: 'client', clientConfig });
   assert.equal(result.totalHours, 1);
   assert.equal(result.minQuote, 175);
+});
+
+test('mileage mode prices the full routed mileage and preserves surcharge rounding', () => {
+  const mileageConfig = structuredClone(config);
+  mileageConfig.pricing.pricing_mode = 'mileage';
+  mileageConfig.pricing.mileage_min = 5;
+  mileageConfig.pricing.mileage_max = 6;
+  mileageConfig.pricing.rounding_interval = 25;
+  const result = quote({ config: mileageConfig, role: 'dispatcher' });
+  assert.equal(result.pricingMode, 'mileage');
+  assert.equal(Math.round(result.totalMiles), 10);
+  assert.equal(result.minQuote, 50);
+  assert.equal(result.maxQuote, 50);
+});
+
+test('hourly mode remains the default when no pricing mode is saved', () => {
+  const result = quote({ role: 'dispatcher' });
+  assert.equal(result.pricingMode, 'hourly');
+  assert.equal(result.minQuote, 200);
 });
 
 test('equipment pricing ignores municipality rates but keeps selected custom surcharges', () => {

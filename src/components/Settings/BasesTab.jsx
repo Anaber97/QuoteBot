@@ -41,9 +41,11 @@ export default function BasesTab({ formData, addBase, removeBase, setFormData })
           <button
             type="button"
             onClick={() => removeBase(base.id)}
-            className="p-1.5 text-slate-500 hover:text-red-400 transition"
+            aria-label={`Delete ${base.name || 'base yard'}`}
+            title="Delete base yard"
+            className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
       ))}

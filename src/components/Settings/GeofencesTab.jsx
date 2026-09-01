@@ -143,9 +143,9 @@ export default function GeofencesTab({
               <p className="font-semibold text-white">{selectedGeofence?.name || 'Select a geofence'}</p>
             </div>
             {selectedGeofence && (
-              <button type="button" onClick={() => toggleGeofence(selectedGeofence.id)} className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${disabledSet.has(selectedGeofence.id) ? 'border-slate-700 text-slate-400' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'}`}>
-                {disabledSet.has(selectedGeofence.id) ? <ToggleLeft className="w-3.5 h-3.5" /> : <ToggleRight className="w-3.5 h-3.5" />}
-                {disabledSet.has(selectedGeofence.id) ? 'Disabled' : 'Active'}
+              <button type="button" onClick={() => toggleGeofence(selectedGeofence.id)} className={`relative flex w-24 items-center justify-center rounded-full border px-7 py-1 text-[10px] font-semibold ${disabledSet.has(selectedGeofence.id) ? 'border-slate-700 text-slate-400' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'}`}>
+                {disabledSet.has(selectedGeofence.id) ? <ToggleLeft className="absolute left-2.5 w-3.5 h-3.5" /> : <ToggleRight className="absolute left-2.5 w-3.5 h-3.5" />}
+                <span>{disabledSet.has(selectedGeofence.id) ? 'Disabled' : 'Active'}</span>
               </button>
             )}
           </div>

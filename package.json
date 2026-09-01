@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "marketing:dev": "npm --prefix marketing run dev",
     "build": "vite build",
+    "marketing:build": "npm --prefix marketing run build",
+    "marketing:lint": "npm --prefix marketing run lint",
     "lint": "oxlint",
     "test": "node --test test/*.test.js",
     "preview": "vite preview"

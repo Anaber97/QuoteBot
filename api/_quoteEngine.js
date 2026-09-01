@@ -135,19 +135,22 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const loadMinutes = toFinite(useWeightTierPricing ? tier?.load_unload_base_mins : selectedClass?.load_unload_base_mins ?? clientPricing.load_unload_base_mins ?? pricing.load_unload_base_mins, 30);
   const extraStopMinutes = toFinite(clientPricing.extra_stop_mins ?? pricing.extra_stop_mins, 15) * Math.max(0, addresses.length - 2);
   const rawTotalHours = (route.rawDriveMinutes * driveBuffer + loadMinutes + extraStopMinutes) / 60;
+  const totalMiles = route.totalMeters * 0.000621371;
+  const standardPricingMode = pricing.pricing_mode === 'mileage' && !useWeightTierPricing ? 'mileage' : 'hourly';
 
   let minRate = toFinite(pricing.hourly_min ?? config.hourly_min, 125);
   let maxRate = toFinite(pricing.hourly_max ?? config.hourly_max, 135);
   if (useWeightTierPricing) minRate = maxRate = toFinite(tier.rate);
   else if (selectedClass) { minRate = toFinite(selectedClass.minRate, minRate); maxRate = toFinite(selectedClass.maxRate, maxRate); }
   else if (input.isHeavy) { minRate = toFinite(pricing.heavy_hourly_min ?? config.heavy_hourly_min, 200); maxRate = toFinite(pricing.heavy_hourly_max ?? config.heavy_hourly_max, 250); }
+  if (standardPricingMode === 'mileage') {
+    minRate = toFinite(selectedClass?.minMileageRate ?? pricing.mileage_min, 5);
+    maxRate = toFinite(selectedClass?.maxMileageRate ?? pricing.mileage_max, 6);
+  }
 
   const overrides = role === 'client' ? { afterHours: false, roadClub: false, metro: true, hazard: true, customSurcharges: {} } : input.activeOverrides || {};
   const charge = { multiplier: 1, flat: 0 };
   const add = (feeType, value) => feeType === 'flat' ? charge.flat += toFinite(value) : charge.multiplier *= 1 + toFinite(value) / 100;
-  const modes = pricing.surchargeModes || config?.surcharges?.surchargeModes || {};
-  if (input.isAfterHours && overrides.afterHours) add(modes.after_hours_multiplier, pricing.after_hours_multiplier ?? 25);
-  if (input.isRoadClub && overrides.roadClub) add(modes.road_club_multiplier, pricing.road_club_multiplier ?? 15);
   if (!useWeightTierPricing && metroMatches.length && overrides.metro) add(metroMatches[0].charge.feeType, metroMatches[0].charge.value);
   if (!useWeightTierPricing && hazardMatches.length && overrides.hazard) hazardMatches.forEach((zone) => add(zone.charge.feeType, zone.charge.value));
   if (!useWeightTierPricing) customMatches.forEach((zone) => add(zone.charge.feeType, zone.charge.value));
@@ -155,12 +158,13 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
 
   const flatOverride = useWeightTierPricing ? 0 : customMatches.filter((zone) => zone.charge.feeType === 'flat').reduce((maximum, zone) => Math.max(maximum, zone.charge.value), 0);
   const interval = toFinite(useWeightTierPricing ? tier.rounding_interval ?? clientPricing.rounding_interval : pricing.rounding_interval, 25);
-  let minQuote = flatOverride || roundToNearest(rawTotalHours * minRate * charge.multiplier + charge.flat, interval);
-  let maxQuote = flatOverride || roundToNearest(rawTotalHours * maxRate * charge.multiplier + charge.flat, interval);
+  const pricingQuantity = standardPricingMode === 'mileage' ? totalMiles : rawTotalHours;
+  let minQuote = flatOverride || roundToNearest(pricingQuantity * minRate * charge.multiplier + charge.flat, interval);
+  let maxQuote = flatOverride || roundToNearest(pricingQuantity * maxRate * charge.multiplier + charge.flat, interval);
   let customQuote = null;
   if (role !== 'client' && toFinite(input.customRate) > 0) {
     const hours = input.customLoadUnloadMins == null ? rawTotalHours : Math.max(0, rawTotalHours + (toFinite(input.customLoadUnloadMins) - loadMinutes - extraStopMinutes) / 60);
-    customQuote = roundToNearest(hours * toFinite(input.customRate) * charge.multiplier + charge.flat, interval);
+    customQuote = roundToNearest((standardPricingMode === 'mileage' ? totalMiles : hours) * toFinite(input.customRate) * charge.multiplier + charge.flat, interval);
   }
   const permit = calculatePermitRequirements({ weight: totalWeight, width: toFinite(input.equipment?.width), height: toFinite(input.equipment?.height), pickupAddress: addresses[0], dropoffAddress: addresses.at(-1), config });
   minQuote += permit.permitFee;
@@ -168,13 +172,14 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   if (customQuote != null) customQuote += permit.permitFee;
 
   return {
-    totalMiles: route.totalMeters * 0.000621371,
+    totalMiles,
     totalHours: Number(rawTotalHours.toFixed(2)),
+    pricingMode: useWeightTierPricing ? 'equipment-weight-tier' : standardPricingMode,
     minQuote, maxQuote, customQuote,
     approvalRequired: totalWeight >= toFinite(clientConfig?.approval_threshold ?? config?.client_portal?.approval_threshold, 80000),
     permit,
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
-    appliedSurcharges: { afterHours: Boolean(input.isAfterHours && overrides.afterHours), roadClub: Boolean(input.isRoadClub && overrides.roadClub), metro: Boolean(!useWeightTierPricing && metroMatches.length && overrides.metro), hazard: Boolean(!useWeightTierPricing && hazardMatches.length && overrides.hazard) },
+    appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(!useWeightTierPricing && metroMatches.length && overrides.metro), hazard: Boolean(!useWeightTierPricing && hazardMatches.length && overrides.hazard) },
     routeLegs: route.legs,
     quoteDetails: { ...(input.equipment || {}), permitFee: permit.permitFee, permitFlags: permit.flags },
   };

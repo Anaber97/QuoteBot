@@ -49,6 +49,13 @@ const normalizeCompanyConfig = (rawConfig = {}) => {
         active: item.active !== false,
       }))
     : null;
+  const migratedBusinessSurcharges = config.pricing?.configurable_business_surcharges === true
+    ? normalizedCustomSurcharges
+    : [
+        { id: 'after-hours', name: 'After Hours', feeType: 'percent', value: Number(config.pricing?.after_hours_multiplier ?? 25), active: true },
+        { id: 'road-club', name: 'Road Club', feeType: 'percent', value: Number(config.pricing?.road_club_multiplier ?? 15), active: true },
+        ...(normalizedCustomSurcharges || []),
+      ].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id || candidate.name.toLowerCase() === item.name.toLowerCase()) === index);
 
   return {
   ...DEFAULT_CONFIG,
@@ -75,12 +82,13 @@ const normalizeCompanyConfig = (rawConfig = {}) => {
     load_unload_base_mins: Number(config.pricing?.load_unload_base_mins ?? config.load_unload_base_mins ?? DEFAULT_CONFIG.pricing.load_unload_base_mins) || 30,
     extra_stop_mins: Number(config.pricing?.extra_stop_mins ?? config.extra_stop_mins ?? DEFAULT_CONFIG.pricing.extra_stop_mins) || 15,
     custom_truck_classes: Array.isArray(config.pricing?.custom_truck_classes) ? config.pricing.custom_truck_classes : DEFAULT_CONFIG.pricing.custom_truck_classes,
-    custom_surcharges: normalizedCustomSurcharges || DEFAULT_CONFIG.pricing.custom_surcharges,
+    configurable_business_surcharges: true,
+    custom_surcharges: migratedBusinessSurcharges || DEFAULT_CONFIG.pricing.custom_surcharges,
   },
   surcharges: {
     ...(DEFAULT_CONFIG.surcharges || {}),
     ...(config.surcharges || {}),
-    custom_surcharges: normalizedCustomSurcharges || DEFAULT_CONFIG.surcharges.custom_surcharges,
+    custom_surcharges: migratedBusinessSurcharges || DEFAULT_CONFIG.surcharges.custom_surcharges,
   },
   geofences: {
     disabledZones: config.geofences?.disabledZones || [],

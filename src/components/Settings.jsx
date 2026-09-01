@@ -28,8 +28,11 @@ const normalizeDriveTimeBuffer = (value) => {
 export const DEFAULT_CONFIG = {
   company_id: '00000000-0000-0000-0000-000000000000',
   pricing: {
+    pricing_mode: 'hourly',
     hourly_min: RATES.HOURLY_MIN || 125,
     hourly_max: RATES.HOURLY_MAX || 135,
+    mileage_min: 5,
+    mileage_max: 6,
     rounding_interval: RATES.ROUNDING_INTERVAL || 25,
     drive_time_buffer: (RATES.DRIVE_TIME_BUFFER - 1) * 100 || 10,
     after_hours_multiplier: (RATES.AFTER_HOURS_MULTIPLIER - 1) * 100 || 25,
@@ -53,6 +56,8 @@ export const DEFAULT_CONFIG = {
   },
   surcharges: {
     custom_surcharges: [
+      { id: 'after-hours', name: 'After Hours', feeType: 'percent', value: 25, active: true },
+      { id: 'road-club', name: 'Road Club', feeType: 'percent', value: 15, active: true },
       { id: '1', name: 'Winch Out / Off-Road', feeType: 'flat', value: 75, active: true },
       { id: '2', name: 'Bad Weather / Ice', feeType: 'percent', value: 20, active: false },
     ],
@@ -115,6 +120,13 @@ const normalizeConfig = (rawValue = {}) => {
         active: item.active !== false,
       }))
     : null;
+  const migratedBusinessSurcharges = value.pricing?.configurable_business_surcharges === true
+    ? normalizedCustomSurcharges
+    : [
+        { id: 'after-hours', name: 'After Hours', feeType: 'percent', value: Number(value.pricing?.after_hours_multiplier ?? 25), active: true },
+        { id: 'road-club', name: 'Road Club', feeType: 'percent', value: Number(value.pricing?.road_club_multiplier ?? 15), active: true },
+        ...(normalizedCustomSurcharges || []),
+      ].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id || candidate.name.toLowerCase() === item.name.toLowerCase()) === index);
 
   return {
   ...DEFAULT_CONFIG,
@@ -138,12 +150,13 @@ const normalizeConfig = (rawValue = {}) => {
     hazard_multiplier: Number(value.pricing?.hazard_multiplier ?? value.surcharges?.hazard_multiplier ?? DEFAULT_CONFIG.pricing.hazard_multiplier) || 40,
     load_unload_base_mins: Number(value.pricing?.load_unload_base_mins ?? value.load_unload_base_mins ?? DEFAULT_CONFIG.pricing.load_unload_base_mins) || 30,
     extra_stop_mins: Number(value.pricing?.extra_stop_mins ?? value.extra_stop_mins ?? DEFAULT_CONFIG.pricing.extra_stop_mins) || 15,
-    custom_surcharges: normalizedCustomSurcharges || DEFAULT_CONFIG.pricing.custom_surcharges,
+    configurable_business_surcharges: true,
+    custom_surcharges: migratedBusinessSurcharges || DEFAULT_CONFIG.pricing.custom_surcharges,
   },
   surcharges: {
     ...(DEFAULT_CONFIG.surcharges || {}),
     ...(value.surcharges || {}),
-    custom_surcharges: normalizedCustomSurcharges || DEFAULT_CONFIG.surcharges.custom_surcharges,
+    custom_surcharges: migratedBusinessSurcharges || DEFAULT_CONFIG.surcharges.custom_surcharges,
   },
   geofences: {
     disabledZones: value.geofences?.disabledZones || [],
@@ -446,13 +459,13 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     }));
   };
 
-  const updateCustomSurcharge = (index, field, value) => {
+  const updateCustomSurcharge = (id, field, value) => {
     setFormData(prev => ({
       ...prev,
       pricing: {
         ...prev.pricing,
-        custom_surcharges: (prev.pricing?.custom_surcharges || []).map((item, itemIndex) =>
-          itemIndex === index ? { ...item, [field]: field === 'value' ? Number(value) || 0 : value } : item
+        custom_surcharges: (prev.pricing?.custom_surcharges || []).map((item) =>
+          item.id === id ? { ...item, [field]: field === 'value' ? Number(value) || 0 : value } : item
         ),
       },
     }));
@@ -471,13 +484,13 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     }));
   };
 
-  const toggleCustomSurcharge = (index) => {
+  const toggleCustomSurcharge = (id) => {
     setFormData(prev => ({
       ...prev,
       pricing: {
         ...prev.pricing,
-        custom_surcharges: (prev.pricing?.custom_surcharges || []).map((item, itemIndex) =>
-          itemIndex === index ? { ...item, active: !item.active } : item
+        custom_surcharges: (prev.pricing?.custom_surcharges || []).map((item) =>
+          item.id === id ? { ...item, active: !item.active } : item
         ),
       },
     }));

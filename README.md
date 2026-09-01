@@ -2,11 +2,15 @@
 
 TowCalc Pro is a React/Vite quoting application for towing and equipment transport teams. It supports company-specific pricing, geofences, client accounts, quote history, invitations, and authenticated Supabase-backed configuration.
 
+The repository also contains the standalone TowCalc marketing site under `marketing/`. The two projects intentionally remain separate so the calculator can run as a PWA at `app.towcalc.com` while the marketing site remains a standard website at `towcalc.com`.
+
 ## Local development
 
 1. Copy `.env.example` to `.env` and fill in the required values.
 2. Set `SITE_URL` to the application origin used in invitation links.
 3. Run `npm run dev`.
+
+To work on the marketing site, install its dependencies once with `npm --prefix marketing install`, then run `npm run marketing:dev` from the repository root.
 
 Use server-only names for secrets: `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, and `GOOGLE_MAPS_API_KEY`. Never reference those values from code under `src/`. The server Maps key must have the Routes API enabled and should be restricted to the Routes API and the production server environment. `VITE_GOOGLE_MAPS_API_KEY` remains the browser-restricted key used for autocomplete and map display.
 
@@ -17,6 +21,7 @@ Quote submission is server-authoritative. Apply `20260818154500_server_authorita
 - `npm test` runs the focused security tests.
 - `npm run lint` checks the source.
 - `npm run build` creates the production bundle.
+- `npm run marketing:build` creates the standalone marketing-site bundle.
 - `npm audit --omit=dev` checks production dependencies.
 
 The same commands run automatically for every pull request through `.github/workflows/quality.yml`. Pull requests should not be merged while any quality check is failing.
