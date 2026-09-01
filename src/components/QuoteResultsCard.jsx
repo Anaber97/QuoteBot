@@ -82,7 +82,7 @@ export default function QuoteResultsCard({
   const effectiveMaxQuote = currentMaxQuote + permitFee;
   const clientPrice = effectiveMinQuote;
   const isFixedEquipmentQuote = quoteData?.pricingMode === 'equipment-weight-tier';
-  const isMileageQuote = quoteData?.pricingMode === 'mileage';
+  const isMileageQuote = (quoteData?.pricingRateMode || quoteData?.pricingMode) === 'mileage';
   const dispatcherSurcharges = [
     quoteData?.hasMetroZone ? { key: 'metro', active: activeOverrides?.metro } : null,
     quoteData?.hasHazardZone ? { key: 'hazard', active: activeOverrides?.hazard } : null,
@@ -182,7 +182,7 @@ export default function QuoteResultsCard({
         </div>
         {isDispatcherView && isFixedEquipmentQuote && (
           <div className="text-[11px] text-slate-400">
-            {quoteData.weightTierLabel || 'Equipment weight class'} · ${Number(quoteData.fixedHourlyRate).toFixed(0)}/hr
+            {quoteData.weightTierLabel || 'Equipment weight class'} · ${Number(quoteData.fixedRate ?? quoteData.fixedHourlyRate).toFixed(quoteData.pricingRateMode === 'mileage' ? 2 : 0)}/{quoteData.pricingRateMode === 'mileage' ? 'mi' : 'hr'}
           </div>
         )}
         {isDispatcherView && permitFee > 0 && (

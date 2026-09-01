@@ -105,7 +105,7 @@ test('resolveBaseRates applies weight tier rates when enabled', () => {
   });
   assert.equal(result.minRate, 100);
   assert.equal(result.maxRate, 100);
-  assert.equal(result.standardPricingMode, 'equipment-weight-tier');
+  assert.equal(result.standardPricingMode, 'hourly');
 });
 
 test('resolveBaseRates applies heavy rates when flagged', () => {

@@ -38,18 +38,18 @@ export function resolveBaseRates({
   pricing = {},
   config = {},
 }) {
-  const isMileageMode = pricingMode === 'mileage' && !useWeightTierPricing;
+  const isMileageMode = pricingMode === 'mileage';
   let minRate = 125;
   let maxRate = 135;
   let standardPricingMode = 'hourly';
 
-  if (isMileageMode) {
+  if (useWeightTierPricing && tier) {
+    minRate = maxRate = toFinite(isMileageMode ? tier.mileageRate : tier.hourlyRate ?? tier.rate, isMileageMode ? 5 : 100);
+    standardPricingMode = isMileageMode ? 'mileage' : 'hourly';
+  } else if (isMileageMode) {
     minRate = toFinite(selectedClass?.minMileageRate ?? pricing.mileage_min, 5);
     maxRate = minRate;
     standardPricingMode = 'mileage';
-  } else if (useWeightTierPricing && tier) {
-    minRate = maxRate = toFinite(tier.rate, 100);
-    standardPricingMode = 'equipment-weight-tier';
   } else if (selectedClass) {
     minRate = toFinite(selectedClass.minRate ?? pricing.hourly_min ?? config.hourly_min, 125);
     maxRate = minRate;

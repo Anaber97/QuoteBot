@@ -202,6 +202,21 @@ test('mileage mode prices the full routed mileage and preserves surcharge roundi
   assert.equal(result.maxQuote, 50);
 });
 
+test('mileage mode applies equipment weight tier mileage rates', () => {
+  const mileageConfig = structuredClone(config);
+  mileageConfig.pricing.pricing_mode = 'mileage';
+  mileageConfig.client_portal.weight_tiers[0].mileageRate = 7;
+  const result = quote({
+    config: mileageConfig,
+    role: 'dispatcher',
+    input: { quoteSource: 'equipment_calculator' },
+  });
+  assert.equal(result.pricingMode, 'equipment-weight-tier');
+  assert.equal(Math.round(result.totalMiles), 10);
+  assert.equal(result.minQuote, 75);
+  assert.equal(result.maxQuote, 75);
+});
+
 test('hourly mode remains the default when no pricing mode is saved', () => {
   const result = quote({ role: 'dispatcher' });
   assert.equal(result.pricingMode, 'hourly');

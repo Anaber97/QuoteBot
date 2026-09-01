@@ -243,7 +243,9 @@ export async function calculateQuoteData({
     baseMinQuote,
     baseMaxQuote,
     totalHours: Number(rawTotalHours.toFixed(2)),
-    fixedHourlyRate: useWeightTierPricing ? Number(matchingTier.rate) : null,
+    fixedHourlyRate: useWeightTierPricing ? Number(matchingTier.hourlyRate ?? matchingTier.rate) : null,
+    fixedRate: useWeightTierPricing ? Number(standardPricingMode === 'mileage' ? matchingTier.mileageRate : matchingTier.hourlyRate ?? matchingTier.rate) : null,
+    pricingRateMode: standardPricingMode,
     roundingInterval: useWeightTierPricing
       ? Number(matchingTier.rounding_interval ?? clientPricing.rounding_interval ?? pricing.rounding_interval ?? 25) || 25
       : null,
@@ -264,13 +266,13 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
 
   const pricing = companyRates?.pricing || {};
   const roundingInterval = Number(pricing.rounding_interval || companyRates.rounding_interval) || 25;
-  const isMileageMode = quoteData.pricingMode === 'mileage';
+  const isMileageMode = (quoteData.pricingRateMode || quoteData.pricingMode) === 'mileage';
 
   // Resolve base rates using shared logic
   const { minRate, maxRate } = resolveBaseRates({
-    pricingMode: quoteData.pricingMode,
+    pricingMode: quoteData.pricingRateMode || quoteData.pricingMode,
     useWeightTierPricing: quoteData.pricingMode === 'equipment-weight-tier',
-    tier: quoteData.fixedHourlyRate ? { rate: quoteData.fixedHourlyRate } : null,
+    tier: quoteData.fixedRate != null ? { rate: quoteData.fixedRate, hourlyRate: quoteData.fixedRate, mileageRate: quoteData.fixedRate } : null,
     selectedClass: pricing.custom_truck_classes?.find((c) => c.id === quoteData.selectedTruckClassId),
     isHeavy: quoteData.isHeavy,
     pricing,

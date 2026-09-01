@@ -144,7 +144,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   });
 
   const totalMiles = route.totalMeters * 0.000621371;
-  const standardPricingMode = pricing.pricing_mode === 'mileage' && !useWeightTierPricing ? 'mileage' : 'hourly';
+  const standardPricingMode = pricing.pricing_mode === 'mileage' ? 'mileage' : 'hourly';
 
   // Use shared base rate resolution
   const { minRate, maxRate } = resolveBaseRates({
