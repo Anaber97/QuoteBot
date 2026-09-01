@@ -1,8 +1,8 @@
-export const LEGAL_BUSINESS_NAME = '[LEGAL BUSINESS NAME — OWNER TO CONFIRM]';
-export const LEGAL_CONTACT_EMAIL = '[PRIVACY/LEGAL CONTACT EMAIL — OWNER TO CONFIRM]';
-export const LEGAL_MAILING_ADDRESS = '[MAILING ADDRESS — OWNER TO CONFIRM]';
-export const GOVERNING_STATE = '[GOVERNING STATE — OWNER TO CONFIRM]';
-export const POLICY_EFFECTIVE_DATE = '[EFFECTIVE DATE — OWNER TO CONFIRM]';
+export const LEGAL_BUSINESS_NAME = 'TowCalc Pro';
+export const LEGAL_CONTACT_EMAIL = 'office@towcalc.com';
+export const LEGAL_MAILING_ADDRESS = '120 Taylor St, Henderson, TX 75652';
+export const GOVERNING_STATE = 'Texas';
+export const POLICY_EFFECTIVE_DATE = '2026-09-01-draft';
 export const TERMS_VERSION = '2026-09-01-draft';
 export const PRIVACY_VERSION = '2026-09-01-draft';
 
