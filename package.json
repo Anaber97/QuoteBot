@@ -9,8 +9,10 @@
     "build": "vite build",
     "marketing:build": "npm --prefix marketing run build",
     "marketing:lint": "npm --prefix marketing run lint",
-    "lint": "oxlint",
-    "test": "node --test test/*.test.js",
+    "lint": "oxlint --deny-warnings",
+    "test": "node --experimental-test-module-mocks --test test/*.test.js",
+    "test:components": "vitest run",
+    "test:all": "npm run test && npm run test:components",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -22,12 +24,17 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.6",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "jsdom": "^30.0.1",
     "oxlint": "^1.71.0",
     "supabase": "^2.113.0",
     "vite": "^8.1.1",
-    "vite-plugin-pwa": "^1.3.0"
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^4.1.11"
   }
 }

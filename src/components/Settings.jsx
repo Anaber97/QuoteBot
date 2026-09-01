@@ -4,7 +4,7 @@ import { Save, ShieldAlert, CheckCircle2, AlertCircle } from 'lucide-react';
 
 import { supabase } from '../lib/supabase';
 import { authenticatedFetch } from '../lib/api';
-import { RATES } from '../config/rates';
+import { DEFAULT_CONFIG, normalizeConfig, normalizeClientPortalTier, normalizeDriveTimeBuffer, ROUNDING_OPTIONS } from '../lib/configSchema';
 import { GEOFENCES, HAZARD_ZONES, METRO_CODE_BY_ZONE_ID } from '../config/geofences';
 import { US_STATE_NAMES } from '../config/usStates';
 import {
@@ -16,204 +16,6 @@ import {
   UsersTab,
 } from './Settings/index';
 
-const normalizeDriveTimeBuffer = (value) => {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 10;
-  if (num > 1.5) return num;
-  if (num > 0) return (num - 1) * 100;
-  return 10;
-};
-
-// oxlint-disable-next-line react/only-export-components -- shared normalization defaults
-export const DEFAULT_CONFIG = {
-  company_id: '00000000-0000-0000-0000-000000000000',
-  pricing: {
-    pricing_mode: 'hourly',
-    hourly_min: RATES.HOURLY_MIN || 125,
-    hourly_max: RATES.HOURLY_MAX || 135,
-    mileage_min: 5,
-    mileage_max: 6,
-    rounding_interval: RATES.ROUNDING_INTERVAL || 25,
-    drive_time_buffer: (RATES.DRIVE_TIME_BUFFER - 1) * 100 || 10,
-    after_hours_multiplier: (RATES.AFTER_HOURS_MULTIPLIER - 1) * 100 || 25,
-    road_club_multiplier: (RATES.ROAD_CLUB_MULTIPLIER - 1) * 100 || 15,
-    metro_multiplier: 28.57,
-    hazard_multiplier: 40,
-    surchargeModes: {
-      after_hours_multiplier: 'percent',
-      road_club_multiplier: 'percent',
-      metro_multiplier: 'percent',
-      hazard_multiplier: 'percent',
-    },
-    load_unload_base_mins: RATES.LOAD_UNLOAD_BASE_MINS || 30,
-    extra_stop_mins: RATES.EXTRA_STOP_MINS || 15,
-    custom_truck_classes: [
-      { id: '1', name: 'Standard Tow / Flatbed', minRate: RATES.HOURLY_MIN || 125, maxRate: RATES.HOURLY_MAX || 135 },
-      { id: '2', name: 'Medium Duty Flatbed', minRate: 150, maxRate: 180 },
-      { id: '3', name: 'Heavy Duty Towing', minRate: 200, maxRate: 250 },
-      { id: '4', name: 'Rotator / Heavy Recovery', minRate: 350, maxRate: 450 },
-    ],
-  },
-  surcharges: {
-    custom_surcharges: [
-      { id: 'after-hours', name: 'After Hours', feeType: 'percent', value: 25, active: true },
-      { id: 'road-club', name: 'Road Club', feeType: 'percent', value: 15, active: true },
-      { id: '1', name: 'Winch Out / Off-Road', feeType: 'flat', value: 75, active: true },
-      { id: '2', name: 'Bad Weather / Ice', feeType: 'percent', value: 20, active: false },
-    ],
-  },
-  geofences: {
-    disabledZones: [],
-    customZoneRates: {},
-    customZones: [],
-  },
-  // Base yards are company-specific. Never silently quote from a sample address.
-  bases: [],
-  users: [],
-  client_portal: {
-    contact_phone: '(555) 555-0199',
-    contact_email: 'quotes@yourcompany.com',
-    send_jobs_to_contact_email: true,
-    dispatch_email: '',
-    approval_threshold: 80001,
-    rounding_interval: 25,
-    disclosure: 'These quotes are electronically generated estimates based on the information provided and may be affected by route conditions, permit requirements, or equipment-specific variables. Please confirm final pricing with a company representative before dispatch.',
-    weight_tiers: [
-      { id: 'tier-1', label: '0–20,000 lbs', minWeight: 0, maxWeight: 20000, rate: 150 },
-      { id: 'tier-2', label: '20,001–40,000 lbs', minWeight: 20001, maxWeight: 40000, rate: 180 },
-      { id: 'tier-3', label: '40,001–60,000 lbs', minWeight: 40001, maxWeight: 60000, rate: 200 },
-      { id: 'tier-4', label: '60,001–80,000 lbs', minWeight: 60001, maxWeight: 80000, rate: 225 },
-      { id: 'tier-5', label: '80,001+ lbs', minWeight: 80001, maxWeight: 999999, rate: 250 },
-    ],
-    clients: [],
-  },
-};
-
-const ROUNDING_OPTIONS = [1, 5, 10, 25, 50];
-
-const normalizeClientPortalTier = (tier = {}, index = 0) => ({
-  id: tier.id || `tier-${index + 1}`,
-  label: tier.label || `Tier ${index + 1}`,
-  minWeight: Number(tier.minWeight ?? tier.min ?? 0) || 0,
-  maxWeight: Number(tier.maxWeight ?? tier.max ?? 999999) || 999999,
-  rate: Number(tier.rate ?? tier.hourly_rate ?? 0) || 0,
-  rounding_interval: ROUNDING_OPTIONS.includes(Number(tier.rounding_interval)) ? Number(tier.rounding_interval) : 25,
-  drive_time_buffer: Number(tier.drive_time_buffer ?? 10) || 10,
-  load_unload_base_mins: Number(tier.load_unload_base_mins ?? 30) || 30,
-});
-
-const normalizeConfig = (rawValue = {}) => {
-  // app_config has historically stored settings in several places. Treat the
-  // JSON "config" column as the oldest source, then let the current columns
-  // override it. This makes old and new rows load consistently.
-  const value = {
-    ...(rawValue.config && typeof rawValue.config === 'object' ? rawValue.config : {}),
-    ...rawValue,
-  };
-  const customSurcharges = value.pricing?.custom_surcharges ?? value.surcharges?.custom_surcharges;
-  const normalizedCustomSurcharges = Array.isArray(customSurcharges)
-    ? customSurcharges.map((item, index) => ({
-        id: item.id || `surcharge-${index + 1}`,
-        name: item.name || `Custom Surcharge ${index + 1}`,
-        feeType: item.feeType || 'flat',
-        value: Number(item.value ?? 0) || 0,
-        active: item.active !== false,
-      }))
-    : null;
-  const migratedBusinessSurcharges = value.pricing?.configurable_business_surcharges === true
-    ? normalizedCustomSurcharges
-    : [
-        { id: 'after-hours', name: 'After Hours', feeType: 'percent', value: Number(value.pricing?.after_hours_multiplier ?? 25), active: true },
-        { id: 'road-club', name: 'Road Club', feeType: 'percent', value: Number(value.pricing?.road_club_multiplier ?? 15), active: true },
-        ...(normalizedCustomSurcharges || []),
-      ].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id || candidate.name.toLowerCase() === item.name.toLowerCase()) === index);
-
-  return {
-  ...DEFAULT_CONFIG,
-  ...value,
-  company_id: value.company_id || DEFAULT_CONFIG.company_id,
-  pricing: {
-    ...(DEFAULT_CONFIG.pricing || {}),
-    ...(value.pricing || {}),
-    ...(value.surcharges || {}),
-    surchargeModes: {
-      ...(DEFAULT_CONFIG.pricing?.surchargeModes || {}),
-      ...(value.pricing?.surchargeModes || value.surcharges?.surchargeModes || {}),
-    },
-    rounding_interval: Number(value.pricing?.rounding_interval ?? value.rounding_interval ?? DEFAULT_CONFIG.pricing.rounding_interval) || 25,
-    hourly_min: Number(value.pricing?.hourly_min ?? value.hourly_min ?? DEFAULT_CONFIG.pricing.hourly_min) || 125,
-    hourly_max: Number(value.pricing?.hourly_max ?? value.hourly_max ?? DEFAULT_CONFIG.pricing.hourly_max) || 135,
-    drive_time_buffer: normalizeDriveTimeBuffer(value.pricing?.drive_time_buffer ?? value.drive_time_buffer ?? DEFAULT_CONFIG.pricing.drive_time_buffer),
-    after_hours_multiplier: Number(value.pricing?.after_hours_multiplier ?? value.surcharges?.after_hours_multiplier ?? value.after_hours_multiplier ?? DEFAULT_CONFIG.pricing.after_hours_multiplier) || 25,
-    road_club_multiplier: Number(value.pricing?.road_club_multiplier ?? value.surcharges?.road_club_multiplier ?? value.road_club_multiplier ?? DEFAULT_CONFIG.pricing.road_club_multiplier) || 15,
-    metro_multiplier: Number(value.pricing?.metro_multiplier ?? value.surcharges?.metro_multiplier ?? DEFAULT_CONFIG.pricing.metro_multiplier) || 28.57,
-    hazard_multiplier: Number(value.pricing?.hazard_multiplier ?? value.surcharges?.hazard_multiplier ?? DEFAULT_CONFIG.pricing.hazard_multiplier) || 40,
-    load_unload_base_mins: Number(value.pricing?.load_unload_base_mins ?? value.load_unload_base_mins ?? DEFAULT_CONFIG.pricing.load_unload_base_mins) || 30,
-    extra_stop_mins: Number(value.pricing?.extra_stop_mins ?? value.extra_stop_mins ?? DEFAULT_CONFIG.pricing.extra_stop_mins) || 15,
-    configurable_business_surcharges: true,
-    custom_surcharges: migratedBusinessSurcharges || DEFAULT_CONFIG.pricing.custom_surcharges,
-  },
-  surcharges: {
-    ...(DEFAULT_CONFIG.surcharges || {}),
-    ...(value.surcharges || {}),
-    custom_surcharges: migratedBusinessSurcharges || DEFAULT_CONFIG.surcharges.custom_surcharges,
-  },
-  geofences: {
-    disabledZones: value.geofences?.disabledZones || [],
-    customZoneRates: value.geofences?.customZoneRates || {},
-    customZones: Array.isArray(value.geofences?.customZones) ? value.geofences.customZones.map((zone) => ({
-      id: zone.id || `custom-${Math.random().toString(36).slice(2)}`,
-      name: zone.name || 'Custom Geofence',
-      localityQuery: zone.localityQuery || '',
-      city: zone.city || '',
-      state: zone.state || '',
-      feeType: zone.feeType || 'percent',
-      pricingMode: zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge'),
-      surchargeFeeType: zone.surchargeFeeType || 'percent',
-      price: Number(zone.price ?? 0) || 0,
-      shape: Array.isArray(zone.shape) ? zone.shape : [],
-      type: 'custom',
-    })) : [],
-  },
-  bases: Array.isArray(value.bases) ? value.bases : DEFAULT_CONFIG.bases,
-  users: Array.isArray(value.users) ? value.users.filter(Boolean) : [],
-  client_portal: {
-    contact_phone: value.client_portal?.contact_phone || DEFAULT_CONFIG.client_portal.contact_phone,
-    contact_email: value.client_portal?.contact_email || DEFAULT_CONFIG.client_portal.contact_email,
-    send_jobs_to_contact_email: value.client_portal?.send_jobs_to_contact_email !== false,
-    dispatch_email: value.client_portal?.dispatch_email || '',
-    approval_threshold: Number(value.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
-    rounding_interval: ROUNDING_OPTIONS.includes(Number(value.client_portal?.rounding_interval)) ? Number(value.client_portal?.rounding_interval) : 25,
-    disclosure: value.client_portal?.disclosure || DEFAULT_CONFIG.client_portal.disclosure,
-    weight_tiers: Array.isArray(value.client_portal?.weight_tiers) && value.client_portal.weight_tiers.length > 0
-      ? value.client_portal.weight_tiers.map((tier, index) => normalizeClientPortalTier(tier, index))
-      : DEFAULT_CONFIG.client_portal.weight_tiers.map((tier, index) => normalizeClientPortalTier(tier, index)),
-    clients: Array.isArray(value.client_portal?.clients)
-      ? value.client_portal.clients.map((client, index) => ({
-          id: client.id || `client-${index + 1}`,
-          company_id: client.company_id || value.company_id || null,
-          client_name: client.client_name || client.name || `Client ${index + 1}`,
-          contact_email: client.contact_email || '',
-          contact_phone: client.contact_phone || '',
-          approval_threshold: client.approval_threshold === '' || client.approval_threshold === null || client.approval_threshold === undefined
-            ? null
-            : Number(client.approval_threshold),
-          pricing: {
-            hourly_min: client.pricing?.hourly_min === '' || client.pricing?.hourly_min === null || client.pricing?.hourly_min === undefined
-              ? null
-              : Number(client.pricing.hourly_min),
-            hourly_max: client.pricing?.hourly_max === '' || client.pricing?.hourly_max === null || client.pricing?.hourly_max === undefined
-              ? null
-              : Number(client.pricing.hourly_max),
-            rounding_interval: client.pricing?.rounding_interval === '' || client.pricing?.rounding_interval === null || client.pricing?.rounding_interval === undefined
-              ? 25
-              : Number(client.pricing.rounding_interval),
-          },
-        }))
-      : [],
-  },
-  };
-};
 
 const formatRole = (role) => {
   const normalized = String(role || '').trim().toLowerCase();
@@ -226,6 +28,7 @@ const formatRole = (role) => {
 export default function Settings({ config, onSaveConfig, currentUserRole, profile }) {
   const [activeSubTab, setActiveSubTab] = useState('pricing');
   const [formData, setFormData] = useState(() => normalizeConfig(config));
+  const [savedFormData, setSavedFormData] = useState(() => normalizeConfig(config));
   const [companyUsers, setCompanyUsers] = useState([]);
   const [clientAccounts, setClientAccounts] = useState([]);
   const [inviteName, setInviteName] = useState('');
@@ -248,8 +51,17 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   const [draftCustomGeofence, setDraftCustomGeofence] = useState(null);
 
   useEffect(() => {
-    if (config) setFormData(normalizeConfig(config));
+    if (config) {
+      const normalized = normalizeConfig(config);
+      setFormData(normalized);
+      setSavedFormData(normalized);
+    }
   }, [config]);
+
+  const hasUnsavedChanges = useMemo(
+    () => JSON.stringify(formData) !== JSON.stringify(savedFormData),
+    [formData, savedFormData]
+  );
 
   useEffect(() => {
     if (!profile?.company_id) {
@@ -430,6 +242,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       const savedConfig = normalizeConfig(result?.config || normalizedConfig);
       setSaveStatus({ type: 'success', message: 'Configuration saved successfully!' });
       setFormData(savedConfig);
+      setSavedFormData(savedConfig);
       if (onSaveConfig) onSaveConfig(savedConfig);
     } catch (err) {
       console.error('Error saving app_config:', err);
@@ -855,11 +668,10 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     };
 
     setFormData(nextFormData);
-    handleSave(nextFormData);
 
     setDraftCustomGeofence(null);
     setSelectedGeofenceId(cleanedZone.id);
-    setSaveStatus({ type: 'success', message: 'Custom geofence saved and persisted.' });
+    setSaveStatus(null);
   };
 
   const deleteCustomGeofence = (zoneId) => {
@@ -960,13 +772,16 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex h-[calc(100dvh-11rem)] min-h-[32rem] flex-col overflow-hidden rounded-xl border border-slate-800 bg-[#0c1019] lg:h-[calc(100dvh-8.5rem)]">
       {/* Sub-navigation Tabs */}
       <SettingsTabsNav
         activeSubTab={activeSubTab}
         setActiveSubTab={setActiveSubTab}
         allGeofencesCount={allGeofences.length}
+        hasUnsavedChanges={hasUnsavedChanges}
       />
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4">
 
       {/* SUB TAB 1: PRICING */}
       {activeSubTab === 'pricing' && (
@@ -1034,8 +849,6 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           removeClientPortalClient={removeClientPortalClient}
           updateClientPortalClient={updateClientPortalClient}
           updateClientPortalClientPricing={updateClientPortalClientPricing}
-          onSaveConfig={handleSave}
-          isSaving={isSaving}
         />
       )}
 
@@ -1063,25 +876,36 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           formatRole={formatRole}
         />
       )}
+      </div>
 
       {/* Action Footer */}
       {activeSubTab !== 'clients' && activeSubTab !== 'users' && (
-        <div className="sticky bottom-0 z-20 bg-[#0c1019] pt-4 border-t border-slate-800 flex items-center justify-between">
-          {saveStatus ? (
-            <p className={`text-xs font-medium flex items-center gap-1.5 ${saveStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
-              {saveStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+        <div className="z-30 flex flex-none items-center justify-between gap-4 border-t border-slate-800 bg-[#0c1019] px-3 py-3 shadow-[0_-10px_24px_rgba(0,0,0,0.2)] sm:px-4">
+          {saveStatus?.type === 'error' ? (
+            <p className="flex items-center gap-1.5 text-xs font-medium text-red-400">
+              <AlertCircle className="w-4 h-4" />
               {saveStatus.message}
             </p>
-          ) : <span />}
+          ) : hasUnsavedChanges ? (
+            <p className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
+              <AlertCircle className="w-4 h-4" />
+              Unsaved changes — click Save Settings to apply them.
+            </p>
+          ) : saveStatus ? (
+            <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+              <CheckCircle2 className="w-4 h-4" />
+              {saveStatus.message}
+            </p>
+          ) : <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500"><CheckCircle2 className="w-4 h-4" />All settings saved</p>}
 
           <button
             type="button"
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || !hasUnsavedChanges}
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition cursor-pointer shadow-lg disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            {isSaving ? 'Saving...' : 'Save Settings'}
+            {isSaving ? 'Saving...' : hasUnsavedChanges ? 'Save Settings' : 'Saved'}
           </button>
         </div>
       )}

@@ -5,14 +5,17 @@ import React, { lazy, Suspense, useReducer, useEffect, useRef, useState } from '
 import { supabase } from './lib/supabase';
 import { authenticatedFetch } from './lib/api';
 import { calculateQuoteData } from './services/quoteCalculator';
+import { normalizeConfig, DEFAULT_CONFIG } from './lib/configSchema';
 
 import Header from './components/Header';
 import LoginCard from './components/LoginCard';
 import SurchargeToggles from './components/SurchargeToggles';
 import WaypointList from './components/WaypointList';
 import QuoteResultsCard from './components/QuoteResultsCard';
-import Settings, { DEFAULT_CONFIG } from './components/Settings';
+import Settings from './components/Settings';
 import Toast from './components/Toast';
+import Footer from './components/Footer';
+import LegalPage from './components/LegalPage';
 
 const QuoteLog = lazy(() => import('./components/QuoteLog'));
 const InviteRegister = lazy(() => import('./components/InviteRegister'));
@@ -24,117 +27,7 @@ const getInitialBaseId = () => {
   return savedBase || '';
 };
 
-const normalizeDriveTimeBuffer = (value) => {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 10;
-  if (num > 1.5) return num;
-  if (num > 0) return (num - 1) * 100;
-  return 10;
-};
-
-const normalizeCompanyConfig = (rawConfig = {}) => {
-  // app_config has a legacy JSON "config" column plus the newer structured
-  // columns. Merge the legacy object first so either storage format works.
-  const config = {
-    ...(rawConfig.config && typeof rawConfig.config === 'object' ? rawConfig.config : {}),
-    ...rawConfig,
-  };
-  const customSurcharges = config.pricing?.custom_surcharges ?? config.surcharges?.custom_surcharges;
-  const normalizedCustomSurcharges = Array.isArray(customSurcharges)
-    ? customSurcharges.map((item, index) => ({
-        id: item.id || `surcharge-${index + 1}`,
-        name: item.name || `Custom Surcharge ${index + 1}`,
-        feeType: item.feeType || 'flat',
-        value: Number(item.value ?? 0) || 0,
-        active: item.active !== false,
-      }))
-    : null;
-  const migratedBusinessSurcharges = config.pricing?.configurable_business_surcharges === true
-    ? normalizedCustomSurcharges
-    : [
-        { id: 'after-hours', name: 'After Hours', feeType: 'percent', value: Number(config.pricing?.after_hours_multiplier ?? 25), active: true },
-        { id: 'road-club', name: 'Road Club', feeType: 'percent', value: Number(config.pricing?.road_club_multiplier ?? 15), active: true },
-        ...(normalizedCustomSurcharges || []),
-      ].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id || candidate.name.toLowerCase() === item.name.toLowerCase()) === index);
-
-  return {
-  ...DEFAULT_CONFIG,
-  ...config,
-  company_id: config.company_id || DEFAULT_CONFIG.company_id,
-  pricing: {
-    ...(DEFAULT_CONFIG.pricing || {}),
-    ...(config.pricing || {}),
-    ...(config.surcharges || {}),
-    surchargeModes: {
-      ...(DEFAULT_CONFIG.pricing?.surchargeModes || {}),
-      ...(config.pricing?.surchargeModes || config.surcharges?.surchargeModes || {}),
-    },
-    rounding_interval: Number(
-      config.pricing?.rounding_interval ?? config.rounding_interval ?? DEFAULT_CONFIG.pricing.rounding_interval
-    ) || 25,
-    hourly_min: Number(config.pricing?.hourly_min ?? config.hourly_min ?? DEFAULT_CONFIG.pricing.hourly_min) || 125,
-    hourly_max: Number(config.pricing?.hourly_max ?? config.hourly_max ?? DEFAULT_CONFIG.pricing.hourly_max) || 135,
-    drive_time_buffer: normalizeDriveTimeBuffer(config.pricing?.drive_time_buffer ?? config.drive_time_buffer ?? DEFAULT_CONFIG.pricing.drive_time_buffer),
-    after_hours_multiplier: Number(config.pricing?.after_hours_multiplier ?? config.surcharges?.after_hours_multiplier ?? config.after_hours_multiplier ?? DEFAULT_CONFIG.pricing.after_hours_multiplier) || 25,
-    road_club_multiplier: Number(config.pricing?.road_club_multiplier ?? config.surcharges?.road_club_multiplier ?? config.road_club_multiplier ?? DEFAULT_CONFIG.pricing.road_club_multiplier) || 15,
-    metro_multiplier: Number(config.pricing?.metro_multiplier ?? config.surcharges?.metro_multiplier ?? DEFAULT_CONFIG.pricing.metro_multiplier) || 28.57,
-    hazard_multiplier: Number(config.pricing?.hazard_multiplier ?? config.surcharges?.hazard_multiplier ?? DEFAULT_CONFIG.pricing.hazard_multiplier) || 40,
-    load_unload_base_mins: Number(config.pricing?.load_unload_base_mins ?? config.load_unload_base_mins ?? DEFAULT_CONFIG.pricing.load_unload_base_mins) || 30,
-    extra_stop_mins: Number(config.pricing?.extra_stop_mins ?? config.extra_stop_mins ?? DEFAULT_CONFIG.pricing.extra_stop_mins) || 15,
-    custom_truck_classes: Array.isArray(config.pricing?.custom_truck_classes) ? config.pricing.custom_truck_classes : DEFAULT_CONFIG.pricing.custom_truck_classes,
-    configurable_business_surcharges: true,
-    custom_surcharges: migratedBusinessSurcharges || DEFAULT_CONFIG.pricing.custom_surcharges,
-  },
-  surcharges: {
-    ...(DEFAULT_CONFIG.surcharges || {}),
-    ...(config.surcharges || {}),
-    custom_surcharges: migratedBusinessSurcharges || DEFAULT_CONFIG.surcharges.custom_surcharges,
-  },
-  geofences: {
-    disabledZones: config.geofences?.disabledZones || [],
-    customZoneRates: config.geofences?.customZoneRates || {},
-    customZones: Array.isArray(config.geofences?.customZones)
-      ? config.geofences.customZones.map((zone) => ({
-          id: zone.id || `custom-${Math.random().toString(36).slice(2)}`,
-          name: zone.name || 'Custom Geofence',
-          localityQuery: zone.localityQuery || '',
-          city: zone.city || '',
-          state: zone.state || '',
-          feeType: zone.feeType || 'percent',
-          price: Number(zone.price ?? 0) || 0,
-          shape: Array.isArray(zone.shape) ? zone.shape : [],
-          type: 'custom',
-        }))
-      : [],
-  },
-  bases: Array.isArray(config.bases) ? config.bases : DEFAULT_CONFIG.bases,
-  users: Array.isArray(config.users) ? config.users.filter(Boolean) : [],
-  client_portal: {
-    ...(DEFAULT_CONFIG.client_portal || {}),
-    ...(config.client_portal || {}),
-    approval_threshold: Number(config.client_portal?.approval_threshold ?? DEFAULT_CONFIG.client_portal.approval_threshold) || 80000,
-    rounding_interval: Number(config.client_portal?.rounding_interval ?? DEFAULT_CONFIG.client_portal.rounding_interval) || 25,
-    weight_tiers: Array.isArray(config.client_portal?.weight_tiers) && config.client_portal.weight_tiers.length > 0
-      ? config.client_portal.weight_tiers.map((tier, index) => ({
-          id: tier.id || `tier-${index + 1}`,
-          label: tier.label || `Tier ${index + 1}`,
-          minWeight: Number(tier.minWeight ?? tier.min ?? 0) || 0,
-          maxWeight: Number(tier.maxWeight ?? tier.max ?? 999999) || 999999,
-          rate: Number(tier.rate ?? tier.hourly_rate ?? 0) || 0,
-          rounding_interval: Number(tier.rounding_interval ?? 25) || 25,
-          drive_time_buffer: Number(tier.drive_time_buffer ?? 10) || 10,
-          load_unload_base_mins: Number(tier.load_unload_base_mins ?? 30) || 30,
-        }))
-      : DEFAULT_CONFIG.client_portal.weight_tiers,
-    clients: Array.isArray(config.client_portal?.clients)
-      ? config.client_portal.clients.map((client) => ({
-          ...client,
-          pricing: client.pricing || {},
-        }))
-      : [],
-  },
-  };
-};
+const normalizeCompanyConfig = (rawConfig = {}) => normalizeConfig(rawConfig);
 
 const initialState = {
   activeTab: 'calculator',
@@ -233,6 +126,7 @@ function appReducer(state, action) {
 }
 
 export default function App() {
+  const legalRoute = window.location.pathname.replace(/\/+$/, '') || '/';
   const [notice, setNotice] = useState(null);
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [theme, setTheme] = useState(() => localStorage.getItem('towcalc_theme') || 'dark');
@@ -246,6 +140,7 @@ export default function App() {
   const [showEquipmentCalculator, setShowEquipmentCalculator] = useState(false);
   const [openedLoggedQuote, setOpenedLoggedQuote] = useState(null);
   const [error, setError] = useState(null);
+  const [profileLoadError, setProfileLoadError] = useState(null);
   const currentAuthUserIdRef = useRef(null);
 
   useEffect(() => {
@@ -333,6 +228,7 @@ export default function App() {
   }, []);
 
   const fetchProfileAndRates = async (userId) => {
+    setProfileLoadError(null);
     try {
       const { data: prof, error: profErr } = await supabase
         .from('profiles')
@@ -389,6 +285,11 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error fetching profile or rates:', err);
+      // Never leave a stale profile/config from a previous identity in place
+      // when the load for the *current* user fails.
+      setProfile(null);
+      setCompanyRates(normalizeCompanyConfig(DEFAULT_CONFIG));
+      setProfileLoadError('We could not load your account profile. Please refresh the page or sign in again.');
     }
   };
 
@@ -577,12 +478,15 @@ export default function App() {
     }
   };
 
+  if (legalRoute === '/privacy') return <LegalPage type="privacy" />;
+  if (legalRoute === '/terms') return <LegalPage type="terms" />;
+
   if (isInviteRoute) {
-    return <Suspense fallback={<LoadingPanel />}><InviteRegister /></Suspense>;
+    return <div className="flex min-h-screen flex-col bg-[#080c14]"><Suspense fallback={<LoadingPanel />}><InviteRegister /></Suspense><Footer /></div>;
   }
 
   return (
-    <div className="app-shell min-h-screen bg-[#080c14] text-slate-100 font-sans pb-12 overflow-x-hidden">
+    <div className="app-shell flex min-h-screen flex-col bg-[#080c14] text-slate-100 font-sans overflow-x-hidden">
       <Header
         session={session}
         profile={profile}
@@ -593,13 +497,18 @@ export default function App() {
         onToggleTheme={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
       />
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6">
+      <div className="mx-auto w-full max-w-7xl flex-1 px-3 pb-12 pt-4 sm:px-6 sm:pt-6">
         {!session ? (
           <div className="py-12">
             <LoginCard />
           </div>
         ) : (
           <>
+            {profileLoadError && (
+              <div role="alert" className="mb-4 rounded-lg border border-red-800/40 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+                {profileLoadError}
+              </div>
+            )}
             {state.activeTab === 'logs' && <Suspense fallback={<LoadingPanel />}><QuoteLog profile={profile} onSelectQuote={handleOpenLoggedQuote} /></Suspense>}
 
             {state.activeTab === 'settings' && (
@@ -788,6 +697,7 @@ export default function App() {
           </>
         )}
       </div>
+      <Footer />
       <Toast notice={notice} onDismiss={() => setNotice(null)} />
     </div>
   );

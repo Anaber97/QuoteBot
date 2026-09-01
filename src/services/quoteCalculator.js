@@ -3,6 +3,16 @@
 import { METRO_CODE_BY_ZONE_ID } from '../config/geofences';
 import { evaluateMetroGeofences, evaluateHazardGeofences, evaluateCustomGeofences } from '../utils/geofenceEngine';
 import { loadGoogleMaps } from '../lib/googleMaps';
+import {
+  roundToNearest,
+  resolveBaseRates,
+  calculateTimeMetrics,
+  calculateSurcharges,
+  getFlatOverride,
+  calculateFinalQuotes as calculateFinalQuotesPure,
+} from '../lib/pricingEngine';
+
+export { roundToNearest }; // Re-export for backward compatibility
 
 /**
  * Ensures Google Maps JS API is fully initialized.
@@ -13,11 +23,6 @@ async function verifyGoogleMapsLoaded() {
     throw new Error('Google Maps API is disconnected or not loaded yet. Check VITE_GOOGLE_MAPS_API_KEY in .env.');
   }
 }
-
-export const roundToNearest = (val, interval = 25) => {
-  const step = Number(interval) || 25;
-  return Math.round(val / step) * step;
-};
 
 /**
  * Geocodes an array of address strings to Lat/Lng coordinates.
@@ -90,12 +95,7 @@ export async function calculateQuoteData({
   // Fallback parameters from app_config or rates config
   const pricing = companyRates?.pricing || {};
   const clientPricing = clientConfig?.pricing?.use_custom_pricing ? clientConfig.pricing : {};
-  const normalizeBuffer = (value) => {
-    const num = Number(value);
-    if (!Number.isFinite(num)) return 1.1;
-    return num > 1.5 ? 1 + num / 100 : num;
-  };
-  const driveBuffer = normalizeBuffer(clientPricing.drive_time_buffer ?? pricing.drive_time_buffer ?? companyRates.drive_time_buffer ?? 10);
+  const driveTimeBuffer = clientPricing.drive_time_buffer ?? pricing.drive_time_buffer ?? companyRates.drive_time_buffer ?? 10;
   const baseLoadMins = Number(clientPricing.load_unload_base_mins ?? pricing.load_unload_base_mins ?? companyRates.load_unload_base_mins) || 30;
   const extraStopMins = Number(clientPricing.extra_stop_mins ?? pricing.extra_stop_mins ?? companyRates.extra_stop_mins) || 15;
 
@@ -138,9 +138,6 @@ export async function calculateQuoteData({
   const rawTotalMins = routeLegs.reduce((total, leg) => total + Number(leg.duration?.value || 0) / 60, 0);
   const totalMeters = routeLegs.reduce((total, leg) => total + Number(leg.distance?.value || 0), 0);
 
-  let baseMinRate = Number(pricing.hourly_min || companyRates.hourly_min) || 125;
-  let baseMaxRate = Number(pricing.hourly_max || companyRates.hourly_max) || 135;
-
   const clientWeightTiers = clientConfig?.pricing?.use_custom_pricing && Array.isArray(clientConfig?.pricing?.weight_tiers)
     ? clientConfig.pricing.weight_tiers
     : companyRates?.client_portal?.weight_tiers || [];
@@ -154,34 +151,36 @@ export async function calculateQuoteData({
     throw new Error(`No equipment weight class is configured for ${Number(clientWeight || 0).toLocaleString()} lbs.`);
   }
 
-  if (useWeightTierPricing && matchingTier) {
-    baseMinRate = Number(matchingTier.rate) || baseMinRate;
-    baseMaxRate = Number(matchingTier.rate) || baseMaxRate;
-  }
-
-  const tierDriveBuffer = useWeightTierPricing ? matchingTier?.drive_time_buffer : undefined;
-  const tierLoadMins = useWeightTierPricing ? matchingTier?.load_unload_base_mins : undefined;
   const customClasses = pricing.custom_truck_classes || [];
   const selectedClass = customClasses.find((item) => item.id === selectedTruckClassId);
-  const selectedClassDriveBuffer = selectedClass?.drive_time_buffer;
-  const selectedClassLoadMins = selectedClass?.load_unload_base_mins;
-
-  const bufferedDriveMins = useWeightTierPricing
-    ? rawTotalMins * normalizeBuffer(tierDriveBuffer ?? 10)
-    : rawTotalMins * (Number.isFinite(Number(selectedClassDriveBuffer))
-      ? normalizeBuffer(selectedClassDriveBuffer)
-      : Number.isFinite(Number(tierDriveBuffer)) ? normalizeBuffer(tierDriveBuffer) : driveBuffer);
   const extraStopsCount = Math.max(0, cleanWaypoints.length - 2);
   const clientLoadMins = clientConfig?.pricing?.load_unload_base_mins ?? null;
   const clientExtraStopMins = clientConfig?.pricing?.extra_stop_mins ?? null;
-  const totalOnSiteMins = useWeightTierPricing
-    ? (Number(tierLoadMins ?? 30) || 30) + extraStopsCount * (clientExtraStopMins ?? extraStopMins)
-    : (Number.isFinite(Number(selectedClassLoadMins))
-      ? Number(selectedClassLoadMins)
-      : Number.isFinite(Number(tierLoadMins)) ? Number(tierLoadMins) : (clientLoadMins ?? baseLoadMins)) + extraStopsCount * (clientExtraStopMins ?? extraStopMins);
-  const rawTotalHours = (bufferedDriveMins + totalOnSiteMins) / 60;
+
+  // Shared with the server (api/_quoteEngine.js) so browser and server never
+  // independently re-derive the buffered drive time / on-site time math.
+  const { rawTotalHours, adjustedDriveMinutes: bufferedDriveMins, loadUnloadMinutes: totalOnSiteMins } = calculateTimeMetrics({
+    rawDriveMinutes: rawTotalMins,
+    baseLoadMinutes: clientLoadMins ?? baseLoadMins,
+    extraStopMinutes: clientExtraStopMins ?? extraStopMins,
+    extraStopCount: extraStopsCount,
+    driveTimeBuffer,
+    useWeightTierPricing,
+    tier: matchingTier,
+    selectedClass,
+  });
   const totalMiles = totalMeters * 0.000621371;
-  const standardPricingMode = pricing.pricing_mode === 'mileage' && !useWeightTierPricing ? 'mileage' : 'hourly';
+
+  // Shared with the server so rate resolution can't silently drift.
+  const { minRate: baseMinRate, maxRate: baseMaxRate, standardPricingMode } = resolveBaseRates({
+    pricingMode: pricing.pricing_mode,
+    useWeightTierPricing,
+    tier: matchingTier,
+    selectedClass,
+    isHeavy,
+    pricing,
+    config: companyRates,
+  });
 
   const legsDetails = routeLegs.map((leg, index) => {
     const durationMinutes = Number(((leg.duration?.value || 0) / 60).toFixed(1));
@@ -190,23 +189,6 @@ export async function calculateQuoteData({
     return { label: `${startLabel} → ${endLabel}`, minutes: durationMinutes };
   });
 
-  if (useWeightTierPricing) {
-    baseMinRate = Number(matchingTier.rate);
-    baseMaxRate = Number(matchingTier.rate);
-  } else if (selectedClass) {
-    baseMinRate = Number(standardPricingMode === 'mileage' ? selectedClass.minMileageRate : selectedClass.minRate) || baseMinRate;
-    baseMaxRate = Number(standardPricingMode === 'mileage' ? selectedClass.maxMileageRate : selectedClass.maxRate) || baseMaxRate;
-  } else if (isHeavy) {
-    baseMinRate = Number(companyRates.heavy_hourly_min || pricing.heavy_hourly_min) || 200;
-    baseMaxRate = Number(companyRates.heavy_hourly_max || pricing.heavy_hourly_max) || 250;
-  }
-
-  // Keep breakdown pricing dollar-accurate even when displayed totals use a
-  // larger configured quote interval.
-  if (standardPricingMode === 'mileage') {
-    baseMinRate = Number(selectedClass?.minMileageRate ?? pricing.mileage_min) || 5;
-    baseMaxRate = Number(selectedClass?.maxMileageRate ?? pricing.mileage_max) || 6;
-  }
   const pricingQuantity = standardPricingMode === 'mileage' ? totalMiles : rawTotalHours;
   const baseMinQuote = Math.round(pricingQuantity * baseMinRate);
   const baseMaxQuote = Math.round(pricingQuantity * baseMaxRate);
@@ -267,130 +249,75 @@ export async function calculateQuoteData({
       : null,
     pricingMode: useWeightTierPricing ? 'equipment-weight-tier' : standardPricingMode,
     weightTierLabel: useWeightTierPricing ? matchingTier.label : null,
-    driveTimeBufferPercent: useWeightTierPricing ? Number(tierDriveBuffer ?? 10) || 10 : null,
+    driveTimeBufferPercent: useWeightTierPricing ? Number(matchingTier?.drive_time_buffer ?? 10) || 10 : null,
   };
 }
 
 /**
  * Calculates effective multiplier and final min/max/custom pricing.
+ * Uses shared pricingEngine to ensure parity with server calculations.
  */
 export function calculateFinalQuotes(quoteData, activeOverrides, customRate, companyRates = {}, customLoadUnloadMins = null) {
   if (!quoteData) {
     return { currentMinQuote: 0, currentMaxQuote: 0, customCalculatedQuote: null, effectiveMultiplier: 1.0 };
   }
 
-  if (quoteData.pricingMode === 'equipment-weight-tier' && Number.isFinite(Number(quoteData.fixedHourlyRate))) {
-    const customSurchargeTotal = (companyRates?.pricing?.custom_surcharges || [])
-      .filter((item) => item.active !== false && activeOverrides?.customSurcharges?.[item.id] === true)
-      .reduce((totals, item) => {
-        const value = Number(item.value) || 0;
-        return item.feeType === 'percent'
-          ? { ...totals, multiplier: totals.multiplier * (1 + value / 100) }
-          : { ...totals, flat: totals.flat + value };
-      }, { multiplier: 1, flat: 0 });
-    const fixedQuote = roundToNearest(
-      (Number(quoteData.rawTotalHours || 0) * Number(quoteData.fixedHourlyRate) * customSurchargeTotal.multiplier) + customSurchargeTotal.flat,
-      Number(quoteData.roundingInterval || 25)
-    );
-    return {
-      currentMinQuote: fixedQuote,
-      currentMaxQuote: fixedQuote,
-      customCalculatedQuote: null,
-      effectiveMultiplier: customSurchargeTotal.multiplier,
-    };
-  }
-
   const pricing = companyRates?.pricing || {};
-  const surcharges = companyRates?.surcharges || {};
-  const surchargeModes = pricing.surchargeModes || surcharges.surchargeModes || {};
-  const flatCustomOverride = (Array.isArray(quoteData.customMatches) ? quoteData.customMatches : [])
-    .filter((zone) => zone?.charge?.feeType === 'flat')
-    .reduce((maxValue, zone) => Math.max(maxValue, Number(zone?.charge?.value) || 0), 0);
+  const roundingInterval = Number(pricing.rounding_interval || companyRates.rounding_interval) || 25;
+  const isMileageMode = quoteData.pricingMode === 'mileage';
 
-  const getChargeType = (key, fallback = 'percent') => (surchargeModes[key] === 'flat' ? 'flat' : fallback);
-
-  const getChargeValue = (val, defaultValue) => {
-    const num = Number(val ?? defaultValue);
-    return Number.isFinite(num) ? num : Number(defaultValue) || 0;
-  };
-
-  const chargeTotals = { multiplier: 1, flat: 0 };
-
-  const addCharge = (feeType, value) => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric) || numeric === 0) return;
-    if (feeType === 'flat') {
-      chargeTotals.flat += numeric;
-    } else {
-      chargeTotals.multiplier *= 1 + numeric / 100;
-    }
-  };
-
-  if (quoteData.hasMetroZone && activeOverrides?.metro) {
-      const metroMatch = Array.isArray(quoteData.metroMatches) ? quoteData.metroMatches[0] : null;
-      const charge = metroMatch?.charge || {};
-      addCharge(charge.feeType || getChargeType('metro_multiplier'), charge.value ?? getChargeValue(pricing.metro_multiplier ?? surcharges.metro_multiplier, 28.57));
-  }
-  if (quoteData.hasHazardZone && activeOverrides?.hazard) {
-    (Array.isArray(quoteData.hazardMatches) ? quoteData.hazardMatches : []).forEach((zone) => {
-      const charge = zone?.charge || {};
-      addCharge(charge.feeType || getChargeType('hazard_multiplier'), charge.value ?? getChargeValue(pricing.hazard_multiplier ?? surcharges.hazard_multiplier, 40));
-    });
-  }
-  if (quoteData.hasCustomZone) {
-    (Array.isArray(quoteData.customMatches) ? quoteData.customMatches : []).forEach((zone) => {
-      const charge = zone?.charge || {};
-      addCharge(charge.feeType || 'percent', charge.value ?? 0);
-    });
-  }
-  (pricing.custom_surcharges || []).filter((item) => item.active !== false && activeOverrides?.customSurcharges?.[item.id] === true).forEach((item) => {
-    addCharge(item.feeType || 'flat', item.value || 0);
+  // Resolve base rates using shared logic
+  const { minRate, maxRate } = resolveBaseRates({
+    pricingMode: quoteData.pricingMode,
+    useWeightTierPricing: quoteData.pricingMode === 'equipment-weight-tier',
+    tier: quoteData.fixedHourlyRate ? { rate: quoteData.fixedHourlyRate } : null,
+    selectedClass: pricing.custom_truck_classes?.find((c) => c.id === quoteData.selectedTruckClassId),
+    isHeavy: quoteData.isHeavy,
+    pricing,
+    config: companyRates,
   });
 
-  const isMileageMode = quoteData.pricingMode === 'mileage';
-  let baseMinRate = isMileageMode ? (Number(pricing.mileage_min) || 5) : (Number(pricing.hourly_min || companyRates.hourly_min) || 125);
-  let baseMaxRate = isMileageMode ? (Number(pricing.mileage_max) || 6) : (Number(pricing.hourly_max || companyRates.hourly_max) || 135);
+  // Calculate surcharges using shared logic
+  const { multiplier, flatSum } = calculateSurcharges({
+    metroMatches: quoteData.hasMetroZone ? quoteData.metroMatches : [],
+    hazardMatches: quoteData.hasHazardZone ? quoteData.hazardMatches : [],
+    customMatches: quoteData.customMatches || [],
+    customSurcharges: pricing.custom_surcharges || [],
+    useWeightTierPricing: quoteData.pricingMode === 'equipment-weight-tier',
+    overrides: activeOverrides,
+  });
 
-  const customClasses = pricing.custom_truck_classes || [];
-  const selectedClass = customClasses.find((c) => c.id === quoteData.selectedTruckClassId);
+  // Check for flat override
+  const flatOverride = getFlatOverride(quoteData.customMatches || []);
 
-  if (selectedClass) {
-    baseMinRate = Number(isMileageMode ? selectedClass.minMileageRate : selectedClass.minRate) || baseMinRate;
-    baseMaxRate = Number(isMileageMode ? selectedClass.maxMileageRate : selectedClass.maxRate) || baseMaxRate;
-  } else if (quoteData.isHeavy && !isMileageMode) {
-    baseMinRate = Number(companyRates.heavy_hourly_min || pricing.heavy_hourly_min) || 200;
-    baseMaxRate = Number(companyRates.heavy_hourly_max || pricing.heavy_hourly_max) || 250;
-  }
-
-  const roundingInterval = Number(pricing.rounding_interval || companyRates.rounding_interval) || 25;
-
-  if (flatCustomOverride > 0) {
-    const overriddenQuote = roundToNearest(flatCustomOverride, roundingInterval);
-    return {
-      currentMinQuote: overriddenQuote,
-      currentMaxQuote: overriddenQuote,
-      customCalculatedQuote: overriddenQuote,
-      effectiveMultiplier: 1,
-    };
-  }
-
+  // Determine pricing quantity
   const pricingQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : quoteData.rawTotalHours;
-  const currentMinQuote = roundToNearest((pricingQuantity * baseMinRate * chargeTotals.multiplier) + chargeTotals.flat, roundingInterval);
-  const currentMaxQuote = roundToNearest((pricingQuantity * baseMaxRate * chargeTotals.multiplier) + chargeTotals.flat, roundingInterval);
 
-  const parsedCustomRate = Number(customRate);
-  const customHours = customLoadUnloadMins === null || customLoadUnloadMins === ''
-    ? quoteData.rawTotalHours
-    : Math.max(0, quoteData.rawTotalHours + (Number(customLoadUnloadMins) - Number(quoteData.loadUnloadTime || 0)) / 60);
-  const customQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : customHours;
-  const customCalculatedQuote = parsedCustomRate > 0
-    ? roundToNearest((customQuantity * parsedCustomRate * chargeTotals.multiplier) + chargeTotals.flat, roundingInterval)
-    : null;
+  // Calculate custom quantity if custom load time is provided
+  let customQuantity = pricingQuantity;
+  if (customLoadUnloadMins !== null && customLoadUnloadMins !== '') {
+    const customHours = Math.max(0, quoteData.rawTotalHours + (Number(customLoadUnloadMins) - Number(quoteData.loadUnloadTime || 0)) / 60);
+    customQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : customHours;
+  }
+
+  // Use shared final quote calculation
+  const result = calculateFinalQuotesPure({
+    pricingQuantity,
+    minRate,
+    maxRate,
+    surchargeMultiplier: multiplier,
+    surchargeFlatSum: flatSum,
+    permitFee: 0, // Browser doesn't calculate permit fees
+    rounding: roundingInterval,
+    customRate: customRate != null ? customRate : null,
+    customQuantity: customLoadUnloadMins !== null && customLoadUnloadMins !== '' ? customQuantity : null,
+    flatOverride,
+  });
 
   return {
-    currentMinQuote,
-    currentMaxQuote,
-    customCalculatedQuote,
-    effectiveMultiplier: chargeTotals.multiplier,
+    currentMinQuote: result.minQuote,
+    currentMaxQuote: result.maxQuote,
+    customCalculatedQuote: result.customQuote,
+    effectiveMultiplier: multiplier,
   };
 }

@@ -1,6 +1,7 @@
 // src/components/QuoteResultsCard.jsx
 import React, { useState, useRef } from 'react';
 import { calculateFinalQuotes } from '../services/quoteCalculator';
+import { estimateDisclaimer } from '../legal/legalContent';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -195,6 +196,10 @@ export default function QuoteResultsCard({
           </div>
         )}
       </div>
+
+      <p role="note" className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-[11px] leading-5 text-slate-300">
+        <span className="font-semibold text-blue-300">Estimate notice: </span>{estimateDisclaimer}
+      </p>
 
       {isDispatcherView && (
         <div className="space-y-2">
@@ -417,7 +422,7 @@ export default function QuoteResultsCard({
                   disabled={isSaving}
                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-xl transition disabled:opacity-50"
                 >
-                  {isSaving ? 'Submitting...' : 'Accept Quote and Attach BOL'}
+                  {isSaving ? 'Submitting...' : 'Request Dispatch and Attach BOL'}
                 </button>
               )}
             </div>

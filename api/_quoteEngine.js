@@ -1,14 +1,16 @@
 import { GEOFENCES, HAZARD_ZONES, METRO_CODE_BY_ZONE_ID } from '../src/config/geofences.js';
+import {
+  resolveBaseRates,
+  calculateTimeMetrics,
+  calculateSurcharges,
+  getFlatOverride,
+  calculateFinalQuotes as calculateFinalQuotesPure,
+  calculatePermitRequirements as calculatePermitPure,
+} from '../src/lib/pricingEngine.js';
 
 const toFinite = (value, fallback = 0) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
-};
-
-const roundToNearest = (value, interval = 25) => Math.round(value / (toFinite(interval, 25) || 25)) * (toFinite(interval, 25) || 25);
-const normalizeBuffer = (value) => {
-  const number = toFinite(value, 10);
-  return number > 1.5 ? 1 + number / 100 : number;
 };
 
 export function decodePolyline(encoded = '') {
@@ -102,17 +104,15 @@ function findCustomZones(localities, routePoints, config) {
 }
 
 export function calculatePermitRequirements({ weight, width, height, pickupAddress, dropoffAddress, config }) {
-  const state = (address) => String(address || '').match(/\b([A-Z]{2})\b/)?.[1] || '';
-  const pickupState = state(pickupAddress);
-  const dropoffState = state(dropoffAddress);
-  const isInterstate = Boolean(pickupState && dropoffState && pickupState !== dropoffState);
-  const flags = [];
-  if (weight > 45000) flags.push(`Overweight (${weight.toLocaleString()} lbs > 45,000 lbs limit)`);
-  if (width > 102) flags.push(`Oversize Width (${width} in > 102 in limit)`);
-  if (height > 162) flags.push(`Oversize Height (${height} in > 162 in limit)`);
-  if (isInterstate) flags.push(`Interstate Crossing (${pickupState} → ${dropoffState})`);
-  const needsPermit = weight > 45000 || width > 102 || height > 162;
-  return { needsPermit, isInterstate, flags, permitFee: needsPermit ? toFinite(config?.pricing?.base_permit_fee, 150) * (isInterstate ? 1.5 : 1) : 0 };
+  // Use shared calculation with base fee from config
+  return calculatePermitPure({
+    weight,
+    width,
+    height,
+    pickupAddress,
+    dropoffAddress,
+    baseFee: toFinite(config?.pricing?.base_permit_fee, 150),
+  });
 }
 
 export function calculateAuthoritativeQuote({ input, config, clientConfig, route, role }) {
@@ -131,51 +131,80 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const tier = tiers.find((item) => totalWeight >= toFinite(item.minWeight) && totalWeight <= toFinite(item.maxWeight, 999999));
   if (useWeightTierPricing && !tier) throw Object.assign(new Error(`No equipment weight class is configured for ${totalWeight.toLocaleString()} lbs.`), { status: 400 });
 
-  const driveBuffer = normalizeBuffer(useWeightTierPricing ? tier?.drive_time_buffer : selectedClass?.drive_time_buffer ?? clientPricing.drive_time_buffer ?? pricing.drive_time_buffer ?? 10);
-  const loadMinutes = toFinite(useWeightTierPricing ? tier?.load_unload_base_mins : selectedClass?.load_unload_base_mins ?? clientPricing.load_unload_base_mins ?? pricing.load_unload_base_mins, 30);
-  const extraStopMinutes = toFinite(clientPricing.extra_stop_mins ?? pricing.extra_stop_mins, 15) * Math.max(0, addresses.length - 2);
-  const rawTotalHours = (route.rawDriveMinutes * driveBuffer + loadMinutes + extraStopMinutes) / 60;
+  // Use shared time metrics calculation
+  const { rawTotalHours, loadUnloadMinutes } = calculateTimeMetrics({
+    rawDriveMinutes: route.rawDriveMinutes,
+    baseLoadMinutes: toFinite(useWeightTierPricing ? tier?.load_unload_base_mins : selectedClass?.load_unload_base_mins ?? clientPricing.load_unload_base_mins ?? pricing.load_unload_base_mins, 30),
+    extraStopMinutes: toFinite(clientPricing.extra_stop_mins ?? pricing.extra_stop_mins, 15),
+    extraStopCount: Math.max(0, addresses.length - 2),
+    driveTimeBuffer: toFinite(useWeightTierPricing ? tier?.drive_time_buffer : selectedClass?.drive_time_buffer ?? clientPricing.drive_time_buffer ?? pricing.drive_time_buffer ?? 10, 10),
+    useWeightTierPricing,
+    tier,
+    selectedClass,
+  });
+
   const totalMiles = route.totalMeters * 0.000621371;
   const standardPricingMode = pricing.pricing_mode === 'mileage' && !useWeightTierPricing ? 'mileage' : 'hourly';
 
-  let minRate = toFinite(pricing.hourly_min ?? config.hourly_min, 125);
-  let maxRate = toFinite(pricing.hourly_max ?? config.hourly_max, 135);
-  if (useWeightTierPricing) minRate = maxRate = toFinite(tier.rate);
-  else if (selectedClass) { minRate = toFinite(selectedClass.minRate, minRate); maxRate = toFinite(selectedClass.maxRate, maxRate); }
-  else if (input.isHeavy) { minRate = toFinite(pricing.heavy_hourly_min ?? config.heavy_hourly_min, 200); maxRate = toFinite(pricing.heavy_hourly_max ?? config.heavy_hourly_max, 250); }
-  if (standardPricingMode === 'mileage') {
-    minRate = toFinite(selectedClass?.minMileageRate ?? pricing.mileage_min, 5);
-    maxRate = toFinite(selectedClass?.maxMileageRate ?? pricing.mileage_max, 6);
-  }
+  // Use shared base rate resolution
+  const { minRate, maxRate } = resolveBaseRates({
+    pricingMode: standardPricingMode,
+    useWeightTierPricing,
+    tier,
+    selectedClass,
+    isHeavy: input.isHeavy,
+    pricing,
+    config,
+  });
 
+  // Set up overrides appropriately
   const overrides = role === 'client' ? { afterHours: false, roadClub: false, metro: true, hazard: true, customSurcharges: {} } : input.activeOverrides || {};
-  const charge = { multiplier: 1, flat: 0 };
-  const add = (feeType, value) => feeType === 'flat' ? charge.flat += toFinite(value) : charge.multiplier *= 1 + toFinite(value) / 100;
-  if (!useWeightTierPricing && metroMatches.length && overrides.metro) add(metroMatches[0].charge.feeType, metroMatches[0].charge.value);
-  if (!useWeightTierPricing && hazardMatches.length && overrides.hazard) hazardMatches.forEach((zone) => add(zone.charge.feeType, zone.charge.value));
-  if (!useWeightTierPricing) customMatches.forEach((zone) => add(zone.charge.feeType, zone.charge.value));
-  (pricing.custom_surcharges || []).filter((item) => item.active !== false && overrides.customSurcharges?.[item.id] === true).forEach((item) => add(item.feeType, item.value));
 
-  const flatOverride = useWeightTierPricing ? 0 : customMatches.filter((zone) => zone.charge.feeType === 'flat').reduce((maximum, zone) => Math.max(maximum, zone.charge.value), 0);
-  const interval = toFinite(useWeightTierPricing ? tier.rounding_interval ?? clientPricing.rounding_interval : pricing.rounding_interval, 25);
+  // Use shared surcharge calculation
+  const { multiplier, flatSum } = calculateSurcharges({
+    metroMatches: !useWeightTierPricing ? metroMatches : [],
+    hazardMatches: !useWeightTierPricing ? hazardMatches : [],
+    customMatches: !useWeightTierPricing ? customMatches : [], // Custom zones ignored in weight tier mode
+    customSurcharges: pricing.custom_surcharges || [],
+    useWeightTierPricing,
+    overrides,
+  });
+
+  // Check for flat override (only in non-weight-tier mode)
+  const flatOverride = !useWeightTierPricing ? getFlatOverride(customMatches) : 0;
+  const interval = toFinite(useWeightTierPricing ? tier?.rounding_interval ?? clientPricing.rounding_interval : pricing.rounding_interval, 25);
   const pricingQuantity = standardPricingMode === 'mileage' ? totalMiles : rawTotalHours;
-  let minQuote = flatOverride || roundToNearest(pricingQuantity * minRate * charge.multiplier + charge.flat, interval);
-  let maxQuote = flatOverride || roundToNearest(pricingQuantity * maxRate * charge.multiplier + charge.flat, interval);
-  let customQuote = null;
-  if (role !== 'client' && toFinite(input.customRate) > 0) {
-    const hours = input.customLoadUnloadMins == null ? rawTotalHours : Math.max(0, rawTotalHours + (toFinite(input.customLoadUnloadMins) - loadMinutes - extraStopMinutes) / 60);
-    customQuote = roundToNearest((standardPricingMode === 'mileage' ? totalMiles : hours) * toFinite(input.customRate) * charge.multiplier + charge.flat, interval);
-  }
+
+  // Calculate permit fee
   const permit = calculatePermitRequirements({ weight: totalWeight, width: toFinite(input.equipment?.width), height: toFinite(input.equipment?.height), pickupAddress: addresses[0], dropoffAddress: addresses.at(-1), config });
-  minQuote += permit.permitFee;
-  maxQuote += permit.permitFee;
-  if (customQuote != null) customQuote += permit.permitFee;
+
+  // Use shared final quote calculation
+  let customQuantity = null;
+  if (role !== 'client' && toFinite(input.customLoadUnloadMins) > 0) {
+    const customHours = input.customLoadUnloadMins == null ? rawTotalHours : Math.max(0, rawTotalHours + (toFinite(input.customLoadUnloadMins) - loadUnloadMinutes) / 60);
+    customQuantity = standardPricingMode === 'mileage' ? totalMiles : customHours;
+  }
+
+  const quoteResult = calculateFinalQuotesPure({
+    pricingQuantity,
+    minRate,
+    maxRate,
+    surchargeMultiplier: multiplier,
+    surchargeFlatSum: flatSum,
+    permitFee: permit.permitFee,
+    rounding: interval,
+    customRate: role !== 'client' ? toFinite(input.customRate) : null,
+    customQuantity,
+    flatOverride,
+  });
 
   return {
     totalMiles,
     totalHours: Number(rawTotalHours.toFixed(2)),
     pricingMode: useWeightTierPricing ? 'equipment-weight-tier' : standardPricingMode,
-    minQuote, maxQuote, customQuote,
+    minQuote: quoteResult.minQuote,
+    maxQuote: quoteResult.maxQuote,
+    customQuote: quoteResult.customQuote,
     approvalRequired: totalWeight >= toFinite(clientConfig?.approval_threshold ?? config?.client_portal?.approval_threshold, 80000),
     permit,
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],

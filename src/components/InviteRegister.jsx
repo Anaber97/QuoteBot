@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { AlertCircle, CheckCircle2, LogIn } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import PolicyAcknowledgment from './PolicyAcknowledgment';
+import { PRIVACY_VERSION, TERMS_VERSION } from '../legal/legalContent';
 
 export default function InviteRegister() {
   const [fullName, setFullName] = useState('');
@@ -9,6 +11,7 @@ export default function InviteRegister() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
+  const [policyAccepted, setPolicyAccepted] = useState(false);
 
   const inviteParams = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search)
@@ -35,6 +38,12 @@ export default function InviteRegister() {
 
     if (password !== confirmPassword) {
       setMessage({ type: 'error', text: 'Passwords do not match.' });
+      setLoading(false);
+      return;
+    }
+
+    if (!policyAccepted) {
+      setMessage({ type: 'error', text: 'You must agree to the Terms of Use and acknowledge the Privacy Policy.' });
       setLoading(false);
       return;
     }
@@ -97,6 +106,8 @@ export default function InviteRegister() {
           token: inviteToken,
           fullName: fullName.trim(),
           role: resolvedRole,
+          termsVersion: TERMS_VERSION,
+          privacyVersion: PRIVACY_VERSION,
         }),
       });
 
@@ -177,9 +188,11 @@ export default function InviteRegister() {
             />
           </div>
 
+          <PolicyAcknowledgment checked={policyAccepted} onChange={(event) => setPolicyAccepted(event.target.checked)} />
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !policyAccepted}
             className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
           >
             {loading ? 'Creating account...' : 'Create Account'}

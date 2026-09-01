@@ -16,7 +16,7 @@ const cloneWeightTiers = (tiers = []) => tiers.map((tier, index) => ({
   rounding_interval: Number(tier.rounding_interval ?? 25),
 }));
 
-export default function ClientPortalTab({ formData, profile, updateClientPortal, onSaveConfig, isSaving }) {
+export default function ClientPortalTab({ formData, profile, updateClientPortal }) {
   const [clients, setClients] = useState([]);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -103,7 +103,7 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal,
           <span className="block text-[10px] text-slate-500">Equipment at or above this weight requires manual review.</span>
         </label>
       </div>
-      <button type="button" onClick={onSaveConfig} disabled={isSaving} className="light-save-portal rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 font-semibold text-emerald-300">{isSaving ? 'Saving...' : 'Save portal details'}</button>
+      <p className="text-[10px] font-medium text-amber-400">Use the persistent Save Settings button below to apply portal-detail changes.</p>
     </div>
     <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-4">
       <div><h4 className="flex items-center gap-2 font-bold text-white"><Building className="h-4 w-4 text-blue-400" /> Client Accounts</h4><p className="mt-1 text-slate-400">Each account belongs only to this company. Create the account here, then invite its user in Users & Roles and choose this account.</p></div>

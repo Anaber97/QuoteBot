@@ -160,6 +160,48 @@ html[data-theme='light'] .app-shell .light-save-portal:hover {
   background: linear-gradient(135deg, #065f46, #115e59) !important;
 }
 
+html[data-theme='light'] .app-shell .settings-tab[data-active='false'] {
+  background: transparent !important;
+  color: #64748b !important;
+  box-shadow: none;
+}
+
+html[data-theme='light'] .app-shell .settings-tab[data-active='false']:hover {
+  background: #e0e7ff !important;
+  color: #3730a3 !important;
+}
+
+html[data-theme='light'] .app-shell .settings-tab[data-active='true'] {
+  background: #eef2ff !important;
+  border-color: #4f46e5 !important;
+  color: #4338ca !important;
+  box-shadow: none;
+}
+
+html[data-theme='light'] .app-shell .surcharge-status[data-enabled='false'] {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #64748b !important;
+  box-shadow: none;
+}
+
+html[data-theme='light'] .app-shell .surcharge-status[data-enabled='false']:hover {
+  background: #e2e8f0 !important;
+  border-color: #94a3b8 !important;
+  color: #334155 !important;
+}
+
+html[data-theme='light'] .app-shell .surcharge-status[data-enabled='true'] {
+  background: #ecfdf5 !important;
+  border-color: #6ee7b7 !important;
+  color: #047857 !important;
+  box-shadow: none;
+}
+
+html[data-theme='light'] .app-shell .surcharge-status[data-enabled='true']:hover {
+  background: #d1fae5 !important;
+}
+
 @media (max-width: 480px) {
   .app-header .text-lg { font-size: 1rem; }
   .app-shell input, .app-shell select, .app-shell textarea { font-size: 16px; }

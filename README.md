@@ -18,11 +18,15 @@ Quote submission is server-authoritative. Apply `20260818154500_server_authorita
 
 ## Quality checks
 
-- `npm test` runs the focused security tests.
+- `npm test` runs the Node.js test suite (`test/*.test.js`): pricing-engine parity between the browser and server calculators, config-schema normalization and validation, the quote-status transition state machine, an API authorization matrix (tenant/role isolation across `createQuote`, `updateQuoteStatus`, `inviteUser`, `getAppConfig`, `saveAppConfig`, `sendQuoteEmail`, `notifyApproval`), invite lifecycle handling (expiry, reuse, email mismatch), a static replay of every Supabase migration to verify effective RLS policies (including BOL storage tenant isolation), and a full sign-in → calculate → save → reopen → change-status workflow test.
+- `npm run test:components` runs React component tests (`test/components/*.test.jsx`) covering Settings unsaved-change/save-error behavior and App-level auth identity changes / failed profile loads.
+- `npm run test:all` runs both suites — this is what CI runs.
 - `npm run lint` checks the source.
 - `npm run build` creates the production bundle.
 - `npm run marketing:build` creates the standalone marketing-site bundle.
 - `npm audit --omit=dev` checks production dependencies.
+
+There is no live Supabase/Docker instance available in CI or local dev by default, so RLS/migration coverage is a static analysis of the migration SQL rather than a live-database integration test; see `test/rlsPolicyStaticAnalysis.test.js`. If you have Docker available, `supabase start` plus the Supabase CLI can be used to run these migrations against a real local Postgres instance for deeper verification.
 
 The same commands run automatically for every pull request through `.github/workflows/quality.yml`. Pull requests should not be merged while any quality check is failing.
 

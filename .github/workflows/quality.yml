@@ -19,7 +19,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: npm run test:all
       - run: npm run lint
       - run: npm run build
       - run: npm audit --omit=dev --audit-level=high
+      - run: npm ci --prefix marketing
+      - run: npm run marketing:lint
+      - run: npm run marketing:build
+      - run: npm audit --omit=dev --audit-level=high --prefix marketing
