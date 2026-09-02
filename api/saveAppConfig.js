@@ -86,9 +86,20 @@ export default async function handler(req, res) {
       });
     }
 
+    // Adopt and verify the row Supabase actually returned, not the optimistic
+    // request object. This makes deleted tiers disappear immediately and
+    // prevents a stale in-memory calculator from surviving a partial save.
+    const persistedConfig = normalizeConfig(savedRow);
+    const requestedTiers = normalizedConfig.client_portal.weight_tiers;
+    const persistedTiers = persistedConfig.client_portal.weight_tiers;
+    if (JSON.stringify(persistedTiers) !== JSON.stringify(requestedTiers)) {
+      console.error('Equipment pricing persistence verification failed', { companyId });
+      return res.status(500).json({ error: 'Equipment pricing did not persist exactly. Please try saving again.' });
+    }
+
     return res.status(200).json({
       success: true,
-      config: normalizedConfig,
+      config: persistedConfig,
       row: savedRow,
     });
   } catch (error) {

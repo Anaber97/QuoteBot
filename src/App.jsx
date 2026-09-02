@@ -295,6 +295,8 @@ export default function App() {
 
   const handleSettingsSave = (newConfig) => {
     setCompanyRates(normalizeCompanyConfig(newConfig));
+    setQuoteData(null);
+    setOpenedLoggedQuote(null);
   };
 
   // Base Shops (Uses database app_config bases if available)

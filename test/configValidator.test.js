@@ -236,6 +236,12 @@ test('validateConfigInput accepts valid weight tier', () => {
   assert(result.valid);
 });
 
+test('validateConfigInput rejects a negative permit cost', () => {
+  const result = validateConfigInput({ client_portal: { weight_tiers: [{ minWeight: 0, maxWeight: 10000, rate: 100, permitCost: -1 }] } });
+  assert(!result.valid);
+  assert(result.errors.some((error) => error.path.endsWith('.permitCost')));
+});
+
 // ===== GEOFENCE VALIDATION =====
 
 test('validateConfigInput rejects too many custom zones', () => {

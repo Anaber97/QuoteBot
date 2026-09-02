@@ -12,6 +12,9 @@ const cloneWeightTiers = (tiers = []) => tiers.map((tier, index) => ({
   minWeight: Number(tier.minWeight ?? 0),
   maxWeight: Number(tier.maxWeight ?? 999999),
   rate: Number(tier.rate ?? 0),
+  hourlyRate: Number(tier.hourlyRate ?? tier.rate ?? 0),
+  mileageRate: Number(tier.mileageRate ?? 5),
+  permitCost: Number(tier.permitCost ?? 150),
   drive_time_buffer: Number(tier.drive_time_buffer ?? 10),
   load_unload_base_mins: Number(tier.load_unload_base_mins ?? 30),
   rounding_interval: Number(tier.rounding_interval ?? 25),
@@ -82,7 +85,7 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal 
     pricing: {
       ...emptyPricing,
       ...client.pricing,
-      weight_tiers: [...(client.pricing?.weight_tiers || []), { id: `client-tier-${Date.now()}`, label: 'New class', minWeight: 0, maxWeight: 999999, rate: 0, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 }],
+      weight_tiers: [...(client.pricing?.weight_tiers || []), { id: `client-tier-${Date.now()}`, label: 'New class', minWeight: 0, maxWeight: 999999, rate: 0, hourlyRate: 0, mileageRate: 5, permitCost: 150, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 }],
     },
   } : client));
   const removeClientTier = (clientId, tierIndex) => setClients((current) => current.map((client) => client.id === clientId ? {

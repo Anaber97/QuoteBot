@@ -202,6 +202,15 @@ test('mileage mode prices the full routed mileage and preserves surcharge roundi
   assert.equal(result.maxQuote, 50);
 });
 
+test('equipment weight tiers override the global permit cost', () => {
+  const permitConfig = structuredClone(config);
+  permitConfig.client_portal.weight_tiers = [
+    { minWeight: 0, maxWeight: 999999, rate: 100, permitCost: 240, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
+  ];
+  const result = quote({ config: permitConfig, input: { quoteSource: 'equipment_calculator', waypoints: ['Pickup, KS', 'Dropoff, KS'], equipment: { weight: 46000, width: 90, height: 120 } } });
+  assert.equal(result.permit.permitFee, 240);
+});
+
 test('mileage mode applies equipment weight tier mileage rates', () => {
   const mileageConfig = structuredClone(config);
   mileageConfig.pricing.pricing_mode = 'mileage';

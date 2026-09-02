@@ -111,11 +111,11 @@ export const DEFAULT_CLIENT_PORTAL = {
   disclosure:
     'These quotes are electronically generated estimates based on the information provided and may be affected by route conditions, permit requirements, or equipment-specific variables. Please confirm final pricing with a company representative before dispatch.',
   weight_tiers: [
-    { id: 'tier-1', label: '0–20,000 lbs', minWeight: 0, maxWeight: 20000, rate: 150, hourlyRate: 150, mileageRate: 5, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
-    { id: 'tier-2', label: '20,001–40,000 lbs', minWeight: 20001, maxWeight: 40000, rate: 180, hourlyRate: 180, mileageRate: 6, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
-    { id: 'tier-3', label: '40,001–60,000 lbs', minWeight: 40001, maxWeight: 60000, rate: 200, hourlyRate: 200, mileageRate: 8, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
-    { id: 'tier-4', label: '60,001–80,000 lbs', minWeight: 60001, maxWeight: 80000, rate: 225, hourlyRate: 225, mileageRate: 10, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
-    { id: 'tier-5', label: '80,001+ lbs', minWeight: 80001, maxWeight: 999999, rate: 250, hourlyRate: 250, mileageRate: 12, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
+    { id: 'tier-1', label: '0–20,000 lbs', minWeight: 0, maxWeight: 20000, rate: 150, hourlyRate: 150, mileageRate: 5, permitCost: 150, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
+    { id: 'tier-2', label: '20,001–40,000 lbs', minWeight: 20001, maxWeight: 40000, rate: 180, hourlyRate: 180, mileageRate: 6, permitCost: 150, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
+    { id: 'tier-3', label: '40,001–60,000 lbs', minWeight: 40001, maxWeight: 60000, rate: 200, hourlyRate: 200, mileageRate: 8, permitCost: 150, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
+    { id: 'tier-4', label: '60,001–80,000 lbs', minWeight: 60001, maxWeight: 80000, rate: 225, hourlyRate: 225, mileageRate: 10, permitCost: 150, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
+    { id: 'tier-5', label: '80,001+ lbs', minWeight: 80001, maxWeight: 999999, rate: 250, hourlyRate: 250, mileageRate: 12, permitCost: 150, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
   ],
   clients: [],
 };
@@ -140,15 +140,21 @@ export const ROUNDING_OPTIONS = [1, 5, 10, 25, 50];
  */
 export const normalizeClientPortalTier = (tier = {}, index = 0) => {
   const hourlyRate = toFinite(tier.hourlyRate ?? tier.rate ?? tier.hourly_rate, 0);
+  const minWeight = toFinite(tier.minWeight ?? tier.min, 0);
+  const maxWeight = toFinite(tier.maxWeight ?? tier.max, 999999);
+  const label = maxWeight >= 999999
+    ? `${minWeight.toLocaleString('en-US')}+ lbs`
+    : `${minWeight.toLocaleString('en-US')}–${maxWeight.toLocaleString('en-US')} lbs`;
 
   return {
     id: tier.id || `tier-${index + 1}`,
-    label: tier.label || `Tier ${index + 1}`,
-    minWeight: toFinite(tier.minWeight ?? tier.min, 0),
-    maxWeight: toFinite(tier.maxWeight ?? tier.max, 999999),
+    label,
+    minWeight,
+    maxWeight,
     rate: hourlyRate,
     hourlyRate,
     mileageRate: toFinite(tier.mileageRate ?? tier.mileage_rate, 5),
+    permitCost: toFinite(tier.permitCost ?? tier.permit_cost ?? tier.permitFee, 150),
     rounding_interval: ROUNDING_OPTIONS.includes(Number(tier.rounding_interval)) ? Number(tier.rounding_interval) : 25,
     drive_time_buffer: toFinite(tier.drive_time_buffer, 10),
     load_unload_base_mins: toFinite(tier.load_unload_base_mins, 30),

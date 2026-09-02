@@ -32,6 +32,11 @@ const validateWeightTier = (tier, index) => {
     errors.push({ message: `rate: ${rate.error}`, path: `${path}.rate` });
   }
 
+  const permitCost = validateNumber(tier.permitCost ?? 150, { min: 0, max: 100000 });
+  if (!permitCost.valid) {
+    errors.push({ message: `permitCost: ${permitCost.error}`, path: `${path}.permitCost` });
+  }
+
   return errors;
 };
 

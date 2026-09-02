@@ -48,6 +48,8 @@ test('normalizeClientPortalTier provides all required fields', () => {
   assert.equal(result.minWeight, 0);
   assert.equal(result.maxWeight, 10000);
   assert.equal(result.rate, 100);
+  assert.equal(result.label, '0–10,000 lbs');
+  assert.equal(result.permitCost, 150);
   assert(result.rounding_interval);
   assert(result.drive_time_buffer);
   assert(result.load_unload_base_mins);
@@ -138,6 +140,12 @@ test('normalizeConfig merges legacy and new config formats', () => {
   assert.equal(result.pricing.hourly_min, 100);
   assert.equal(result.pricing.hourly_max, 100);
   assert.equal(result.bases.length, 1);
+});
+
+test('normalizeClientPortalTier rebuilds stale labels and preserves permit cost', () => {
+  const result = normalizeClientPortalTier({ label: 'Deleted old range', minWeight: 1, maxWeight: 60000, rate: 180, permitCost: 275 }, 0);
+  assert.equal(result.label, '1–60,000 lbs');
+  assert.equal(result.permitCost, 275);
 });
 
 test('normalizeConfig promotes canonical single rates and preserves mileage mode', () => {

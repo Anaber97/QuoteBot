@@ -322,6 +322,10 @@ export default function QuoteResultsCard({
                   ${quoteData.baseMinQuote}
                 </span>
               </div>
+              {permitFee > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
+                <span>Weight Class Permit Cost</span>
+                <span className="font-semibold text-amber-300">+${permitFee.toFixed(2)}</span>
+              </div>}
               <div className="flex justify-between items-center pt-1 text-sm font-bold text-white">
                 <span>{isMileageQuote ? 'Total Billable Miles' : 'Total Billable Hours'}</span>
                 <span className="text-blue-400">{isMileageQuote ? `${Number(quoteData.totalMiles || 0).toFixed(1)} mi` : `${quoteData.totalHours} hrs`}</span>

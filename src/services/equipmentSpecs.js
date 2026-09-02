@@ -116,7 +116,10 @@ export function calculatePermitRequirements({ weight, width, height, pickupAddr,
   // Base permit calculation logic
   let permitFee = 0;
   if (needsPermit) {
-    const basePermitFee = companyRates?.pricing?.base_permit_fee || 150;
+    const weightTier = (companyRates?.client_portal?.weight_tiers || []).find((tier) =>
+      numWeight >= Number(tier.minWeight ?? 0) && numWeight <= Number(tier.maxWeight ?? 999999)
+    );
+    const basePermitFee = Number(weightTier?.permitCost ?? companyRates?.pricing?.base_permit_fee ?? 150);
     // Apply state crossing surcharge multiplier if interstate
     const interstateMultiplier = isInterstate ? 1.5 : 1.0;
     permitFee = basePermitFee * interstateMultiplier;

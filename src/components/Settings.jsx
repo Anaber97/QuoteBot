@@ -337,7 +337,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           tierIndex === index
             ? {
                 ...tier,
-                [field]: ['rate', 'hourlyRate', 'mileageRate', 'minWeight', 'maxWeight', 'rounding_interval', 'drive_time_buffer', 'load_unload_base_mins'].includes(field)
+                [field]: ['rate', 'hourlyRate', 'mileageRate', 'permitCost', 'minWeight', 'maxWeight', 'rounding_interval', 'drive_time_buffer', 'load_unload_base_mins'].includes(field)
                   ? Number(value) || 0
                   : value,
               }
@@ -348,7 +348,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   };
 
   const addClientPortalTier = () => {
-    setFormData((prev) => ({ ...prev, client_portal: { ...prev.client_portal, weight_tiers: [...(prev.client_portal?.weight_tiers || []), { id: `tier-${Date.now()}`, minWeight: 0, maxWeight: 999999, rate: 0, hourlyRate: 0, mileageRate: 0, drive_time_buffer: 10, load_unload_base_mins: 30 }] } }));
+    setFormData((prev) => ({ ...prev, client_portal: { ...prev.client_portal, weight_tiers: [...(prev.client_portal?.weight_tiers || []), { id: `tier-${Date.now()}`, minWeight: 0, maxWeight: 999999, rate: 0, hourlyRate: 0, mileageRate: 0, permitCost: 150, drive_time_buffer: 10, load_unload_base_mins: 30 }] } }));
   };
 
   const removeClientPortalTier = (index) => {

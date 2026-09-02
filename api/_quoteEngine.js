@@ -170,7 +170,16 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const pricingQuantity = standardPricingMode === 'mileage' ? totalMiles : rawTotalHours;
 
   // Calculate permit fee
-  const permit = calculatePermitRequirements({ weight: totalWeight, width: toFinite(input.equipment?.width), height: toFinite(input.equipment?.height), pickupAddress: addresses[0], dropoffAddress: addresses.at(-1), config });
+  const permit = calculatePermitPure({
+    weight: totalWeight,
+    width: toFinite(input.equipment?.width),
+    height: toFinite(input.equipment?.height),
+    pickupAddress: addresses[0],
+    dropoffAddress: addresses.at(-1),
+    baseFee: useWeightTierPricing
+      ? toFinite(tier?.permitCost, toFinite(config?.pricing?.base_permit_fee, 150))
+      : toFinite(config?.pricing?.base_permit_fee, 150),
+  });
 
   // Use shared final quote calculation
   let customQuantity = null;
