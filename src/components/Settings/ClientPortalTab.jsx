@@ -103,7 +103,6 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal 
           <span className="block text-[10px] text-slate-500">Equipment at or above this weight requires manual review.</span>
         </label>
       </div>
-      <p className="text-[10px] font-medium text-amber-400">Use the persistent Save Settings button below to apply portal-detail changes.</p>
     </div>
     <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-4">
       <div><h4 className="flex items-center gap-2 font-bold text-white"><Building className="h-4 w-4 text-blue-400" /> Client Accounts</h4><p className="mt-1 text-slate-400">Each account belongs only to this company. Create the account here, then invite its user in Users & Roles and choose this account.</p></div>
