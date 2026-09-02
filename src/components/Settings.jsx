@@ -201,6 +201,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
             client_name: client.client_name || client.name || `Client ${index + 1}`,
             contact_email: client.contact_email || '',
             contact_phone: client.contact_phone || '',
+            logo_path: client.logo_path || '',
             approval_threshold:
               client.approval_threshold === '' ||
               client.approval_threshold === null ||

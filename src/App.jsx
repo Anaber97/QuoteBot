@@ -269,7 +269,7 @@ export default function App() {
         if (loadedConfig) {
           const { data: clientAccounts, error: clientAccountsError } = await supabase
             .from('clients')
-            .select('id, company_id, client_name, contact_email, contact_phone, approval_threshold, pricing')
+            .select('id, company_id, client_name, contact_email, contact_phone, approval_threshold, pricing, logo_path')
             .eq('company_id', prof.company_id);
           if (!clientAccountsError) {
             loadedConfig = {
@@ -531,6 +531,7 @@ export default function App() {
                       onCalculate={handleClientCalculateQuote}
                       isCalculating={loading}
                       initialQuote={openedLoggedQuote}
+                      client={getActiveClientConfig()}
                     /></Suspense>
                   </div>
 

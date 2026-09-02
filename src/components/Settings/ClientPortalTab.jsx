@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Building, Plus, Save, Trash2 } from 'lucide-react';
+import { Building, Image, Plus, Save, Trash2, Upload } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { convertSvgLogoToPng } from '../../lib/logoImage';
 import Dialog from '../Dialog';
 
 const emptyPricing = { use_custom_pricing: false, rounding_interval: 25, weight_tiers: [] };
@@ -23,12 +24,22 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [logoUrls, setLogoUrls] = useState({});
+  const [uploadingClientId, setUploadingClientId] = useState(null);
   const defaultWeightTiers = formData.client_portal?.weight_tiers || [];
 
   const loadClients = useCallback(async () => {
     if (!profile?.company_id) return;
     const { data, error: loadError } = await supabase.from('clients').select('*').eq('company_id', profile.company_id).order('created_at');
-    if (loadError) setError(loadError.message); else setClients(data || []);
+    if (loadError) setError(loadError.message); else {
+      const loaded = data || [];
+      setClients(loaded);
+      const signedEntries = await Promise.all(loaded.filter((client) => client.logo_path).map(async (client) => {
+        const { data: signed } = await supabase.storage.from('company-branding').createSignedUrl(client.logo_path, 3600);
+        return [client.id, signed?.signedUrl || ''];
+      }));
+      setLogoUrls(Object.fromEntries(signedEntries));
+    }
   }, [profile?.company_id]);
   useEffect(() => { loadClients(); }, [loadClients]);
 
@@ -83,9 +94,47 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal 
     const { error: saveError } = await supabase.from('clients').update({ client_name: client.client_name, contact_email: client.contact_email, contact_phone: client.contact_phone, pricing: client.pricing || emptyPricing }).eq('id', client.id).eq('company_id', profile.company_id);
     if (saveError) setError(saveError.message); else setSuccess(`${client.client_name} saved.`);
   };
+  const uploadClientLogo = async (client, event) => {
+    const file = event.target.files?.[0]; event.target.value = '';
+    if (!file) return;
+    const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+    if ((!['image/png', 'image/jpeg'].includes(file.type) && !isSvg) || file.size > 2 * 1024 * 1024) {
+      setError('Choose a PNG, JPG, or SVG logo smaller than 2 MB.'); return;
+    }
+    setError(''); setSuccess(''); setUploadingClientId(client.id);
+    let path = '';
+    try {
+      const uploadFile = isSvg ? await convertSvgLogoToPng(file) : file;
+      const extension = uploadFile.type === 'image/png' ? 'png' : 'jpg';
+      path = `${profile.company_id}/clients/${client.id}/logo-${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from('company-branding').upload(path, uploadFile, { contentType: uploadFile.type, upsert: false });
+      if (uploadError) throw uploadError;
+      const { error: saveError } = await supabase.from('clients').update({ logo_path: path }).eq('id', client.id).eq('company_id', profile.company_id);
+      if (saveError) throw saveError;
+      if (client.logo_path) await supabase.storage.from('company-branding').remove([client.logo_path]);
+      updateClient(client.id, 'logo_path', path);
+      const { data: signed } = await supabase.storage.from('company-branding').createSignedUrl(path, 3600);
+      setLogoUrls((current) => ({ ...current, [client.id]: signed?.signedUrl || '' }));
+      setSuccess(`${client.client_name} logo uploaded${isSvg ? ' and converted to PNG' : ''}.`);
+    } catch (uploadError) {
+      if (path) await supabase.storage.from('company-branding').remove([path]);
+      setError(uploadError.message);
+    } finally { setUploadingClientId(null); }
+  };
+  const removeClientLogo = async (client) => {
+    setError(''); setSuccess('');
+    const { error: saveError } = await supabase.from('clients').update({ logo_path: null }).eq('id', client.id).eq('company_id', profile.company_id);
+    if (saveError) return setError(saveError.message);
+    if (client.logo_path) await supabase.storage.from('company-branding').remove([client.logo_path]);
+    updateClient(client.id, 'logo_path', null);
+    setLogoUrls((current) => ({ ...current, [client.id]: '' }));
+    setSuccess(`${client.client_name} logo removed.`);
+  };
   const deleteClient = async (id) => {
+    const client = clients.find((item) => item.id === id);
     const { error: deleteError } = await supabase.from('clients').delete().eq('id', id).eq('company_id', profile.company_id);
     if (deleteError) return setError(deleteError.message);
+    if (client?.logo_path) await supabase.storage.from('company-branding').remove([client.logo_path]);
     setClients((current) => current.filter((client) => client.id !== id));
   };
 
@@ -119,6 +168,19 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal 
           <input value={client.client_name || ''} onChange={(e) => updateClient(client.id, 'client_name', e.target.value)} placeholder="Client name" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <input value={client.contact_email || ''} onChange={(e) => updateClient(client.id, 'contact_email', e.target.value)} placeholder="Contact email" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <input value={client.contact_phone || ''} onChange={(e) => updateClient(client.id, 'contact_phone', e.target.value)} placeholder="Contact phone" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
+        </div>
+        <div className="mt-3 grid gap-3 rounded-xl border border-slate-800 bg-[#080c14] p-3 sm:grid-cols-[9rem_1fr]">
+          <div className="flex min-h-20 items-center justify-center rounded-lg border border-dashed border-slate-700 bg-white p-2">
+            {logoUrls[client.id] ? <img src={logoUrls[client.id]} alt={`${client.client_name} logo preview`} className="max-h-16 max-w-full object-contain" /> : <Image className="h-6 w-6 text-slate-400" />}
+          </div>
+          <div className="flex flex-wrap content-center items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-500/30 px-3 py-2 font-semibold text-blue-300">
+              <Upload className="h-3.5 w-3.5" /> {uploadingClientId === client.id ? 'Uploading...' : 'Upload client logo'}
+              <input hidden disabled={Boolean(uploadingClientId)} type="file" accept="image/png,image/jpeg,image/svg+xml,.svg" onChange={(event) => uploadClientLogo(client, event)} />
+            </label>
+            {client.logo_path && <button type="button" onClick={() => removeClientLogo(client)} className="rounded-lg border border-red-500/30 px-3 py-2 text-red-300">Remove logo</button>}
+            <p className="basis-full text-[10px] text-slate-500">PNG, JPG, or SVG up to 2 MB. SVG is safely converted to PNG.</p>
+          </div>
         </div>
         <label className="mt-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-300"><input type="checkbox" checked={client.pricing?.use_custom_pricing === true} onChange={(e) => updatePricing(client.id, 'use_custom_pricing', e.target.checked)} /> Use custom pricing for this client</label>
         {client.pricing?.use_custom_pricing === true && <div className="mt-3 space-y-2 rounded-xl border border-slate-800 bg-[#080c14] p-3">

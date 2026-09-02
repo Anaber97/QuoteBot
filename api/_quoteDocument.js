@@ -5,9 +5,12 @@ const safeText = (value, fallback = 'N/A') => String(value ?? '').trim() || fall
 const money = (value) => `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const cleanReference = (quote) => safeText(quote.quote_reference, `Q-${String(quote.id || '').slice(0, 8).toUpperCase()}`).replace(/[^A-Za-z0-9_-]/g, '-');
 export async function loadQuoteDocumentContext(admin, quote) {
-  const [{ data: company }, { data: row }] = await Promise.all([
+  const [{ data: company }, { data: row }, { data: client }] = await Promise.all([
     admin.from('companies').select('id, name').eq('id', quote.company_id).single(),
     admin.from('app_config').select('*').eq('company_id', quote.company_id).maybeSingle(),
+    quote.quote_source === 'client_portal' && quote.client_id
+      ? admin.from('clients').select('id, client_name, logo_path').eq('id', quote.client_id).eq('company_id', quote.company_id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
   const config = normalizeConfig(row || { company_id: quote.company_id });
   let logoBytes = null;
@@ -15,10 +18,15 @@ export async function loadQuoteDocumentContext(admin, quote) {
     const { data, error } = await admin.storage.from('company-branding').download(config.branding.logo_path);
     if (!error && data) logoBytes = new Uint8Array(await data.arrayBuffer());
   }
-  return { company: company || { name: 'TowCalc Customer' }, config, logoBytes };
+  let clientLogoBytes = null;
+  if (client?.logo_path) {
+    const { data, error } = await admin.storage.from('company-branding').download(client.logo_path);
+    if (!error && data) clientLogoBytes = new Uint8Array(await data.arrayBuffer());
+  }
+  return { company: company || { name: 'TowCalc Customer' }, config, logoBytes, client: client || null, clientLogoBytes };
 }
 
-export async function buildQuotePdf({ quote, company, config, logoBytes = null }) {
+export async function buildQuotePdf({ quote, company, config, logoBytes = null, clientLogoBytes = null }) {
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -50,16 +58,24 @@ export async function buildQuotePdf({ quote, company, config, logoBytes = null }
   };
 
   addPage();
+  const embedLogo = async (bytes, x, maxWidth = 110) => {
+    if (!bytes) return false;
+    try {
+      const logo = bytes[0] === 0x89 ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+      const scaled = logo.scale(Math.min(1, maxWidth / logo.width, 46 / logo.height));
+      page.drawImage(logo, { x, y: 710, width: scaled.width, height: scaled.height });
+      return true;
+    } catch { return false; }
+  };
   let logoDrawn = false;
   if (logoBytes) {
-    try {
-      const logo = logoBytes[0] === 0x89 ? await pdf.embedPng(logoBytes) : await pdf.embedJpg(logoBytes);
-      const scaled = logo.scale(Math.min(1, 120 / logo.width, 50 / logo.height));
-      page.drawImage(logo, { x: margin, y: 710, width: scaled.width, height: scaled.height }); logoDrawn = true;
-    } catch { logoDrawn = false; }
+    logoDrawn = await embedLogo(logoBytes, margin, clientLogoBytes ? 105 : 120);
   }
-  page.drawText(companyName, { x: logoDrawn ? 190 : margin, y: 750, size: 18, font: bold, color: ink });
-  page.drawText('TRANSPORT QUOTE', { x: logoDrawn ? 190 : margin, y: 727, size: 9, font: bold, color: muted });
+  const clientLogoDrawn = quote.quote_source === 'client_portal' && logoDrawn ? await embedLogo(clientLogoBytes, 204, 105) : false;
+  if (logoDrawn && clientLogoDrawn) page.drawText('×', { x: 176, y: 730, size: 18, font: regular, color: muted });
+  const titleX = logoDrawn ? (clientLogoDrawn ? 330 : 190) : margin;
+  if (!clientLogoDrawn) page.drawText(companyName, { x: titleX, y: 750, size: 18, font: bold, color: ink });
+  page.drawText('TRANSPORT QUOTE', { x: titleX, y: clientLogoDrawn ? 730 : 727, size: 9, font: bold, color: muted });
   page.drawText(reference, { x: 430, y: 750, size: 12, font: bold, color: ink });
   page.drawText(new Date(quote.created_at).toLocaleDateString('en-US'), { x: 430, y: 730, size: 9, font: regular, color: muted });
   y = 696; rule(); y -= 4;

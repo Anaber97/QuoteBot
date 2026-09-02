@@ -3,8 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, ShieldAlert, Truck, MapPin } from 'lucide-react';
 import { searchEquipmentSpecs, calculatePermitRequirements } from '../services/equipmentSpecs';
 import { loadGoogleMaps } from '../lib/googleMaps';
+import CoBranding from './CoBranding';
 
-export default function ClientQuoteForm({ companyRates, onCalculate, isCalculating, title = 'Client Self-Service Quote Portal', onReset, initialQuote = null }) {
+export default function ClientQuoteForm({ companyRates, onCalculate, isCalculating, title = 'Client Self-Service Quote Portal', onReset, initialQuote = null, client = null }) {
   const confidenceStyles = {
     low: 'bg-red-500',
     medium: 'bg-amber-400',
@@ -194,6 +195,12 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
 
   return (
     <div className="bg-[#0c1019] border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-6 min-w-0">
+      {client && <CoBranding
+        companyLogoPath={companyRates?.branding?.logo_path}
+        clientLogoPath={client.logo_path}
+        companyName={companyRates?.branding?.display_name || 'Towing company'}
+        clientName={client.client_name || 'Client'}
+      />}
       <div className="flex items-center justify-between border-b border-slate-800 pb-4 min-w-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
