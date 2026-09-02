@@ -107,22 +107,25 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
           </div>
         )}
 
-        {/* User Badge & Logout */}
-        {profile && (
+        {/* Account controls must remain available even when profile loading fails. */}
+        {session && (
           <div className="flex items-center gap-2 bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 lg:ml-auto min-w-0">
-            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${roleBadgeStyle}`}>
-              {rawRole || 'User'}
-            </span>
-            <span className="text-xs text-slate-300 font-medium truncate max-w-[140px]">
-              {profile.email}
+            {profile && (
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${roleBadgeStyle}`}>
+                {rawRole || 'User'}
+              </span>
+            )}
+            <span className="text-xs text-slate-300 font-medium truncate min-w-0 flex-1 lg:flex-none max-w-[190px] lg:max-w-[140px]">
+              {profile?.email || session.user?.email || 'Signed in'}
             </span>
             <button
               type="button"
               onClick={handleSignOut}
-              className="text-slate-500 hover:text-red-400 p-1 transition cursor-pointer ml-1"
+              className="shrink-0 inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 active:bg-red-500/15 transition cursor-pointer lg:min-h-8 lg:min-w-8"
               title="Sign Out"
+              aria-label="Sign out"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="w-5 h-5 lg:w-4 lg:h-4" />
             </button>
             <button
               type="button"
