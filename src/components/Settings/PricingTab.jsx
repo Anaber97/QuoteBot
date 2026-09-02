@@ -23,7 +23,8 @@ export default function PricingTab({
   const pricingMode = formData.pricing?.pricing_mode === 'mileage' ? 'mileage' : 'hourly';
   const isMileageMode = pricingMode === 'mileage';
   const rateUnit = isMileageMode ? '$/mi' : '$/hr';
-  const rateField = isMileageMode ? 'mileage_min' : 'hourly_min';
+  const rateField = isMileageMode ? 'mileage_rate' : 'hourly_rate';
+  const legacyMinField = isMileageMode ? 'mileage_min' : 'hourly_min';
   const legacyMaxField = isMileageMode ? 'mileage_max' : 'hourly_max';
   const classTableColumns = isMileageMode
     ? 'sm:grid-cols-[minmax(12rem,1fr)_8rem_2.25rem]'
@@ -31,6 +32,7 @@ export default function PricingTab({
   const updateStandardRate = (value) => {
     const rate = parseFloat(value) || 0;
     updatePricing(rateField, rate);
+    updatePricing(legacyMinField, rate);
     updatePricing(legacyMaxField, rate);
   };
   const systemSurcharges = [
@@ -226,10 +228,12 @@ export default function PricingTab({
               <label className="text-[10px] text-slate-400">Rate {rateUnit}
                 <input
                   type="number"
-                  value={isMileageMode ? (tc.minMileageRate ?? 5) : tc.minRate}
+                  value={isMileageMode ? (tc.mileageRate ?? tc.minMileageRate ?? 5) : (tc.hourlyRate ?? tc.rate ?? tc.minRate)}
                   onChange={(e) => {
                     const updated = [...formData.pricing.custom_truck_classes];
                     const rate = parseFloat(e.target.value) || 0;
+                    updated[idx][isMileageMode ? 'mileageRate' : 'hourlyRate'] = rate;
+                    if (!isMileageMode) updated[idx].rate = rate;
                     updated[idx][isMileageMode ? 'minMileageRate' : 'minRate'] = rate;
                     updated[idx][isMileageMode ? 'maxMileageRate' : 'maxRate'] = rate;
                     updatePricing('custom_truck_classes', updated);

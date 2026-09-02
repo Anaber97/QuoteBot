@@ -235,3 +235,15 @@ test('equipment pricing ignores municipality rates but keeps selected custom sur
   assert.equal(result.minQuote, 200);
   assert.equal(result.maxQuote, 200);
 });
+
+test('server quote rejects locality-only custom pricing outside a city-limit polygon', () => {
+  const localityOnlyConfig = structuredClone(config);
+  localityOnlyConfig.geofences.customZones = [{ id: 'henderson', city: 'Henderson', state: 'TX', pricingMode: 'flat_rate', price: 100 }];
+  const result = quote({
+    config: localityOnlyConfig,
+    role: 'dispatcher',
+    route: { ...route, localities: [{ city: 'Henderson', state: 'TX' }, { city: 'Henderson', state: 'TX' }] },
+  });
+  assert.notEqual(result.minQuote, 100);
+  assert.notEqual(result.maxQuote, 100);
+});

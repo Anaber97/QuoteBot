@@ -58,15 +58,6 @@ const pointInPolygon = (point, polygon) => {
 };
 
 const normalizeText = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-const matchesLocality = (location, zone) => {
-  if (!location || typeof location !== 'object') return false;
-  const resolvedCity = normalizeText(location.city);
-  const resolvedState = normalizeText(location.state);
-  const city = normalizeText(zone?.city);
-  const state = normalizeText(zone?.state);
-  return Boolean(resolvedCity && city && resolvedCity === city && (!state || resolvedState === state));
-};
-
 const zoneCharge = (zone, config) => {
   const override = config?.geofences?.customZoneRates?.[zone.id] || {};
   const feeType = override.feeType || zone.feeType || 'percent';
@@ -86,14 +77,17 @@ function findConfiguredZones(zones, addresses, routePoints, config) {
   }).map((zone) => ({ ...zone, charge: zoneCharge(zone, config) }));
 }
 
-function findCustomZones(localities, routePoints, config) {
+function findCustomZones(_localities, routePoints, config) {
   const disabled = new Set((config?.geofences?.disabledZones || []).map(String));
   return (config?.geofences?.customZones || []).filter((zone) => !disabled.has(String(zone.id))).filter((zone) => {
     const polygon = Array.isArray(zone.shape) && zone.shape.length >= 3;
-    const hits = polygon ? routePoints.some((point) => pointInPolygon(point, zone.shape)) : localities.some((location) => matchesLocality(location, zone));
+    // Fail closed: municipality metadata can extend beyond incorporated city
+    // limits, so it must never substitute for a configured boundary polygon.
+    if (!polygon) return false;
+    const hits = routePoints.some((point) => pointInPolygon(point, zone.shape));
     if ((zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) !== 'flat_rate') return hits;
-    const pickupHit = polygon ? routePoints[0] && pointInPolygon(routePoints[0], zone.shape) : matchesLocality(localities[0], zone);
-    const dropoffHit = polygon ? routePoints.at(-1) && pointInPolygon(routePoints.at(-1), zone.shape) : matchesLocality(localities.at(-1), zone);
+    const pickupHit = routePoints[0] && pointInPolygon(routePoints[0], zone.shape);
+    const dropoffHit = routePoints.at(-1) && pointInPolygon(routePoints.at(-1), zone.shape);
     return pickupHit && dropoffHit;
   }).map((zone) => ({
     ...zone,

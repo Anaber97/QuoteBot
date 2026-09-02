@@ -45,6 +45,9 @@ export default async function handler(req, res) {
       company_id: companyId,
 
       // Legacy flat columns for backward compatibility
+      pricing_mode: pricing.pricing_mode,
+      hourly_rate: pricing.hourly_rate,
+      mileage_rate: pricing.mileage_rate,
       hourly_min: pricing.hourly_min,
       hourly_max: pricing.hourly_max,
       rounding_interval: pricing.rounding_interval,

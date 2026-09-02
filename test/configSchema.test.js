@@ -140,6 +140,28 @@ test('normalizeConfig merges legacy and new config formats', () => {
   assert.equal(result.bases.length, 1);
 });
 
+test('normalizeConfig promotes canonical single rates and preserves mileage mode', () => {
+  const result = normalizeConfig({
+    pricing: {
+      pricing_mode: 'mileage',
+      hourly_rate: 175,
+      mileage_rate: 7.5,
+      hourly_min: 100,
+      hourly_max: 300,
+      mileage_min: 4,
+      mileage_max: 9,
+    },
+  });
+
+  assert.equal(result.pricing.pricing_mode, 'mileage');
+  assert.equal(result.pricing.hourly_rate, 175);
+  assert.equal(result.pricing.hourly_min, 175);
+  assert.equal(result.pricing.hourly_max, 175);
+  assert.equal(result.pricing.mileage_rate, 7.5);
+  assert.equal(result.pricing.mileage_min, 7.5);
+  assert.equal(result.pricing.mileage_max, 7.5);
+});
+
 test('normalizeConfig provides defaults for missing fields', () => {
   const minimal = { company_id: 'test-123', pricing: {} };
   const result = normalizeConfig(minimal);

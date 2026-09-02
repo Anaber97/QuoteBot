@@ -45,6 +45,8 @@ const asArray = (value) => (Array.isArray(value) ? value : []);
 
 export const DEFAULT_PRICING = {
   pricing_mode: 'hourly',
+  hourly_rate: RATES?.HOURLY_MIN || 125,
+  mileage_rate: 5,
   hourly_min: RATES?.HOURLY_MIN || 125,
   hourly_max: RATES?.HOURLY_MIN || 125,
   mileage_min: 5,
@@ -160,11 +162,14 @@ export const normalizeCustomSurcharge = (surcharge = {}, index = 0) => ({
  * Normalizes a custom truck class with all required fields and defaults.
  */
 export const normalizeCustomTruckClass = (truckClass = {}, index = 0) => {
-  const hourlyRate = toFinite(truckClass.minRate, 125);
-  const mileageRate = toFinite(truckClass.minMileageRate, 5);
+  const hourlyRate = toFinite(truckClass.hourlyRate ?? truckClass.rate ?? truckClass.minRate, 125);
+  const mileageRate = toFinite(truckClass.mileageRate ?? truckClass.minMileageRate, 5);
   return {
     id: truckClass.id || `class-${index + 1}`,
     name: truckClass.name || `Truck Class ${index + 1}`,
+    rate: hourlyRate,
+    hourlyRate,
+    mileageRate,
     minRate: hourlyRate,
     maxRate: hourlyRate,
     minMileageRate: mileageRate,
@@ -216,14 +221,16 @@ export function normalizeConfig(rawConfig = {}) {
     : DEFAULT_PRICING.custom_truck_classes;
 
   // Build normalized pricing
-  const hourlyRate = toFinite(baseConfig.pricing?.hourly_min ?? baseConfig.hourly_min, DEFAULT_PRICING.hourly_min);
-  const mileageRate = toFinite(baseConfig.pricing?.mileage_min, DEFAULT_PRICING.mileage_min);
+  const hourlyRate = toFinite(baseConfig.pricing?.hourly_rate ?? baseConfig.pricing?.hourly_min ?? baseConfig.hourly_rate ?? baseConfig.hourly_min, DEFAULT_PRICING.hourly_rate);
+  const mileageRate = toFinite(baseConfig.pricing?.mileage_rate ?? baseConfig.pricing?.mileage_min ?? baseConfig.mileage_rate, DEFAULT_PRICING.mileage_rate);
   const heavyHourlyRate = toFinite(baseConfig.pricing?.heavy_hourly_min, DEFAULT_PRICING.heavy_hourly_min);
   const normalizedPricing = {
     ...DEFAULT_PRICING,
     ...(baseConfig.pricing || {}),
     ...(baseConfig.surcharges || {}),
     pricing_mode: baseConfig.pricing?.pricing_mode ?? baseConfig.pricing_mode ?? DEFAULT_PRICING.pricing_mode,
+    hourly_rate: hourlyRate,
+    mileage_rate: mileageRate,
     hourly_min: hourlyRate,
     hourly_max: hourlyRate,
     mileage_min: mileageRate,

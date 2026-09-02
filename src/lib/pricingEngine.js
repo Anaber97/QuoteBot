@@ -47,11 +47,11 @@ export function resolveBaseRates({
     minRate = maxRate = toFinite(isMileageMode ? tier.mileageRate : tier.hourlyRate ?? tier.rate, isMileageMode ? 5 : 100);
     standardPricingMode = isMileageMode ? 'mileage' : 'hourly';
   } else if (isMileageMode) {
-    minRate = toFinite(selectedClass?.minMileageRate ?? pricing.mileage_min, 5);
+    minRate = toFinite(selectedClass?.mileageRate ?? selectedClass?.minMileageRate ?? pricing.mileage_rate ?? pricing.mileage_min, 5);
     maxRate = minRate;
     standardPricingMode = 'mileage';
   } else if (selectedClass) {
-    minRate = toFinite(selectedClass.minRate ?? pricing.hourly_min ?? config.hourly_min, 125);
+    minRate = toFinite(selectedClass.hourlyRate ?? selectedClass.rate ?? selectedClass.minRate ?? pricing.hourly_rate ?? pricing.hourly_min ?? config.hourly_rate ?? config.hourly_min, 125);
     maxRate = minRate;
     standardPricingMode = 'hourly';
   } else if (isHeavy) {
@@ -59,7 +59,7 @@ export function resolveBaseRates({
     maxRate = minRate;
     standardPricingMode = 'hourly';
   } else {
-    minRate = toFinite(pricing.hourly_min ?? config.hourly_min, 125);
+    minRate = toFinite(pricing.hourly_rate ?? pricing.hourly_min ?? config.hourly_rate ?? config.hourly_min, 125);
     maxRate = minRate;
     standardPricingMode = 'hourly';
   }

@@ -11,8 +11,10 @@ const validatePricingField = (value, fieldName) => {
       return validateEnum(value, VALID_PRICING_MODES);
     case 'hourly_min':
     case 'hourly_max':
+    case 'hourly_rate':
     case 'mileage_min':
     case 'mileage_max':
+    case 'mileage_rate':
     case 'rounding_interval':
     case 'drive_time_buffer':
     case 'load_unload_base_mins':
@@ -75,12 +77,12 @@ const validateCustomTruckClass = (truckClass, index) => {
     errors.push({ message: `name too long (max ${LIMITS.MAX_STRING_LENGTH})`, path: `${path}.name` });
   }
 
-  const minRate = validateNumber(truckClass.minRate, { min: 0, max: 10000 });
+  const minRate = validateNumber(truckClass.hourlyRate ?? truckClass.rate ?? truckClass.minRate, { min: 0, max: 10000 });
   if (!minRate.valid) {
     errors.push({ message: `minRate: ${minRate.error}`, path: `${path}.minRate` });
   }
 
-  const maxRate = validateNumber(truckClass.maxRate, { min: 0, max: 10000 });
+  const maxRate = validateNumber(truckClass.hourlyRate ?? truckClass.rate ?? truckClass.maxRate, { min: 0, max: 10000 });
   if (!maxRate.valid) {
     errors.push({ message: `maxRate: ${maxRate.error}`, path: `${path}.maxRate` });
   }

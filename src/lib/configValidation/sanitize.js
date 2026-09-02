@@ -11,6 +11,8 @@ const sanitizePricing = (pricing) => {
 
   return {
     pricing_mode: pricing.pricing_mode,
+    hourly_rate: pricing.hourly_rate,
+    mileage_rate: pricing.mileage_rate,
     hourly_min: pricing.hourly_min,
     hourly_max: pricing.hourly_max,
     mileage_min: pricing.mileage_min,
@@ -28,6 +30,7 @@ const sanitizePricing = (pricing) => {
     heavy_hourly_max: pricing.heavy_hourly_max,
     custom_truck_classes: Array.isArray(pricing.custom_truck_classes) ? pricing.custom_truck_classes.slice(0, LIMITS.MAX_TRUCK_CLASSES) : [],
     custom_surcharges: Array.isArray(pricing.custom_surcharges) ? pricing.custom_surcharges.slice(0, LIMITS.MAX_CUSTOM_SURCHARGES) : [],
+    surchargeModes: pricing.surchargeModes && typeof pricing.surchargeModes === 'object' ? pricing.surchargeModes : {},
   };
 };
 

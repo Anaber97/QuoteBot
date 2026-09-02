@@ -31,7 +31,7 @@ test('geofence checks return false when points and route miss the zone', async (
   assert.equal(matched, false);
 });
 
-test('custom municipality zones use exact Google locality metadata, not address text', async () => {
+test('custom municipality zones never use locality metadata without a city-limit polygon', async () => {
   const companyRates = { geofences: { customZones: [{ id: 'henderson', city: 'Henderson', state: 'TX', pricingMode: 'flat_rate', price: 100 }] } };
   const falsePositive = await evaluateCustomGeofences(
     ['100 Henderson Rd, Longview, TX', '200 Henderson Rd, Longview, TX'],
@@ -41,11 +41,22 @@ test('custom municipality zones use exact Google locality metadata, not address 
   );
   assert.equal(falsePositive.length, 0);
 
-  const exactMatch = await evaluateCustomGeofences(
+  const localityOnlyMatch = await evaluateCustomGeofences(
     ['Pickup', 'Dropoff'],
     [{ lat: 32.1, lng: -94.8 }, { lat: 32.2, lng: -94.7 }],
     companyRates,
     [{ city: 'Henderson', state: 'TX' }, { city: 'Henderson', state: 'TX' }]
   );
-  assert.equal(exactMatch.length, 1);
+  assert.equal(localityOnlyMatch.length, 0);
+});
+
+test('custom municipality pricing requires coordinates inside the saved boundary', async () => {
+  const companyRates = { geofences: { customZones: [{
+    id: 'henderson', city: 'Henderson', state: 'TX', pricingMode: 'flat_rate', price: 100,
+    shape: [{ lat: 32, lng: -95 }, { lat: 32, lng: -94 }, { lat: 33, lng: -94 }, { lat: 33, lng: -95 }],
+  }] } };
+  const outside = await evaluateCustomGeofences([], [{ lat: 33.1, lng: -94.5 }, { lat: 33.2, lng: -94.5 }], companyRates);
+  const inside = await evaluateCustomGeofences([], [{ lat: 32.1, lng: -94.8 }, { lat: 32.2, lng: -94.7 }], companyRates);
+  assert.equal(outside.length, 0);
+  assert.equal(inside.length, 1);
 });

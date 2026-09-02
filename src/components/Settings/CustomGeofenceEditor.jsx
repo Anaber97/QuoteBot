@@ -137,7 +137,7 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
           placeholder="Start typing a city or municipality"
           className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white"
         />
-        <p className="mt-1 text-[10px] text-slate-500">Pick a city from Google suggestions. The selected locality is what the quote engine will use.</p>
+        <p className="mt-1 text-[10px] text-slate-500">Locality names are for identification only. Pricing requires a saved city-limit boundary.</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -210,10 +210,17 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         </div>
       </div>
 
+      {(!Array.isArray(zone.shape) || zone.shape.length < 3) && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[10px] text-amber-200">
+          No city-limit boundary is saved for this zone. It is inactive and cannot affect quotes.
+        </div>
+      )}
+
       <button
         type="button"
         onClick={onSave}
-        className="w-full rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-semibold text-white"
+        disabled={!Array.isArray(zone.shape) || zone.shape.length < 3}
+        className="w-full rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
       >
         Apply geofence changes
       </button>

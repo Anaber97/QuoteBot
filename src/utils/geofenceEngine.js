@@ -50,24 +50,6 @@ function getZoneCharge(zoneConfig, companyRates = {}) {
   return { feeType: defaultFeeType, value: defaultValue };
 }
 
-function normalizeText(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function matchesLocality(location, zone) {
-  if (!location || typeof location !== 'object') return false;
-  const resolvedCity = normalizeText(location.city);
-  const resolvedState = normalizeText(location.state);
-  const cityText = normalizeText(zone?.city);
-  const stateText = normalizeText(zone?.state);
-  if (!resolvedCity || !cityText || resolvedCity !== cityText) return false;
-  return !stateText || resolvedState === stateText;
-}
-
 export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList = [], routePoints = []) {
   const cleanAddresses = (addresses || []).filter((addr) => typeof addr === 'string' && addr.trim().length > 0);
 
@@ -123,26 +105,21 @@ export async function evaluateHazardGeofences(cleanWaypoints, coordsList, compan
   return evaluateZoneMatches(HAZARD_ZONES, cleanWaypoints, coordsList, companyRates, routePoints);
 }
 
-export async function evaluateCustomGeofences(cleanWaypoints, coordsList, companyRates = {}, resolvedLocations = []) {
+export async function evaluateCustomGeofences(_cleanWaypoints, coordsList, companyRates = {}, _resolvedLocations = []) {
   const disabledZoneIds = new Set((companyRates?.geofences?.disabledZones || []).map((id) => String(id)));
   const customZones = (companyRates?.geofences?.customZones || []).filter((zone) => !disabledZoneIds.has(String(zone.id)));
   const pickupPoint = coordsList?.[0] || null;
   const dropoffPoint = coordsList?.[coordsList.length - 1] || null;
-  const pickupLocation = resolvedLocations?.[0] || null;
-  const dropoffLocation = resolvedLocations?.[resolvedLocations.length - 1] || null;
 
   const results = await Promise.all(
     customZones.map(async (zone) => {
-      const legacyShape = Array.isArray(zone.shape) && zone.shape.length >= 3;
-      const containsPickup = legacyShape
-        ? (pickupPoint ? isPointInPolygon(pickupPoint, zone.shape) : false)
-        : matchesLocality(pickupLocation, zone);
-      const containsDropoff = legacyShape
-        ? (dropoffPoint ? isPointInPolygon(dropoffPoint, zone.shape) : false)
-        : matchesLocality(dropoffLocation, zone);
-      const anyRoutePointInside = legacyShape
-        ? coordsList.some((point) => point && isPointInPolygon(point, zone.shape))
-        : resolvedLocations.some((location) => matchesLocality(location, zone));
+      // A locality name is a postal/geocoding label, not proof that a point is
+      // inside incorporated city limits. Custom pricing is fail-closed unless
+      // the zone has an explicit boundary polygon.
+      if (!Array.isArray(zone.shape) || zone.shape.length < 3) return null;
+      const containsPickup = pickupPoint ? isPointInPolygon(pickupPoint, zone.shape) : false;
+      const containsDropoff = dropoffPoint ? isPointInPolygon(dropoffPoint, zone.shape) : false;
+      const anyRoutePointInside = coordsList.some((point) => point && isPointInPolygon(point, zone.shape));
 
       const pricingMode = zone.pricingMode || (String(zone.feeType || 'percent') === 'flat' ? 'flat_rate' : 'surcharge');
       if (pricingMode === 'flat_rate') {
