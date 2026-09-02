@@ -336,6 +336,7 @@ export default function App() {
       });
 
       setQuoteData({ ...data, appliedCustomSurcharges: state.pendingCustomSurcharges });
+      dispatch({ type: 'SET_OVERRIDE', payload: { key: 'customSurcharges', value: { ...state.pendingCustomSurcharges } } });
 
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -538,7 +539,7 @@ export default function App() {
                       <QuoteResultsCard
                         state={{
                           ...state,
-                          activeOverrides: { ...state.activeOverrides, customSurcharges: quoteData.appliedCustomSurcharges || {} },
+                          activeOverrides: state.activeOverrides,
                           quoteData,
                           customRate: state.customRateInput,
                         }}
@@ -662,7 +663,7 @@ export default function App() {
                         <QuoteResultsCard
                           state={{
                             ...state,
-                            activeOverrides: { ...state.activeOverrides, customSurcharges: quoteData.appliedCustomSurcharges || {} },
+                            activeOverrides: state.activeOverrides,
                             quoteData,
                             customRate: state.customRateInput,
                           }}

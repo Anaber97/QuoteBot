@@ -14,7 +14,7 @@ export async function sendStoredApprovalEmail(admin, profile, quote) {
     <li>Equipment: ${safe(details.name || details.equipmentName, 'Unknown')}</li>
     <li>Make: ${safe(details.make)}</li><li>Model: ${safe(details.model)}</li><li>Serial Number: ${safe(details.serialNumber)}</li>
     <li>Estimated weight: ${safe(details.weight, '0')} lbs</li><li>Pickup: ${safe(quote.pickup_address)}</li><li>Dropoff: ${safe(quote.dropoff_address)}</li>
-    <li>Authoritative quote: $${safe(quote.min_quote)}${quote.max_quote !== quote.min_quote ? ` – $${safe(quote.max_quote)}` : ''}</li>
+    <li>Authoritative quote: $${safe(quote.min_quote)}</li>
     <li>Permit flags: ${safe(Array.isArray(details.permitFlags) && details.permitFlags.length ? details.permitFlags.join(', ') : 'None')}</li></ul>
     <p>Submitted by ${safe(profile.full_name || profile.email)}. Quote reference: ${safe(document.reference)}</p></div></div>`;
   const { data, error } = await admin.functions.invoke('send-quote-approval-email', {

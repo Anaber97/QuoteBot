@@ -16,10 +16,35 @@ describe('legal surfaces', () => {
     expect(screen.getByRole('heading', { name: 'Privacy Policy', level: 1 })).toBeInTheDocument();
   });
 
-  it('shows the non-binding estimate disclaimer with every result card', () => {
-    render(<QuoteResultsCard state={{ quoteData: { baseMinQuote: 100, baseMaxQuote: 120 }, activeOverrides: {} }} />);
+  it('shows one disclaimer for client results and none for dispatcher results', () => {
+    const { rerender } = render(<QuoteResultsCard state={{ quoteData: { baseMinQuote: 100, baseMaxQuote: 120 }, activeOverrides: {} }} />);
     expect(screen.getByRole('note')).toHaveTextContent(/non-binding estimate/i);
     expect(screen.getByRole('note')).toHaveTextContent(/route.*vehicle.*site access.*permits.*tolls/i);
+    expect(screen.getAllByRole('note')).toHaveLength(1);
+    rerender(<QuoteResultsCard isDispatcherView state={{ quoteData: { baseMinQuote: 100, baseMaxQuote: 120 }, activeOverrides: {} }} />);
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  it('shows a single dispatcher price and interactive surcharge controls', async () => {
+    const user = userEvent.setup();
+    const dispatch = vi.fn();
+    render(<QuoteResultsCard
+      isDispatcherView
+      dispatch={dispatch}
+      companyRates={{ pricing: { rounding_interval: 1, custom_surcharges: [{ id: 'fuel', name: 'Fuel', feeType: 'flat', value: 25, active: true }] } }}
+      state={{
+        quoteData: { pricingMode: 'equipment-weight-tier', fixedRate: 100, rawTotalHours: 1, baseMinQuote: 100, baseMaxQuote: 140, appliedCustomSurcharges: { fuel: true } },
+        activeOverrides: { customSurcharges: { fuel: true } },
+      }}
+    />);
+    expect(screen.getByText('$125')).toBeInTheDocument();
+    expect(screen.queryByText(/\$100\s*[–-]\s*\$140/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No surcharge add-ons applied/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Fuel.*✕/i }));
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'SET_OVERRIDE',
+      payload: { key: 'customSurcharges', value: { fuel: false } },
+    }));
   });
 
   it('provides a keyboard-operable, labeled, initially unchecked acknowledgment', async () => {

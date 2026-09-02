@@ -69,7 +69,7 @@ export default function QuoteResultsCard({
 
   if (!quoteData) return null;
 
-  const { currentMinQuote, currentMaxQuote, customCalculatedQuote } = calculateFinalQuotes(
+  const { currentMinQuote, customCalculatedQuote } = calculateFinalQuotes(
     quoteData,
     activeOverrides,
     state?.customRateInput ?? state?.customRate ?? 0,
@@ -79,16 +79,21 @@ export default function QuoteResultsCard({
   const permitFee = Number(quoteData?.equipmentMeta?.permitFee || quoteData?.permitFee || 0);
   const attachmentWeight = Number(quoteData?.equipmentMeta?.attachmentWeight || 0);
   const effectiveMinQuote = currentMinQuote + permitFee;
-  const effectiveMaxQuote = currentMaxQuote + permitFee;
   const clientPrice = effectiveMinQuote;
   const isFixedEquipmentQuote = quoteData?.pricingMode === 'equipment-weight-tier';
   const isMileageQuote = (quoteData?.pricingRateMode || quoteData?.pricingMode) === 'mileage';
   const dispatcherSurcharges = [
+    quoteData?.hasAfterHours ? { key: 'afterHours', active: activeOverrides?.afterHours } : null,
+    quoteData?.hasRoadClub ? { key: 'roadClub', active: activeOverrides?.roadClub } : null,
     quoteData?.hasMetroZone ? { key: 'metro', active: activeOverrides?.metro } : null,
     quoteData?.hasHazardZone ? { key: 'hazard', active: activeOverrides?.hazard } : null,
     quoteData?.hasCustomZone ? { key: 'custom', active: true } : null,
   ].filter(Boolean);
-  const appliedCustomSurcharges = (companyRates.pricing?.custom_surcharges || []).filter((item) => item.active !== false && activeOverrides?.customSurcharges?.[item.id] === true);
+  const selectedCustomSurcharges = (companyRates.pricing?.custom_surcharges || []).filter((item) =>
+    item.active !== false && (
+      quoteData?.appliedCustomSurcharges?.[item.id] === true || activeOverrides?.customSurcharges?.[item.id] === true
+    )
+  );
   const metroCodes = Array.isArray(quoteData?.metroCodes) && quoteData.metroCodes.length > 0 ? quoteData.metroCodes : [];
   const metroFeeMode = companyRates?.pricing?.surchargeModes?.metro_multiplier || companyRates?.surcharges?.surchargeModes?.metro_multiplier || 'percent';
   const metroFeeValue = companyRates?.pricing?.metro_multiplier ?? companyRates?.surcharges?.metro_multiplier ?? 28.57;
@@ -165,21 +170,30 @@ export default function QuoteResultsCard({
     dispatch?.({ type: 'SET_OVERRIDE', payload: { key, value: !activeOverrides?.[key] } });
   };
 
+  const toggleCustomSurcharge = (id) => {
+    dispatch?.({
+      type: 'SET_OVERRIDE',
+      payload: {
+        key: 'customSurcharges',
+        value: {
+          ...(activeOverrides?.customSurcharges || {}),
+          [id]: activeOverrides?.customSurcharges?.[id] !== true,
+        },
+      },
+    });
+  };
+
   return (
     <div
       ref={resultsRef}
       className="mt-6 lg:mt-0 bg-[#0c1019] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xl space-y-5 transition-all min-w-0"
     >
-      {/* 1. Price Range Display */}
+      {/* 1. Single Price Display */}
       <div className="text-center space-y-1">
         <span className="text-[10px] uppercase font-mono tracking-widest text-slate-400">
           {isDispatcherView ? 'Estimated Total Quote' : 'Your Estimated Quote'}
         </span>
-        {!isDispatcherView && <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>}
-        {isDispatcherView && isFixedEquipmentQuote && <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>}
-        <div className={`text-4xl font-black text-white tracking-tight ${isDispatcherView && !isFixedEquipmentQuote ? '' : 'hidden'}`}>
-          ${effectiveMinQuote} <span className="text-slate-500 font-light">–</span> ${effectiveMaxQuote}
-        </div>
+        <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>
         {isDispatcherView && isFixedEquipmentQuote && (
           <div className="text-[11px] text-slate-400">
             {quoteData.weightTierLabel || 'Equipment weight class'} · ${Number(quoteData.fixedRate ?? quoteData.fixedHourlyRate).toFixed(quoteData.pricingRateMode === 'mileage' ? 2 : 0)}/{quoteData.pricingRateMode === 'mileage' ? 'mi' : 'hr'}
@@ -197,14 +211,17 @@ export default function QuoteResultsCard({
         )}
       </div>
 
-      <p role="note" className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-[11px] leading-5 text-slate-300">
-        <span className="font-semibold text-blue-300">Estimate notice: </span>{estimateDisclaimer}
-      </p>
+      {!isDispatcherView && (
+        <p role="note" className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-[11px] leading-5 text-slate-300">
+          <span className="font-semibold text-blue-300">Estimate notice: </span>
+          {companyRates?.client_portal?.disclosure || estimateDisclaimer}
+        </p>
+      )}
 
       {isDispatcherView && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
-            {dispatcherSurcharges.length > 0 ? dispatcherSurcharges.map(({ key, active }) => {
+            {dispatcherSurcharges.map(({ key, active }) => {
               const style = BADGE_STYLES[key];
               if (!style) return null;
               return (
@@ -221,14 +238,19 @@ export default function QuoteResultsCard({
                   </span>
                 </button>
               );
-            }) : (
+            })}
+            {selectedCustomSurcharges.map((item) => {
+              const active = activeOverrides?.customSurcharges?.[item.id] === true;
+              return (
+              <button key={item.id} type="button" onClick={() => toggleCustomSurcharge(item.id)} title={active ? 'Click to disable surcharge' : 'Click to restore surcharge'} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${active ? BADGE_STYLES.custom.active : BADGE_STYLES.custom.disabled}`}>
+                <span>{item.name} ({item.feeType === 'percent' ? `+${item.value}%` : `+$${item.value}`})</span>
+                <span className="rounded bg-black/20 px-1 text-[10px] font-black leading-none opacity-80">{active ? '✕' : '↺'}</span>
+              </button>
+              );
+            })}
+            {dispatcherSurcharges.length === 0 && selectedCustomSurcharges.length === 0 && (
               <span className="text-[10px] uppercase tracking-wide text-slate-500">No surcharge add-ons applied</span>
             )}
-            {appliedCustomSurcharges.map((item) => (
-              <span key={item.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold border-violet-500/30 bg-violet-500/10 text-violet-300">
-                {item.name} ({item.feeType === 'percent' ? `+${item.value}%` : `+$${item.value}`})
-              </span>
-            ))}
           </div>
           <div className="text-center">
             <button
@@ -295,11 +317,9 @@ export default function QuoteResultsCard({
                 </span>
               </div>
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>{isFixedEquipmentQuote ? 'Base Equipment Price' : 'Base Price Range (No Surcharges)'}</span>
+                <span>{isFixedEquipmentQuote ? 'Base Equipment Price' : 'Base Price (No Surcharges)'}</span>
                 <span className="font-semibold text-emerald-400">
-                  {isFixedEquipmentQuote
-                    ? `$${quoteData.baseMinQuote}`
-                    : `$${quoteData.baseMinQuote} – $${quoteData.baseMaxQuote}`}
+                  ${quoteData.baseMinQuote}
                 </span>
               </div>
               <div className="flex justify-between items-center pt-1 text-sm font-bold text-white">
@@ -355,15 +375,6 @@ export default function QuoteResultsCard({
 
       {/* 3. Save Form */}
       <div className="space-y-3 pt-2 border-t border-slate-800/60">
-        {!isDispatcherView && companyRates?.client_portal?.disclosure && (
-          <div className="rounded-xl border border-slate-800 bg-[#080c14] px-3 py-2 text-[11px] text-slate-400">
-            <div className="font-semibold text-slate-300 mb-1">Quote Disclosure</div>
-            <p>{companyRates.client_portal.disclosure}</p>
-            <p className="mt-1 text-slate-500">
-              Questions? Call {companyRates.client_portal.contact_phone || '(555) 555-0199'} or email {companyRates.client_portal.contact_email || 'quotes@yourcompany.com'}.
-            </p>
-          </div>
-        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <input
             type="text"

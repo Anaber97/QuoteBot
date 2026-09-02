@@ -132,12 +132,12 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   }, []);
 
   const handleSelectEquipment = (item) => {
-    const fullName = `${item.make} ${item.model}${item.serial_number ? ` (SN: ${item.serial_number})` : ''}`;
+    const fullName = `${item.make} ${item.model}`.trim();
     setSelectedEquipmentName(fullName);
     setSearchQuery(fullName);
     setMake(item.make || '');
     setModel(item.model || '');
-    setSerialNumber(item.serial_number || '');
+    setSerialNumber('');
     setWeight(item.operating_weight_lbs || '');
     setWidth(item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : '') || '');
     setHeight(item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : '') || '');
