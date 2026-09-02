@@ -160,7 +160,7 @@ export default function App() {
     dispatch({ type: 'LOAD_LOGGED_QUOTE', payload: loggedQuote });
     setQuoteData(null);
     setOpenedLoggedQuote(loggedQuote);
-    setShowEquipmentCalculator(loggedQuote.quote_source === 'client_portal');
+    setShowEquipmentCalculator(['client_portal', 'equipment_calculator'].includes(loggedQuote.quote_source));
   };
 
   const handleSignOut = async () => {
