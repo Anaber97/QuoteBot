@@ -1,5 +1,5 @@
 import React from 'react';
-import { DollarSign, Clock, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, DollarSign, Clock, Plus, Trash2 } from 'lucide-react';
 
 export default function PricingTab({
   formData,
@@ -7,6 +7,7 @@ export default function PricingTab({
   updatePricingMode,
   addTruckClass,
   removeTruckClass,
+  reorderTruckClass,
   customSurchargeItems,
   addCustomSurcharge,
   toggleCustomSurcharge,
@@ -27,8 +28,13 @@ export default function PricingTab({
   const legacyMinField = isMileageMode ? 'mileage_min' : 'hourly_min';
   const legacyMaxField = isMileageMode ? 'mileage_max' : 'hourly_max';
   const classTableColumns = isMileageMode
-    ? 'sm:grid-cols-[minmax(12rem,1fr)_8rem_2.25rem]'
-    : 'sm:grid-cols-[minmax(12rem,1fr)_7.5rem_8rem_6.5rem_2.25rem]';
+    ? 'sm:grid-cols-[minmax(12rem,1fr)_8rem_6.75rem]'
+    : 'sm:grid-cols-[minmax(12rem,1fr)_7.5rem_8rem_6.5rem_6.75rem]';
+  const updateTruckClass = (index, patch) => {
+    updatePricing('custom_truck_classes', formData.pricing.custom_truck_classes.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, ...patch } : item
+    ));
+  };
   const updateStandardRate = (value) => {
     const rate = parseFloat(value) || 0;
     updatePricing(rateField, rate);
@@ -218,11 +224,7 @@ export default function PricingTab({
               type="text"
               placeholder="Class Name"
               value={tc.name}
-              onChange={(e) => {
-                const updated = [...formData.pricing.custom_truck_classes];
-                updated[idx].name = e.target.value;
-                updatePricing('custom_truck_classes', updated);
-              }}
+              onChange={(e) => updateTruckClass(idx, { name: e.target.value })}
               className="w-full bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
             />
               <label className="text-[10px] text-slate-400">Rate {rateUnit}
@@ -230,13 +232,10 @@ export default function PricingTab({
                   type="number"
                   value={isMileageMode ? (tc.mileageRate ?? tc.minMileageRate ?? 5) : (tc.hourlyRate ?? tc.rate ?? tc.minRate)}
                   onChange={(e) => {
-                    const updated = [...formData.pricing.custom_truck_classes];
                     const rate = parseFloat(e.target.value) || 0;
-                    updated[idx][isMileageMode ? 'mileageRate' : 'hourlyRate'] = rate;
-                    if (!isMileageMode) updated[idx].rate = rate;
-                    updated[idx][isMileageMode ? 'minMileageRate' : 'minRate'] = rate;
-                    updated[idx][isMileageMode ? 'maxMileageRate' : 'maxRate'] = rate;
-                    updatePricing('custom_truck_classes', updated);
+                    updateTruckClass(idx, isMileageMode
+                      ? { mileageRate: rate, minMileageRate: rate, maxMileageRate: rate }
+                      : { hourlyRate: rate, rate, minRate: rate, maxRate: rate });
                   }}
                   className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
                 />
@@ -246,11 +245,7 @@ export default function PricingTab({
                   type="number"
                   step="1"
                   value={tc.drive_time_buffer ?? 10}
-                  onChange={(e) => {
-                    const updated = [...formData.pricing.custom_truck_classes];
-                    updated[idx].drive_time_buffer = parseFloat(e.target.value) || 0;
-                    updatePricing('custom_truck_classes', updated);
-                  }}
+                  onChange={(e) => updateTruckClass(idx, { drive_time_buffer: parseFloat(e.target.value) || 0 })}
                   className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
                 />
               </label>}
@@ -258,23 +253,15 @@ export default function PricingTab({
                 <input
                   type="number"
                   value={tc.load_unload_base_mins ?? 30}
-                  onChange={(e) => {
-                    const updated = [...formData.pricing.custom_truck_classes];
-                    updated[idx].load_unload_base_mins = parseInt(e.target.value, 10) || 0;
-                    updatePricing('custom_truck_classes', updated);
-                  }}
+                  onChange={(e) => updateTruckClass(idx, { load_unload_base_mins: parseInt(e.target.value, 10) || 0 })}
                   className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
                 />
               </label>}
-              <button
-                type="button"
-                onClick={() => removeTruckClass(tc.id)}
-                aria-label={`Delete ${tc.name}`}
-                title="Delete class"
-                className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center justify-end gap-1">
+                <button type="button" disabled={idx === 0} onClick={() => reorderTruckClass(idx, -1)} aria-label={`Move ${tc.name} up`} title="Move class up" className="inline-flex items-center justify-center rounded border border-slate-700 px-2 py-2 text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
+                <button type="button" disabled={idx === formData.pricing.custom_truck_classes.length - 1} onClick={() => reorderTruckClass(idx, 1)} aria-label={`Move ${tc.name} down`} title="Move class down" className="inline-flex items-center justify-center rounded border border-slate-700 px-2 py-2 text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => removeTruckClass(tc.id)} aria-label={`Delete ${tc.name}`} title="Delete class" className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"><Trash2 className="h-3.5 w-3.5" /></button>
+              </div>
           </div>
         ))}
       </div>

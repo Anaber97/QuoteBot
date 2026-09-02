@@ -63,6 +63,29 @@ describe('Settings unsaved-change behavior', () => {
     expect(await screen.findByText(/saved successfully/i)).toBeInTheDocument();
   });
 
+  test('editing again after a successful save re-enables Save', async () => {
+    authenticatedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, config: { ...DEFAULT_CONFIG, pricing: { ...DEFAULT_CONFIG.pricing, pricing_mode: 'mileage' } } }),
+    });
+    render(<Settings config={DEFAULT_CONFIG} onSaveConfig={() => {}} currentUserRole="manager" profile={baseProfile} />);
+    fireEvent.click(screen.getByRole('button', { name: /mileage mode/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /saved/i })).toBeDisabled());
+
+    fireEvent.change(screen.getAllByPlaceholderText('Class Name')[0], { target: { value: 'Priority Tow' } });
+    expect(await screen.findByRole('button', { name: /save settings/i })).toBeEnabled();
+  });
+
+  test('reorders towing classes and marks the form dirty', async () => {
+    render(<Settings config={DEFAULT_CONFIG} onSaveConfig={() => {}} currentUserRole="manager" profile={baseProfile} />);
+    const firstClass = screen.getAllByPlaceholderText('Class Name')[0];
+    expect(firstClass).toHaveValue('Standard Tow / Flatbed');
+    fireEvent.click(screen.getByRole('button', { name: /Move Standard Tow \/ Flatbed down/i }));
+    expect(screen.getAllByPlaceholderText('Class Name')[1]).toHaveValue('Standard Tow / Flatbed');
+    expect(screen.getByRole('button', { name: /save settings/i })).toBeEnabled();
+  });
+
   test('a failed save keeps the unsaved-changes state and surfaces the error', async () => {
     authenticatedFetchMock.mockResolvedValue({
       ok: false,

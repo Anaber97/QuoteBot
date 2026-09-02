@@ -26,10 +26,12 @@ const formatRole = (role) => {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
+const cloneNormalizedConfig = (value) => JSON.parse(JSON.stringify(normalizeConfig(value)));
+
 export default function Settings({ config, onSaveConfig, currentUserRole, profile }) {
   const [activeSubTab, setActiveSubTab] = useState('pricing');
-  const [formData, setFormData] = useState(() => normalizeConfig(config));
-  const [savedFormData, setSavedFormData] = useState(() => normalizeConfig(config));
+  const [formData, setFormData] = useState(() => cloneNormalizedConfig(config));
+  const [savedFormData, setSavedFormData] = useState(() => cloneNormalizedConfig(config));
   const [companyUsers, setCompanyUsers] = useState([]);
   const [clientAccounts, setClientAccounts] = useState([]);
   const [inviteName, setInviteName] = useState('');
@@ -53,9 +55,8 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
 
   useEffect(() => {
     if (config) {
-      const normalized = normalizeConfig(config);
-      setFormData(normalized);
-      setSavedFormData(normalized);
+      setFormData(cloneNormalizedConfig(config));
+      setSavedFormData(cloneNormalizedConfig(config));
     }
   }, [config]);
 
@@ -247,8 +248,8 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       // Use the exact object we sent as the new in-memory source of truth.
       const savedConfig = normalizeConfig(result?.config || normalizedConfig);
       setSaveStatus({ type: 'success', message: 'Configuration saved successfully!' });
-      setFormData(savedConfig);
-      setSavedFormData(savedConfig);
+      setFormData(cloneNormalizedConfig(savedConfig));
+      setSavedFormData(cloneNormalizedConfig(savedConfig));
       if (onSaveConfig) onSaveConfig(savedConfig);
     } catch (err) {
       console.error('Error saving app_config:', err);
@@ -441,6 +442,16 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
         custom_truck_classes: (prev.pricing?.custom_truck_classes || []).filter(t => t.id !== id)
       }
     }));
+  };
+
+  const reorderTruckClass = (index, direction) => {
+    setFormData((prev) => {
+      const classes = [...(prev.pricing?.custom_truck_classes || [])];
+      const destination = index + direction;
+      if (destination < 0 || destination >= classes.length) return prev;
+      [classes[index], classes[destination]] = [classes[destination], classes[index]];
+      return { ...prev, pricing: { ...prev.pricing, custom_truck_classes: classes } };
+    });
   };
 
   const addBase = () => {
@@ -797,6 +808,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           updatePricingMode={updatePricingMode}
           addTruckClass={addTruckClass}
           removeTruckClass={removeTruckClass}
+          reorderTruckClass={reorderTruckClass}
           customSurchargeItems={customSurchargeItems}
           addCustomSurcharge={addCustomSurcharge}
           toggleCustomSurcharge={toggleCustomSurcharge}
