@@ -242,3 +242,20 @@ export function calculatePermitRequirements({
 
   return { needsPermit, isInterstate, flags, permitFee };
 }
+
+/** Resolves the highest escort requirement triggered by width or height. */
+export function resolveEscortRequirement({ width = 0, height = 0, rules = [] } = {}) {
+  const numericWidth = toFinite(width);
+  const numericHeight = toFinite(height);
+  const matches = (Array.isArray(rules) ? rules : []).filter((rule) => {
+    const minWidth = toFinite(rule?.minWidth);
+    const minHeight = toFinite(rule?.minHeight);
+    return (minWidth > 0 && numericWidth >= minWidth) || (minHeight > 0 && numericHeight >= minHeight);
+  });
+  const rule = matches.sort((a, b) => toFinite(b.vehicleCount) - toFinite(a.vehicleCount))[0];
+  if (!rule) return { vehicleCount: 0, surcharge: 0, triggeredBy: [] };
+  const triggeredBy = [];
+  if (toFinite(rule.minWidth) > 0 && numericWidth >= toFinite(rule.minWidth)) triggeredBy.push('width');
+  if (toFinite(rule.minHeight) > 0 && numericHeight >= toFinite(rule.minHeight)) triggeredBy.push('height');
+  return { vehicleCount: toFinite(rule.vehicleCount), surcharge: toFinite(rule.surcharge), triggeredBy };
+}

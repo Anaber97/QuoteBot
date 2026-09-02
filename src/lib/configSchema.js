@@ -108,6 +108,10 @@ export const DEFAULT_CLIENT_PORTAL = {
   approval_threshold: 80001,
   rounding_interval: 25,
   use_custom_pricing: false,
+  escort_rules: [
+    { vehicleCount: 1, minWidth: 0, minHeight: 0, surcharge: 0 },
+    { vehicleCount: 2, minWidth: 0, minHeight: 0, surcharge: 0 },
+  ],
   disclosure:
     'These quotes are electronically generated estimates based on the information provided and may be affected by route conditions, permit requirements, or equipment-specific variables. Please confirm final pricing with a company representative before dispatch.',
   weight_tiers: [
@@ -297,6 +301,15 @@ export function normalizeConfig(rawConfig = {}) {
     rounding_interval: toFinite(baseConfig.client_portal?.rounding_interval, DEFAULT_CLIENT_PORTAL.rounding_interval),
     use_custom_pricing: baseConfig.client_portal?.use_custom_pricing === true,
     disclosure: baseConfig.client_portal?.disclosure || DEFAULT_CLIENT_PORTAL.disclosure,
+    escort_rules: [1, 2].map((vehicleCount) => {
+      const saved = asArray(baseConfig.client_portal?.escort_rules).find((rule) => Number(rule.vehicleCount) === vehicleCount) || DEFAULT_CLIENT_PORTAL.escort_rules[vehicleCount - 1];
+      return {
+        vehicleCount,
+        minWidth: toFinite(saved.minWidth, DEFAULT_CLIENT_PORTAL.escort_rules[vehicleCount - 1].minWidth),
+        minHeight: toFinite(saved.minHeight, DEFAULT_CLIENT_PORTAL.escort_rules[vehicleCount - 1].minHeight),
+        surcharge: toFinite(saved.surcharge, DEFAULT_CLIENT_PORTAL.escort_rules[vehicleCount - 1].surcharge),
+      };
+    }),
     weight_tiers: normalizedWeightTiers,
     clients: asArray(baseConfig.client_portal?.clients),
   };

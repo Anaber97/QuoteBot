@@ -6,6 +6,7 @@ import {
   getFlatOverride,
   calculateFinalQuotes as calculateFinalQuotesPure,
   calculatePermitRequirements as calculatePermitPure,
+  resolveEscortRequirement,
 } from '../src/lib/pricingEngine.js';
 
 const toFinite = (value, fallback = 0) => {
@@ -180,6 +181,11 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
       ? toFinite(tier?.permitCost, toFinite(config?.pricing?.base_permit_fee, 150))
       : toFinite(config?.pricing?.base_permit_fee, 150),
   });
+  const escort = resolveEscortRequirement({
+    width: toFinite(input.equipment?.width),
+    height: toFinite(input.equipment?.height),
+    rules: config?.client_portal?.escort_rules,
+  });
 
   // Use shared final quote calculation
   let customQuantity = null;
@@ -193,7 +199,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
-    surchargeFlatSum: flatSum,
+    surchargeFlatSum: flatSum + escort.surcharge,
     permitFee: permit.permitFee,
     rounding: interval,
     customRate: role !== 'client' ? toFinite(input.customRate) : null,
@@ -210,9 +216,10 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     customQuote: quoteResult.customQuote,
     approvalRequired: totalWeight >= toFinite(clientConfig?.approval_threshold ?? config?.client_portal?.approval_threshold, 80000),
     permit,
+    escort,
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
     appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(!useWeightTierPricing && metroMatches.length && overrides.metro), hazard: Boolean(!useWeightTierPricing && hazardMatches.length && overrides.hazard) },
     routeLegs: route.legs,
-    quoteDetails: { ...(input.equipment || {}), permitFee: permit.permitFee, permitFlags: permit.flags },
+    quoteDetails: { ...(input.equipment || {}), permitFee: permit.permitFee, permitFlags: permit.flags, escort },
   };
 }

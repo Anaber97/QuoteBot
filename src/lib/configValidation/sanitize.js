@@ -64,6 +64,7 @@ const sanitizeClientPortal = (portal) => {
     rounding_interval: portal.rounding_interval,
     use_custom_pricing: portal.use_custom_pricing,
     disclosure: portal.disclosure,
+    escort_rules: Array.isArray(portal.escort_rules) ? portal.escort_rules.slice(0, 2) : [],
     weight_tiers: Array.isArray(portal.weight_tiers) ? portal.weight_tiers.slice(0, LIMITS.MAX_WEIGHT_TIERS) : [],
     clients: Array.isArray(portal.clients) ? portal.clients.slice(0, LIMITS.MAX_CLIENTS) : [],
   };

@@ -73,4 +73,20 @@ export function validateClientPortalSection(portal, result) {
       validateWeightTier(tier, idx).forEach((err) => addError(result, err.message, err.path));
     });
   }
+
+  if (Array.isArray(portal.escort_rules)) {
+    portal.escort_rules.slice(0, 2).forEach((rule, index) => {
+      ['minWidth', 'minHeight', 'surcharge'].forEach((field) => {
+        const validation = validateNumber(rule?.[field], { min: 0, max: field === 'surcharge' ? 100000 : 1000 });
+        if (!validation.valid) addError(result, `${field}: ${validation.error}`, `client_portal.escort_rules[${index}].${field}`);
+      });
+    });
+    const oneEscort = portal.escort_rules.find((rule) => Number(rule?.vehicleCount) === 1);
+    const twoEscorts = portal.escort_rules.find((rule) => Number(rule?.vehicleCount) === 2);
+    const widthOrderInvalid = Number(twoEscorts?.minWidth) > 0 && Number(oneEscort?.minWidth) > 0 && Number(twoEscorts.minWidth) < Number(oneEscort.minWidth);
+    const heightOrderInvalid = Number(twoEscorts?.minHeight) > 0 && Number(oneEscort?.minHeight) > 0 && Number(twoEscorts.minHeight) < Number(oneEscort.minHeight);
+    if (oneEscort && twoEscorts && (widthOrderInvalid || heightOrderInvalid)) {
+      addError(result, 'Two-escort thresholds must be at least as high as one-escort thresholds', 'client_portal.escort_rules');
+    }
+  }
 }

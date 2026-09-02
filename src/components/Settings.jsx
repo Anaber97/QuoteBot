@@ -822,6 +822,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           updateClientPortalTier={updateClientPortalTier}
           addClientPortalTier={addClientPortalTier}
           removeClientPortalTier={removeClientPortalTier}
+          updateClientPortal={updateClientPortal}
         />
       )}
 

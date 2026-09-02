@@ -9,6 +9,7 @@ import {
   calculateSurcharges,
   calculateFinalQuotes,
   calculatePermitRequirements,
+  resolveEscortRequirement,
 } from '../src/lib/pricingEngine.js';
 
 /**
@@ -298,6 +299,16 @@ test('calculatePermitRequirements no permit for normal shipments', () => {
   });
   assert.equal(result.needsPermit, false);
   assert.equal(result.permitFee, 0);
+});
+
+test('resolveEscortRequirement selects the highest width or height rule', () => {
+  const rules = [
+    { vehicleCount: 1, minWidth: 144, minHeight: 168, surcharge: 250 },
+    { vehicleCount: 2, minWidth: 168, minHeight: 180, surcharge: 500 },
+  ];
+  assert.deepEqual(resolveEscortRequirement({ width: 150, height: 150, rules }), { vehicleCount: 1, surcharge: 250, triggeredBy: ['width'] });
+  assert.deepEqual(resolveEscortRequirement({ width: 150, height: 181, rules }), { vehicleCount: 2, surcharge: 500, triggeredBy: ['height'] });
+  assert.equal(resolveEscortRequirement({ width: 100, height: 150, rules }).vehicleCount, 0);
 });
 
 // ===== INTEGRATION TEST: SERVER ENDPOINT PARITY =====

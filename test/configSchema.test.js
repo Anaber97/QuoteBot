@@ -218,6 +218,17 @@ test('normalizeConfig normalizes weight tiers', () => {
   assert(result.client_portal.weight_tiers.every((tier) => tier.id && tier.drive_time_buffer && tier.load_unload_base_mins));
 });
 
+test('normalizeConfig preserves both escort threshold rules', () => {
+  const result = normalizeConfig({ client_portal: { escort_rules: [
+    { vehicleCount: 1, minWidth: 150, minHeight: 170, surcharge: 300 },
+    { vehicleCount: 2, minWidth: 180, minHeight: 190, surcharge: 600 },
+  ] } });
+  assert.deepEqual(result.client_portal.escort_rules, [
+    { vehicleCount: 1, minWidth: 150, minHeight: 170, surcharge: 300 },
+    { vehicleCount: 2, minWidth: 180, minHeight: 190, surcharge: 600 },
+  ]);
+});
+
 test('normalizeConfig preserves geofence configuration', () => {
   const config = {
     geofences: {

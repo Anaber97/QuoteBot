@@ -10,6 +10,7 @@ import {
   calculateSurcharges,
   getFlatOverride,
   calculateFinalQuotes as calculateFinalQuotesPure,
+  resolveEscortRequirement,
 } from '../lib/pricingEngine';
 
 export { roundToNearest }; // Re-export for backward compatibility
@@ -74,6 +75,8 @@ export async function calculateQuoteData({
   isHazard = false,
   companyRates = {},
   clientWeight = 0,
+  equipmentWidth = 0,
+  equipmentHeight = 0,
   clientConfig = null,
   useWeightTierPricing = false,
 }) {
@@ -170,6 +173,7 @@ export async function calculateQuoteData({
     selectedClass,
   });
   const totalMiles = totalMeters * 0.000621371;
+  const escort = resolveEscortRequirement({ width: equipmentWidth, height: equipmentHeight, rules: companyRates?.client_portal?.escort_rules });
 
   // Shared with the server so rate resolution can't silently drift.
   const { minRate: baseMinRate, maxRate: baseMaxRate, standardPricingMode } = resolveBaseRates({
@@ -252,6 +256,7 @@ export async function calculateQuoteData({
     pricingMode: useWeightTierPricing ? 'equipment-weight-tier' : standardPricingMode,
     weightTierLabel: useWeightTierPricing ? matchingTier.label : null,
     driveTimeBufferPercent: useWeightTierPricing ? Number(matchingTier?.drive_time_buffer ?? 10) || 10 : null,
+    escort,
   };
 }
 
@@ -308,7 +313,7 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
-    surchargeFlatSum: flatSum,
+    surchargeFlatSum: flatSum + Number(quoteData?.escort?.surcharge || 0),
     permitFee: 0, // Browser doesn't calculate permit fees
     rounding: roundingInterval,
     customRate: customRate != null ? customRate : null,

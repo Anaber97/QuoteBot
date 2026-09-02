@@ -92,7 +92,10 @@ export default async function handler(req, res) {
     const persistedConfig = normalizeConfig(savedRow);
     const requestedTiers = normalizedConfig.client_portal.weight_tiers;
     const persistedTiers = persistedConfig.client_portal.weight_tiers;
-    if (JSON.stringify(persistedTiers) !== JSON.stringify(requestedTiers)) {
+    const requestedEscortRules = normalizedConfig.client_portal.escort_rules;
+    const persistedEscortRules = persistedConfig.client_portal.escort_rules;
+    if (JSON.stringify(persistedTiers) !== JSON.stringify(requestedTiers)
+      || JSON.stringify(persistedEscortRules) !== JSON.stringify(requestedEscortRules)) {
       console.error('Equipment pricing persistence verification failed', { companyId });
       return res.status(500).json({ error: 'Equipment pricing did not persist exactly. Please try saving again.' });
     }

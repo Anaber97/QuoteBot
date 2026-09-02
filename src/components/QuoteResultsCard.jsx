@@ -77,6 +77,7 @@ export default function QuoteResultsCard({
     state?.customLoadUnloadMins ?? null
   );
   const permitFee = Number(quoteData?.equipmentMeta?.permitFee || quoteData?.permitFee || 0);
+  const escort = quoteData?.escort || quoteData?.equipmentMeta?.escort || { vehicleCount: 0, surcharge: 0 };
   const attachmentWeight = Number(quoteData?.equipmentMeta?.attachmentWeight || 0);
   const effectiveMinQuote = currentMinQuote + permitFee;
   const clientPrice = effectiveMinQuote;
@@ -204,6 +205,9 @@ export default function QuoteResultsCard({
             Permit surcharge included: +${permitFee.toFixed(2)}
           </div>
         )}
+        {Number(escort.vehicleCount) > 0 && <div className="inline-block rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-bold text-cyan-300">
+          {escort.vehicleCount} escort vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}: +${Number(escort.surcharge || 0).toFixed(2)}
+        </div>}
         {attachmentWeight > 0 && (
           <div className="inline-block bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-bold text-xs px-2.5 py-0.5 rounded-full mt-1">
             Attachment weight included: {attachmentWeight.toLocaleString()} lbs
@@ -325,6 +329,10 @@ export default function QuoteResultsCard({
               {permitFee > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                 <span>Weight Class Permit Cost</span>
                 <span className="font-semibold text-amber-300">+${permitFee.toFixed(2)}</span>
+              </div>}
+              {Number(escort.vehicleCount) > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
+                <span>{escort.vehicleCount} Escort Vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}</span>
+                <span className="font-semibold text-cyan-300">+${Number(escort.surcharge || 0).toFixed(2)}</span>
               </div>}
               <div className="flex justify-between items-center pt-1 text-sm font-bold text-white">
                 <span>{isMileageQuote ? 'Total Billable Miles' : 'Total Billable Hours'}</span>

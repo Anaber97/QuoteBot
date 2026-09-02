@@ -20,6 +20,7 @@ export default function PricingTab({
   updateClientPortalTier,
   addClientPortalTier,
   removeClientPortalTier,
+  updateClientPortal,
 }) {
   const pricingMode = formData.pricing?.pricing_mode === 'mileage' ? 'mileage' : 'hourly';
   const isMileageMode = pricingMode === 'mileage';
@@ -40,6 +41,13 @@ export default function PricingTab({
     updatePricing(rateField, rate);
     updatePricing(legacyMinField, rate);
     updatePricing(legacyMaxField, rate);
+  };
+  const updateEscortRule = (vehicleCount, field, value) => {
+    const rules = formData.client_portal?.escort_rules || [];
+    updateClientPortal('escort_rules', [1, 2].map((count) => {
+      const current = rules.find((rule) => Number(rule.vehicleCount) === count) || { vehicleCount: count, minWidth: 0, minHeight: 0, surcharge: 0 };
+      return count === vehicleCount ? { ...current, [field]: Number(value) || 0 } : current;
+    }));
   };
   const systemSurcharges = [
     { field: 'metro_multiplier', label: 'Metro', defaultValue: 28.57, trigger: 'Automatic · Metro Zone' },
@@ -98,6 +106,17 @@ export default function PricingTab({
           <input type="number" value={tier.drive_time_buffer ?? 10} onChange={(e) => updateClientPortalTier(index, 'drive_time_buffer', e.target.value)} placeholder="Drive %" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <input type="number" value={tier.load_unload_base_mins ?? 30} onChange={(e) => updateClientPortalTier(index, 'load_unload_base_mins', e.target.value)} placeholder="Load mins" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <button type="button" onClick={() => removeClientPortalTier(index)} aria-label={`Delete equipment weight class ${index + 1}`} title="Delete class" className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5" /></button>
+        </div>)}
+      </div>
+
+      <div className="order-2 bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
+        <div><h4 className="font-bold text-slate-200 text-xs">Escort Vehicle Thresholds</h4><p className="text-[10px] text-slate-400">Width and height are inches. If either threshold is reached, the highest matching escort rule and its flat surcharge are applied.</p></div>
+        <div className="hidden gap-2 px-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-[0.8fr_1fr_1fr_1fr]"><span>Escorts</span><span>Min Width (in.)</span><span>Min Height (in.)</span><span>Surcharge ($)</span></div>
+        {(formData.client_portal?.escort_rules || []).map((rule) => <div key={rule.vehicleCount} className="grid gap-2 rounded-lg border border-slate-800 bg-[#121824] p-2.5 sm:grid-cols-[0.8fr_1fr_1fr_1fr]">
+          <div className="flex items-center rounded border border-slate-700 bg-[#080c14] p-2 font-semibold text-white">{rule.vehicleCount} escort{Number(rule.vehicleCount) === 1 ? '' : 's'}</div>
+          <input aria-label={`${rule.vehicleCount} escort minimum width`} type="number" min="0" value={rule.minWidth ?? 0} onChange={(event) => updateEscortRule(rule.vehicleCount, 'minWidth', event.target.value)} className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
+          <input aria-label={`${rule.vehicleCount} escort minimum height`} type="number" min="0" value={rule.minHeight ?? 0} onChange={(event) => updateEscortRule(rule.vehicleCount, 'minHeight', event.target.value)} className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
+          <input aria-label={`${rule.vehicleCount} escort surcharge`} type="number" min="0" value={rule.surcharge ?? 0} onChange={(event) => updateEscortRule(rule.vehicleCount, 'surcharge', event.target.value)} className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
         </div>)}
       </div>
 

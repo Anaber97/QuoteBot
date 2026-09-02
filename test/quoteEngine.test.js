@@ -211,6 +211,24 @@ test('equipment weight tiers override the global permit cost', () => {
   assert.equal(result.permit.permitFee, 240);
 });
 
+test('company escort rules affect clients with custom pricing disabled', () => {
+  const escortConfig = structuredClone(config);
+  escortConfig.client_portal.escort_rules = [
+    { vehicleCount: 1, minWidth: 144, minHeight: 168, surcharge: 250 },
+    { vehicleCount: 2, minWidth: 168, minHeight: 180, surcharge: 500 },
+  ];
+  const result = quote({
+    role: 'client',
+    config: escortConfig,
+    clientConfig: { pricing: { use_custom_pricing: false, weight_tiers: [{ minWeight: 0, maxWeight: 999999, rate: 999 }] } },
+    input: { quoteSource: 'client_portal', equipment: { weight: 10000, width: 170, height: 150 } },
+  });
+  assert.equal(result.escort.vehicleCount, 2);
+  assert.equal(result.escort.surcharge, 500);
+  assert.equal(result.permit.permitFee, 150);
+  assert.equal(result.minQuote, 800);
+});
+
 test('mileage mode applies equipment weight tier mileage rates', () => {
   const mileageConfig = structuredClone(config);
   mileageConfig.pricing.pricing_mode = 'mileage';

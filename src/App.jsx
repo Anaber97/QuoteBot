@@ -393,6 +393,8 @@ export default function App() {
         isHazard: state.isHazard,
         companyRates,
         clientWeight: Number(weight) + Number(attachmentWeight || 0),
+        equipmentWidth: Number(width || 0),
+        equipmentHeight: Number(height || 0),
         clientConfig: activeClientConfig,
         useWeightTierPricing: true,
       });
