@@ -56,7 +56,7 @@ export default function QuoteLog({ onSelectQuote, profile }) {
   const savePdf = async (log) => {
     setBusyId(log.id);
     try {
-      const response = await authenticatedFetch(`/api/quotePdf?quoteId=${encodeURIComponent(log.id)}`);
+      const response = await authenticatedFetch(`/api/sendQuoteEmail?quoteId=${encodeURIComponent(log.id)}`);
       if (!response.ok) { const body = await response.json(); throw new Error(body.error || 'PDF could not be generated.'); }
       const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a');
       link.href = url; link.download = `${quoteReference(log)}.pdf`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
