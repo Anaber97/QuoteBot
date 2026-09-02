@@ -14,6 +14,7 @@ import {
   BasesTab,
   ClientPortalTab,
   UsersTab,
+  BrandingTab,
 } from './Settings/index';
 
 
@@ -105,6 +106,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   }, [profile?.company_id]);
 
   const canEdit = currentUserRole === 'manager';
+  const updateBranding = (field, value) => setFormData((prev) => ({ ...prev, branding: { ...(prev.branding || {}), [field]: value } }));
 
   const handleSave = async (sourceData) => {
   const configSource =
@@ -811,6 +813,8 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       )}
 
       {/* SUB TAB 2: GEOFENCES */}
+      {activeSubTab === 'branding' && <BrandingTab formData={formData} profile={profile} updateBranding={updateBranding} />}
+
       {activeSubTab === 'geofences' && (
         <GeofencesTab
           geofenceSearch={geofenceSearch}

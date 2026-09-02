@@ -5,10 +5,8 @@ import Dialog from './Dialog';
 import Toast from './Toast';
 
 const allowedBol = (file) => file && (['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.name.toLowerCase().endsWith('.pdf'));
-const escapeHtml = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-const quoteHtml = (log) => `<!doctype html><html><head><title>Quote ${escapeHtml(log.id)}</title><style>body{font-family:Arial,sans-serif;color:#172033;max-width:760px;margin:40px auto}h1{margin-bottom:4px}.price{font-size:28px;font-weight:700;color:#047857}.row{padding:10px 0;border-bottom:1px solid #ddd}small{color:#667085}@media print{button{display:none}}</style></head><body><h1>Transport Quote</h1><small>${escapeHtml(new Date(log.created_at).toLocaleString())}</small><p class="price">$${escapeHtml(log.min_quote)} – $${escapeHtml(log.max_quote)}</p><div class="row"><b>Customer:</b> ${escapeHtml(log.customer_name || 'N/A')}</div><div class="row"><b>Phone:</b> ${escapeHtml(log.customer_phone || 'N/A')}</div><div class="row"><b>Route:</b> ${escapeHtml((log.all_waypoints || []).join(' → '))}</div><div class="row"><b>Miles:</b> ${Number(log.total_miles || 0).toFixed(1)}</div><div class="row"><b>Hours:</b> ${Number(log.total_hours || 0).toFixed(2)}</div><button onclick="window.print()">Print / Save as PDF</button></body></html>`;
 const PAGE_SIZE = 20;
-const LIST_COLUMNS = 'id, company_id, client_id, quote_source, customer_name, customer_phone, all_waypoints, base_yard_id, truck_class, total_hours, total_miles, min_quote, max_quote, status, quote_details, notes, bol_path, bol_name, bol_type, created_at';
+const LIST_COLUMNS = 'id, quote_reference, company_id, client_id, quote_source, customer_name, customer_phone, all_waypoints, base_yard_id, truck_class, total_hours, total_miles, min_quote, max_quote, status, quote_details, notes, bol_path, bol_name, bol_type, created_at';
 const quoteReference = (log) => log.quote_reference || `Q-${String(log.id || '').slice(0, 8).toUpperCase()}`;
 const statusLabel = (status) => String(status || 'submitted').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 const QUOTE_STATUSES = ['draft', 'submitted', 'approval_required', 'approved', 'dispatched', 'completed', 'cancelled'];
@@ -55,7 +53,17 @@ export default function QuoteLog({ onSelectQuote, profile }) {
       setNotice({ message: action === 'share' ? 'Quote emailed.' : 'Quote sent for dispatch.' });
     } catch (emailError) { setNotice({ tone: 'error', message: emailError.message }); } finally { setBusyId(null); }
   };
-  const savePdf = (log) => { const win = window.open('', '_blank'); if (!win) return setNotice({ tone: 'error', message: 'Please allow pop-ups to save the quote as a PDF.' }); win.document.write(quoteHtml(log)); win.document.close(); win.focus(); setTimeout(() => win.print(), 150); };
+  const savePdf = async (log) => {
+    setBusyId(log.id);
+    try {
+      const response = await authenticatedFetch(`/api/quotePdf?quoteId=${encodeURIComponent(log.id)}`);
+      if (!response.ok) { const body = await response.json(); throw new Error(body.error || 'PDF could not be generated.'); }
+      const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a');
+      link.href = url; link.download = `${quoteReference(log)}.pdf`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+      setNotice({ message: 'Branded quote PDF downloaded.' });
+    } catch (pdfError) { setNotice({ tone: 'error', message: pdfError.message }); }
+    finally { setBusyId(null); }
+  };
   const attachBol = (log) => { pendingQuoteRef.current = log; fileRef.current?.click(); };
   const handleBolFile = async (event) => {
     const file = event.target.files?.[0]; const log = pendingQuoteRef.current; event.target.value = ''; if (!log || !file) return;

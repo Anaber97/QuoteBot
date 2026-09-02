@@ -80,5 +80,12 @@ export function sanitizeConfig(config) {
     bases: Array.isArray(config.bases) ? config.bases.slice(0, LIMITS.MAX_BASES) : [],
     users: Array.isArray(config.users) ? config.users.slice(0, LIMITS.MAX_USERS) : [],
     client_portal: sanitizeClientPortal(config.client_portal),
+    branding: config.branding && typeof config.branding === 'object' ? {
+      display_name: config.branding.display_name, logo_path: config.branding.logo_path,
+      accent_color: config.branding.accent_color, phone: config.branding.phone,
+      email: config.branding.email, website: config.branding.website,
+      address: config.branding.address, pdf_footer: config.branding.pdf_footer,
+      show_pricing_breakdown: config.branding.show_pricing_breakdown,
+    } : {},
   };
 }

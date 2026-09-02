@@ -5,3 +5,4 @@ export { default as GeofencesTab } from './GeofencesTab';
 export { default as BasesTab } from './BasesTab';
 export { default as ClientPortalTab } from './ClientPortalTab';
 export { default as UsersTab } from './UsersTab';
+export { default as BrandingTab } from './BrandingTab';

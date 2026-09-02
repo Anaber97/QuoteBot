@@ -162,6 +162,13 @@ test('normalizeConfig promotes canonical single rates and preserves mileage mode
   assert.equal(result.pricing.mileage_max, 7.5);
 });
 
+test('normalizeConfig preserves tenant quote branding', () => {
+  const result = normalizeConfig({ branding: { display_name: 'Acme Towing', logo_path: 'company/logo.png', accent_color: '#0f766e' } });
+  assert.equal(result.branding.display_name, 'Acme Towing');
+  assert.equal(result.branding.logo_path, 'company/logo.png');
+  assert.equal(result.branding.accent_color, '#0f766e');
+});
+
 test('normalizeConfig provides defaults for missing fields', () => {
   const minimal = { company_id: 'test-123', pricing: {} };
   const result = normalizeConfig(minimal);

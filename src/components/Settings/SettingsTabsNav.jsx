@@ -1,9 +1,10 @@
 import React from 'react';
-import { DollarSign, MapPin, Truck, Building2, Users } from 'lucide-react';
+import { DollarSign, MapPin, Truck, Building2, Users, Palette } from 'lucide-react';
 
 export default function SettingsTabsNav({ activeSubTab, setActiveSubTab, allGeofencesCount, hasUnsavedChanges }) {
   const tabs = [
     { id: 'pricing', label: 'Pricing', icon: DollarSign },
+    { id: 'branding', label: 'Branding', icon: Palette },
     { id: 'geofences', label: `Geofences (${allGeofencesCount})`, icon: MapPin },
     { id: 'bases', label: 'Bases', icon: Truck },
     { id: 'client_portal', label: 'Client Portal', icon: Building2 },
@@ -11,7 +12,7 @@ export default function SettingsTabsNav({ activeSubTab, setActiveSubTab, allGeof
   ];
 
   return (
-    <div className="z-30 grid flex-none grid-cols-3 gap-1 border-b border-slate-800 bg-[#0c1019] pb-1 shadow-md sm:grid-cols-6">
+    <div className="z-30 grid flex-none grid-cols-3 gap-1 border-b border-slate-800 bg-[#0c1019] pb-1 shadow-md sm:grid-cols-7">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeSubTab === tab.id;

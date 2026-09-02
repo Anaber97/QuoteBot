@@ -94,6 +94,12 @@ export const DEFAULT_GEOFENCES = {
   customZones: [],
 };
 
+export const DEFAULT_BRANDING = {
+  display_name: '', logo_path: '', accent_color: '#2563eb', phone: '', email: '', website: '', address: '',
+  pdf_footer: 'This quote is an estimate and is subject to final route, equipment, permit, and site conditions.',
+  show_pricing_breakdown: true,
+};
+
 export const DEFAULT_CLIENT_PORTAL = {
   contact_phone: '(555) 555-0199',
   contact_email: 'quotes@yourcompany.com',
@@ -122,6 +128,7 @@ export const DEFAULT_CONFIG = {
   bases: [],
   users: [],
   client_portal: DEFAULT_CLIENT_PORTAL,
+  branding: DEFAULT_BRANDING,
 };
 
 // ===== NORMALIZATION FUNCTIONS =====
@@ -133,6 +140,7 @@ export const ROUNDING_OPTIONS = [1, 5, 10, 25, 50];
  */
 export const normalizeClientPortalTier = (tier = {}, index = 0) => {
   const hourlyRate = toFinite(tier.hourlyRate ?? tier.rate ?? tier.hourly_rate, 0);
+
   return {
     id: tier.id || `tier-${index + 1}`,
     label: tier.label || `Tier ${index + 1}`,
@@ -287,6 +295,8 @@ export function normalizeConfig(rawConfig = {}) {
     clients: asArray(baseConfig.client_portal?.clients),
   };
 
+  const normalizedBranding = { ...DEFAULT_BRANDING, ...(baseConfig.branding || {}) };
+
   return {
     company_id: baseConfig.company_id || DEFAULT_CONFIG.company_id,
     pricing: normalizedPricing,
@@ -295,5 +305,6 @@ export function normalizeConfig(rawConfig = {}) {
     bases: asArray(baseConfig.bases),
     users: asArray(baseConfig.users),
     client_portal: normalizedClientPortal,
+    branding: normalizedBranding,
   };
 }
