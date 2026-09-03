@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MapPin, Trash2 } from 'lucide-react';
 import { loadGoogleMaps } from '../../lib/googleMaps';
+import { buildRadiusPolygon } from '../../utils/geofenceGeometry';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'b2a8bbbaef4c9498e7600aeb';
-
 const toTitleCase = (value) =>
   String(value || '')
     .trim()
@@ -20,7 +20,8 @@ const buildReviewQuery = (zone) => {
   return '';
 };
 
-export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete }) {
+export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSave, onDelete }) {
+  const firstBaseId = bases[0]?.id || '';
   const searchInputRef = useRef(null);
   const mapElementRef = useRef(null);
   const autocompleteRef = useRef(null);
@@ -35,6 +36,15 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
   zoneRef.current = zone;
   onChangeRef.current = onChange;
   const [status, setStatus] = useState('Search for a city or municipality to define this geofence.');
+  const [radiusMiles, setRadiusMiles] = useState(String(zone?.radiusMiles || 10));
+  const [radiusSource, setRadiusSource] = useState(zone?.radiusSource || 'city');
+  const [selectedBaseId, setSelectedBaseId] = useState(zone?.radiusBaseId || firstBaseId);
+
+  useEffect(() => {
+    setRadiusMiles(String(zone?.radiusMiles || 10));
+    setRadiusSource(zone?.radiusSource || 'city');
+    setSelectedBaseId(zone?.radiusBaseId || firstBaseId);
+  }, [zone?.id, zone?.radiusMiles, zone?.radiusSource, zone?.radiusBaseId, firstBaseId]);
 
   useEffect(() => {
     if (!zoneRef.current) return;
@@ -154,6 +164,9 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
           onChangeRef.current('state', nextState);
           onChangeRef.current('localityQuery', nextQuery);
           onChangeRef.current('placeId', place?.place_id || '');
+          if (place?.geometry?.location) {
+            onChangeRef.current('center', { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() });
+          }
           if (!currentZone?.name || currentZone.name === 'New Municipality Zone') {
             onChangeRef.current('name', nextQuery || nextCity || currentZone?.name || 'Custom Geofence');
           }
@@ -230,6 +243,46 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
     }));
   }, [zone?.shape]);
 
+  const resolveRadiusCenter = async () => {
+    if (radiusSource === 'city') return zone.center || null;
+    const selectedBase = bases.find((base) => String(base.id) === String(selectedBaseId));
+    if (!selectedBase?.address || !window.google?.maps) return null;
+    if (Number.isFinite(Number(selectedBase.lat)) && Number.isFinite(Number(selectedBase.lng))) {
+      return { lat: Number(selectedBase.lat), lng: Number(selectedBase.lng) };
+    }
+    return new Promise((resolve) => {
+      new window.google.maps.Geocoder().geocode({ address: selectedBase.address }, (results, geocoderStatus) => {
+        const location = geocoderStatus === 'OK' ? results?.[0]?.geometry?.location : null;
+        resolve(location ? { lat: location.lat(), lng: location.lng() } : null);
+      });
+    });
+  };
+
+  const generateRadius = async () => {
+    const radius = Number(radiusMiles);
+    if (!Number.isFinite(radius) || radius <= 0 || radius > 250) {
+      setStatus('Enter a radius between 0.1 and 250 miles.');
+      return;
+    }
+    const center = await resolveRadiusCenter();
+    if (!center) {
+      setStatus(radiusSource === 'city' ? 'Search for and select a city first.' : 'Select a saved base with a valid address.');
+      return;
+    }
+    const shape = buildRadiusPolygon(center, radius);
+    onChange('shape', shape);
+    onChange('radiusMiles', radius);
+    onChange('radiusSource', radiusSource);
+    onChange('radiusBaseId', radiusSource === 'base' ? selectedBaseId : '');
+    onChange('center', center);
+    if (mapRef.current && window.google?.maps) {
+      const bounds = new window.google.maps.LatLngBounds();
+      shape.forEach((point) => bounds.extend(point));
+      mapRef.current.fitBounds(bounds, 28);
+    }
+    setStatus(`${radius}-mile pricing radius generated from the ${radiusSource === 'city' ? 'searched city center' : 'selected base'}.`);
+  };
+
   if (!zone) return null;
 
   return (
@@ -293,16 +346,48 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         </div>
       )}
 
-      <div>
-        <label className="mb-1 block text-[10px] text-slate-400">Charge value</label>
-        <input
-          type="number"
-          value={zone.price ?? ''}
-          onChange={(e) => onChange('price', e.target.value)}
-          placeholder={(zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) === 'flat_rate' || zone.surchargeFeeType === 'flat' ? '75' : '25'}
-          className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white font-mono"
-        />
-        <p className="mt-1 text-[10px] text-slate-500">Flat rate prices contained trips. Surcharge adds either a percentage or dollar amount to applicable trips.</p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_8rem]">
+        <div>
+          <label className="mb-1 block text-[10px] text-slate-400">Charge value</label>
+          <input
+            type="number"
+            value={zone.price ?? ''}
+            onChange={(e) => onChange('price', e.target.value)}
+            placeholder={(zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) === 'flat_rate' || zone.surchargeFeeType === 'flat' ? '75' : '25'}
+            className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white font-mono"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] text-slate-400">Priority</label>
+          <input type="number" min="0" max="999" step="1" value={zone.priority ?? 0} onChange={(e) => onChange('priority', e.target.value)} className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white font-mono" />
+        </div>
+        <p className="text-[10px] text-slate-500 sm:col-span-2">Higher priority wins when zones overlap. Zones tied at the highest priority stack together.</p>
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-slate-700 bg-[#0b1220] p-2.5">
+        <div>
+          <p className="text-[10px] font-semibold text-slate-300">Generate a radius</p>
+          <p className="text-[10px] text-slate-500">Replace the current shape with a circle from the searched city center or a saved base.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[9rem_1fr_7rem]">
+          <select value={radiusSource} onChange={(e) => setRadiusSource(e.target.value)} aria-label="Radius center source" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white">
+            <option value="city">City center</option>
+            <option value="base">Saved base</option>
+          </select>
+          {radiusSource === 'base' ? (
+            <select value={selectedBaseId} onChange={(e) => setSelectedBaseId(e.target.value)} aria-label="Radius base" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white">
+              <option value="">Select a base</option>
+              {bases.map((base) => <option key={base.id} value={base.id}>{base.name || base.address}</option>)}
+            </select>
+          ) : (
+            <div className="flex items-center rounded border border-slate-800 px-2 text-[10px] text-slate-400">{zone.localityQuery || 'Select a city above'}</div>
+          )}
+          <div className="flex items-center rounded border border-slate-700 bg-[#080c14] pr-2">
+            <input type="number" min="0.1" max="250" step="0.1" value={radiusMiles} onChange={(e) => setRadiusMiles(e.target.value)} aria-label="Radius in miles" className="min-w-0 flex-1 bg-transparent p-2 text-white font-mono outline-none" />
+            <span className="text-[10px] text-slate-500">mi</span>
+          </div>
+        </div>
+        <button type="button" onClick={generateRadius} className="w-full rounded border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-[10px] font-semibold text-cyan-200">Generate radius polygon</button>
       </div>
 
       <div className="grid grid-cols-1 gap-3">

@@ -1,4 +1,5 @@
 import { GEOFENCES, HAZARD_ZONES, METRO_CODE_BY_ZONE_ID } from '../src/config/geofences.js';
+import { selectHighestPriorityZones } from '../src/utils/geofencePriority.js';
 import {
   resolveBaseRates,
   calculateTimeMetrics,
@@ -80,7 +81,7 @@ function findConfiguredZones(zones, addresses, routePoints, config) {
 
 function findCustomZones(_localities, routePoints, config) {
   const disabled = new Set((config?.geofences?.disabledZones || []).map(String));
-  return (config?.geofences?.customZones || []).filter((zone) => !disabled.has(String(zone.id))).filter((zone) => {
+  const matches = (config?.geofences?.customZones || []).filter((zone) => !disabled.has(String(zone.id))).filter((zone) => {
     const polygon = Array.isArray(zone.shape) && zone.shape.length >= 3;
     if (!polygon) return false;
     const hits = routePoints.some((point) => pointInPolygon(point, zone.shape));
@@ -94,6 +95,7 @@ function findCustomZones(_localities, routePoints, config) {
       ? { feeType: 'flat', value: toFinite(zone.price ?? zone.value) }
       : { feeType: zone.surchargeFeeType === 'flat' ? 'flat' : 'percent', value: toFinite(zone.price ?? zone.value) },
   }));
+  return selectHighestPriorityZones(matches);
 }
 
 export function calculatePermitRequirements({ weight, width, height, pickupAddress, dropoffAddress, config }) {
@@ -157,13 +159,13 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const { multiplier, flatSum } = calculateSurcharges({
     metroMatches: !useWeightTierPricing ? metroMatches : [],
     hazardMatches: !useWeightTierPricing ? hazardMatches : [],
-    customMatches: !useWeightTierPricing ? customMatches : [],
+    customMatches,
     customSurcharges: pricing.custom_surcharges || [],
     useWeightTierPricing,
     overrides,
   });
 
-  const flatOverride = !useWeightTierPricing ? getFlatOverride(customMatches) : 0;
+  const flatOverride = getFlatOverride(customMatches);
   const interval = toFinite(useWeightTierPricing ? tier?.rounding_interval ?? clientPricing.rounding_interval : pricing.rounding_interval, 25);
   const pricingQuantity = standardPricingMode === 'mileage' ? totalMiles : rawTotalHours;
 
@@ -215,7 +217,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     permit,
     escort,
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
-    appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(!useWeightTierPricing && metroMatches.length && overrides.metro), hazard: Boolean(!useWeightTierPricing && hazardMatches.length && overrides.hazard), customZone: Boolean(!useWeightTierPricing && customMatches.length) },
+    appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(!useWeightTierPricing && metroMatches.length && overrides.metro), hazard: Boolean(!useWeightTierPricing && hazardMatches.length && overrides.hazard), customZone: Boolean(customMatches.length) },
     routeLegs: route.legs,
     quoteDetails: { ...(input.equipment || {}), permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
   };

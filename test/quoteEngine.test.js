@@ -295,3 +295,36 @@ test('server quote rejects locality-only custom pricing outside a city-limit pol
   assert.notEqual(result.minQuote, 100);
   assert.notEqual(result.maxQuote, 100);
 });
+
+test('server quote applies only the highest-priority overlapping custom zones', () => {
+  const priorityConfig = structuredClone(config);
+  const shape = [{ lat: 32, lng: -95 }, { lat: 32, lng: -94 }, { lat: 33, lng: -94 }, { lat: 33, lng: -95 }];
+  priorityConfig.geofences.customZones = [
+    { id: 'low', name: 'Low', priority: 1, pricingMode: 'surcharge', surchargeFeeType: 'flat', price: 500, shape },
+    { id: 'high', name: 'High', priority: 10, pricingMode: 'surcharge', surchargeFeeType: 'flat', price: 25, shape },
+  ];
+  const result = quote({
+    config: priorityConfig,
+    route: { ...route, customerRoutePoints: [{ lat: 32.5, lng: -94.5 }] },
+  });
+  assert.deepEqual(result.quoteDetails.customZoneNames, ['High']);
+  assert.equal(result.minQuote, 25);
+});
+
+test('company custom-zone priority applies to clients without custom pricing', () => {
+  const priorityConfig = structuredClone(config);
+  const shape = [{ lat: 32, lng: -95 }, { lat: 32, lng: -94 }, { lat: 33, lng: -94 }, { lat: 33, lng: -95 }];
+  priorityConfig.geofences.customZones = [
+    { id: 'low', name: 'Low', priority: 1, pricingMode: 'flat_rate', price: 500, shape },
+    { id: 'high', name: 'High', priority: 10, pricingMode: 'flat_rate', price: 200, shape },
+  ];
+  const result = quote({
+    role: 'client',
+    config: priorityConfig,
+    clientConfig: { pricing: { use_custom_pricing: false } },
+    route: { ...route, customerRoutePoints: [{ lat: 32.5, lng: -94.5 }, { lat: 32.6, lng: -94.6 }] },
+    input: { quoteSource: 'client_portal' },
+  });
+  assert.deepEqual(result.quoteDetails.customZoneNames, ['High']);
+  assert.equal(result.minQuote, 200);
+});

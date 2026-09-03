@@ -184,6 +184,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
             pricingMode: zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge'),
             surchargeFeeType: zone.surchargeFeeType || 'percent',
             price: Number(zone.price ?? 0),
+            priority: Math.max(0, Math.min(999, Number(zone.priority ?? 0) || 0)),
             shape: Array.isArray(zone.shape) ? zone.shape : [],
           })),
         },
@@ -646,6 +647,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       state: '',
       feeType: 'percent',
       price: 25,
+      priority: 0,
       shape: [],
       type: 'custom',
     };
@@ -672,6 +674,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       state: localizedState,
       feeType: draftCustomGeofence.feeType === 'flat' ? 'flat' : 'percent',
       price: Number(draftCustomGeofence.price ?? 0) || 0,
+      priority: Math.max(0, Math.min(999, Number(draftCustomGeofence.priority ?? 0) || 0)),
       shape: Array.isArray(draftCustomGeofence.shape) ? draftCustomGeofence.shape : [],
     };
 

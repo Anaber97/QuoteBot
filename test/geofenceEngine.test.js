@@ -60,3 +60,15 @@ test('custom municipality pricing requires coordinates inside the saved boundary
   assert.equal(outside.length, 0);
   assert.equal(inside.length, 1);
 });
+
+test('custom zone priority keeps only the highest matching tier and stacks ties', async () => {
+  const shape = [{ lat: 32, lng: -95 }, { lat: 32, lng: -94 }, { lat: 33, lng: -94 }, { lat: 33, lng: -95 }];
+  const companyRates = { geofences: { customZones: [
+    { id: 'low', name: 'Low', priority: 1, pricingMode: 'surcharge', price: 5, shape },
+    { id: 'high-a', name: 'High A', priority: 10, pricingMode: 'surcharge', price: 10, shape },
+    { id: 'high-b', name: 'High B', priority: 10, pricingMode: 'surcharge', price: 15, shape },
+  ] } };
+
+  const matches = await evaluateCustomGeofences([], [{ lat: 32.5, lng: -94.5 }], companyRates);
+  assert.deepEqual(matches.map((zone) => zone.id), ['high-a', 'high-b']);
+});

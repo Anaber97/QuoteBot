@@ -66,6 +66,13 @@ const validateCustomZone = (zone, index) => {
     }
   }
 
+  if (zone.priority !== undefined && zone.priority !== null) {
+    const priorityValidation = validateNumber(zone.priority, { min: 0, max: 999 });
+    if (!priorityValidation.valid) {
+      errors.push({ message: `priority: ${priorityValidation.error}`, path: `${path}.priority` });
+    }
+  }
+
   if (zone.feeType && !VALID_FEE_TYPES.includes(zone.feeType)) {
     errors.push({ message: `Invalid feeType. Must be one of: ${VALID_FEE_TYPES.join(', ')}`, path: `${path}.feeType` });
   }

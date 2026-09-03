@@ -1,6 +1,7 @@
 // src/utils/geofenceEngine.js
 // @ts-check
 import { GEOFENCES, HAZARD_ZONES } from "../config/geofences.js";
+import { selectHighestPriorityZones } from './geofencePriority.js';
 
 function isPointInPolygon(point, polygon) {
   if (!polygon || polygon.length < 3) return false;
@@ -139,5 +140,5 @@ export async function evaluateCustomGeofences(_cleanWaypoints, coordsList, compa
     })
   );
 
-  return results.filter(Boolean);
+  return selectHighestPriorityZones(results.filter(Boolean));
 }

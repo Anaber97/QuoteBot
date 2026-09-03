@@ -118,6 +118,12 @@ export default function GeofencesTab({
                     <span className="font-semibold text-slate-300">{metroCode || 'No'}</span>
                   </div>
                 )}
+                {zone.type === 'custom' ? (
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
+                    <span>Priority</span>
+                    <span className="font-semibold text-slate-300">{Number(zone.priority) || 0}</span>
+                  </div>
+                ) : null}
               </button>
             );
           })}
@@ -127,6 +133,7 @@ export default function GeofencesTab({
           {draftCustomGeofence ? (
             <CustomGeofenceEditor
               zone={draftCustomGeofence}
+              bases={formData.bases || []}
               onChange={updateDraftCustomGeofence}
               onSave={saveCustomGeofence}
               onDelete={() => deleteCustomGeofence(draftCustomGeofence.id)}
