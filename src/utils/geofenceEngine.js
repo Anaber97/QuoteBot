@@ -113,9 +113,6 @@ export async function evaluateCustomGeofences(_cleanWaypoints, coordsList, compa
 
   const results = await Promise.all(
     customZones.map(async (zone) => {
-      // A locality name is a postal/geocoding label, not proof that a point is
-      // inside incorporated city limits. Custom pricing is fail-closed unless
-      // the zone has an explicit boundary polygon.
       if (!Array.isArray(zone.shape) || zone.shape.length < 3) return null;
       const containsPickup = pickupPoint ? isPointInPolygon(pickupPoint, zone.shape) : false;
       const containsDropoff = dropoffPoint ? isPointInPolygon(dropoffPoint, zone.shape) : false;

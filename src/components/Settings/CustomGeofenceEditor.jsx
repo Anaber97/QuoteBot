@@ -21,23 +21,22 @@ const buildReviewQuery = (zone) => {
 
 export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete }) {
   const searchInputRef = useRef(null);
+  const mapElementRef = useRef(null);
   const autocompleteRef = useRef(null);
+  const mapRef = useRef(null);
+  const polygonRef = useRef(null);
   const zoneRef = useRef(zone);
   const onChangeRef = useRef(onChange);
   zoneRef.current = zone;
   onChangeRef.current = onChange;
   const [status, setStatus] = useState('Search for a city or municipality to define this geofence.');
 
-  const reviewQuery = buildReviewQuery(zone);
-  const reviewMapUrl = (() => {
-    if (!API_KEY || !reviewQuery) return null;
-    return `https://www.google.com/maps/embed/v1/place?key=${API_KEY}&q=${encodeURIComponent(reviewQuery)}`;
-  })();
-
   useEffect(() => {
     if (!zoneRef.current) return;
 
     let cancelled = false;
+    let placeListener = null;
+    let mapClickListener = null;
 
     const bootstrap = async () => {
       try {
@@ -47,16 +46,49 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         }
 
         await loadGoogleMaps({ requirePlaces: true, requireDistanceMatrix: false, requireDrawing: false });
-        if (cancelled || !searchInputRef.current || !window.google?.maps?.places) return;
+        if (cancelled || !searchInputRef.current || !mapElementRef.current || !window.google?.maps?.places) return;
 
         const google = window.google;
+        const existingShape = Array.isArray(zoneRef.current?.shape) ? zoneRef.current.shape : [];
+        const map = new google.maps.Map(mapElementRef.current, {
+          center: existingShape[0] || { lat: 39.5, lng: -98.35 },
+          zoom: existingShape.length ? 11 : 4,
+          mapTypeControl: true,
+          streetViewControl: false,
+          fullscreenControl: true,
+        });
+        mapRef.current = map;
+        polygonRef.current = new google.maps.Polygon({
+          map,
+          paths: existingShape,
+          strokeColor: '#22d3ee',
+          strokeOpacity: 0.95,
+          strokeWeight: 3,
+          fillColor: '#22d3ee',
+          fillOpacity: 0.16,
+          clickable: false,
+        });
+        if (existingShape.length >= 3) {
+          const bounds = new google.maps.LatLngBounds();
+          existingShape.forEach((point) => bounds.extend(point));
+          map.fitBounds(bounds, 28);
+        }
+
+        mapClickListener = map.addListener('click', (event) => {
+          if (!event.latLng) return;
+          const currentShape = Array.isArray(zoneRef.current?.shape) ? zoneRef.current.shape : [];
+          const nextShape = [...currentShape, { lat: event.latLng.lat(), lng: event.latLng.lng() }];
+          onChangeRef.current('shape', nextShape);
+          setStatus(`${nextShape.length} boundary point${nextShape.length === 1 ? '' : 's'} selected. ${nextShape.length < 3 ? 'Add at least three.' : 'The boundary is ready to save.'}`);
+        });
+
         const autocomplete = new google.maps.places.Autocomplete(searchInputRef.current, {
           fields: ['address_components', 'formatted_address', 'name', 'place_id', 'geometry'],
           types: ['(cities)'],
         });
         autocompleteRef.current = autocomplete;
 
-        const listener = autocomplete.addListener('place_changed', () => {
+        placeListener = autocomplete.addListener('place_changed', () => {
           const currentZone = zoneRef.current;
           const place = autocomplete.getPlace();
           const components = Array.isArray(place?.address_components) ? place.address_components : [];
@@ -75,6 +107,11 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
           if (!currentZone?.name || currentZone.name === 'New Municipality Zone') {
             onChangeRef.current('name', nextQuery || nextCity || currentZone?.name || 'Custom Geofence');
           }
+          if (place?.geometry?.viewport) map.fitBounds(place.geometry.viewport);
+          else if (place?.geometry?.location) {
+            map.setCenter(place.geometry.location);
+            map.setZoom(11);
+          }
           setStatus(nextQuery ? `Selected ${nextQuery}.` : 'Select a city from the suggestions.');
         });
 
@@ -88,9 +125,6 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         const currentReviewQuery = buildReviewQuery(zoneRef.current);
         setStatus(currentReviewQuery ? `Reviewing ${currentReviewQuery}.` : 'Search for a city or municipality to define this geofence.');
 
-        return () => {
-          google.maps.event.removeListener(listener);
-        };
       } catch (error) {
         console.warn('Google Places autocomplete unavailable:', error);
         setStatus(error instanceof Error ? error.message : 'Google Places autocomplete failed to load.');
@@ -101,14 +135,19 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
 
     return () => {
       cancelled = true;
+      if (placeListener) placeListener.remove();
+      if (mapClickListener) mapClickListener.remove();
+      if (polygonRef.current) polygonRef.current.setMap(null);
       autocompleteRef.current = null;
+      polygonRef.current = null;
+      mapRef.current = null;
     };
   }, [zone?.id]);
 
   useEffect(() => {
-    if (!zone) return;
-    setStatus(reviewQuery ? `Reviewing ${reviewQuery}.` : 'Search for a city or municipality to define this geofence.');
-  }, [reviewQuery, zone]);
+    if (!polygonRef.current) return;
+    polygonRef.current.setPath(Array.isArray(zone?.shape) ? zone.shape : []);
+  }, [zone?.shape]);
 
   if (!zone) return null;
 
@@ -137,7 +176,7 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
           placeholder="Start typing a city or municipality"
           className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white"
         />
-        <p className="mt-1 text-[10px] text-slate-500">Locality names are for identification only. Pricing requires a saved city-limit boundary.</p>
+        <p className="mt-1 text-[10px] text-slate-500">City and state identify the zone; the boundary drawn below decides whether pricing applies.</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -185,22 +224,18 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         <p className="mt-1 text-[10px] text-slate-500">Flat rate prices contained trips. Surcharge adds either a percentage or dollar amount to applicable trips.</p>
       </div>
 
-      <div className="rounded-lg border border-slate-700 bg-[#080c14] overflow-hidden">
-        {reviewMapUrl ? (
-          <iframe
-            title="Locality review map"
-            width="100%"
-            height="224"
-            style={{ border: 0 }}
-            loading="lazy"
-            allowFullScreen
-            src={reviewMapUrl}
-          />
-        ) : (
-          <div className="flex h-56 items-center justify-center px-4 text-center text-[10px] text-slate-500">
-            {reviewQuery ? `Map preview unavailable for ${reviewQuery}.` : 'Select a locality to review it on the map.'}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] font-semibold text-slate-300">City-limit boundary</p>
+            <p className="text-[10px] text-slate-500">Click around the city limits in order. The last point connects back to the first.</p>
           </div>
-        )}
+          <div className="flex shrink-0 gap-1.5">
+            <button type="button" disabled={!zone.shape?.length} onClick={() => onChange('shape', zone.shape.slice(0, -1))} className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40">Undo</button>
+            <button type="button" disabled={!zone.shape?.length} onClick={() => onChange('shape', [])} className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40">Clear</button>
+          </div>
+        </div>
+        <div ref={mapElementRef} role="application" aria-label="Draw city-limit boundary" className="h-64 overflow-hidden rounded-lg border border-slate-700 bg-[#080c14]" />
       </div>
 
       <div className="rounded-lg border border-slate-800 bg-[#0b1220] p-2.5 text-[10px] text-slate-400">
@@ -210,16 +245,20 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         </div>
       </div>
 
-      {(!Array.isArray(zone.shape) || zone.shape.length < 3) && (
+      {Array.isArray(zone.shape) && zone.shape.length >= 3 ? (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-[10px] text-emerald-200">
+          {zone.shape.length} boundary points selected. Quotes will use this polygon, not the city name in the address.
+        </div>
+      ) : (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[10px] text-amber-200">
-          No city-limit boundary is saved for this zone. It is inactive and cannot affect quotes.
+          This zone is inactive until at least three boundary points are drawn and saved.
         </div>
       )}
 
       <button
         type="button"
         onClick={onSave}
-        disabled={!Array.isArray(zone.shape) || zone.shape.length < 3}
+        disabled={!String(zone.city || '').trim() || !String(zone.state || '').trim() || !Array.isArray(zone.shape) || zone.shape.length < 3}
         className="w-full rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
       >
         Apply geofence changes

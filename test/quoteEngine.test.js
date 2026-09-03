@@ -202,6 +202,27 @@ test('mileage mode prices the full routed mileage and preserves surcharge roundi
   assert.equal(result.maxQuote, 50);
 });
 
+test('server routing retries one transient Google failure', async () => {
+  const originalFetch = globalThis.fetch;
+  let routeRequests = 0;
+  globalThis.fetch = async () => {
+    routeRequests += 1;
+    if (routeRequests === 1) return new Response('{}', { status: 503, headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ routes: [{ distanceMeters: 1000, duration: '600s', legs: [
+      { distanceMeters: 250, duration: '120s', polyline: { encodedPolyline: '' } },
+      { distanceMeters: 500, duration: '360s', polyline: { encodedPolyline: '' } },
+      { distanceMeters: 250, duration: '120s', polyline: { encodedPolyline: '' } },
+    ] }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    const computed = await computeServerRoute(['Base', 'Pickup', 'Dropoff', 'Base'], { apiKey: 'test-key' });
+    assert.equal(computed.totalMeters, 1000);
+    assert.equal(routeRequests, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('equipment weight tiers override the global permit cost', () => {
   const permitConfig = structuredClone(config);
   permitConfig.client_portal.weight_tiers = [

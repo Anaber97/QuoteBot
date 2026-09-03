@@ -82,8 +82,6 @@ function findCustomZones(_localities, routePoints, config) {
   const disabled = new Set((config?.geofences?.disabledZones || []).map(String));
   return (config?.geofences?.customZones || []).filter((zone) => !disabled.has(String(zone.id))).filter((zone) => {
     const polygon = Array.isArray(zone.shape) && zone.shape.length >= 3;
-    // Fail closed: municipality metadata can extend beyond incorporated city
-    // limits, so it must never substitute for a configured boundary polygon.
     if (!polygon) return false;
     const hits = routePoints.some((point) => pointInPolygon(point, zone.shape));
     if ((zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) !== 'flat_rate') return hits;
@@ -159,13 +157,12 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const { multiplier, flatSum } = calculateSurcharges({
     metroMatches: !useWeightTierPricing ? metroMatches : [],
     hazardMatches: !useWeightTierPricing ? hazardMatches : [],
-    customMatches: !useWeightTierPricing ? customMatches : [], // Custom zones ignored in weight tier mode
+    customMatches: !useWeightTierPricing ? customMatches : [],
     customSurcharges: pricing.custom_surcharges || [],
     useWeightTierPricing,
     overrides,
   });
 
-  // Check for flat override (only in non-weight-tier mode)
   const flatOverride = !useWeightTierPricing ? getFlatOverride(customMatches) : 0;
   const interval = toFinite(useWeightTierPricing ? tier?.rounding_interval ?? clientPricing.rounding_interval : pricing.rounding_interval, 25);
   const pricingQuantity = standardPricingMode === 'mileage' ? totalMiles : rawTotalHours;
@@ -218,8 +215,8 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     permit,
     escort,
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
-    appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(!useWeightTierPricing && metroMatches.length && overrides.metro), hazard: Boolean(!useWeightTierPricing && hazardMatches.length && overrides.hazard) },
+    appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(!useWeightTierPricing && metroMatches.length && overrides.metro), hazard: Boolean(!useWeightTierPricing && hazardMatches.length && overrides.hazard), customZone: Boolean(!useWeightTierPricing && customMatches.length) },
     routeLegs: route.legs,
-    quoteDetails: { ...(input.equipment || {}), permitFee: permit.permitFee, permitFlags: permit.flags, escort },
+    quoteDetails: { ...(input.equipment || {}), permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
   };
 }

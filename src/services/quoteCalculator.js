@@ -108,30 +108,43 @@ export async function calculateQuoteData({
   const fullRouteAddresses = [currentBase.address, ...cleanWaypoints, currentBase.address];
   const directionsService = new window.google.maps.DirectionsService();
   const directionsResult = await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('Google route request timed out. Check network or address validity.'));
-    }, 12000);
+    const routeRequest = {
+      origin: fullRouteAddresses[0],
+      destination: fullRouteAddresses[fullRouteAddresses.length - 1],
+      waypoints: fullRouteAddresses.slice(1, -1).map((address) => ({
+        location: address,
+        stopover: true,
+      })),
+      travelMode: window.google.maps.TravelMode.DRIVING,
+      optimizeWaypoints: false,
+    };
+    const requestRoute = (attempt) => {
+      let attemptFinished = false;
+      const timeout = setTimeout(() => {
+        attemptFinished = true;
+        if (attempt === 0) {
+          console.warn('[routes] browser route request timed out; retrying once');
+          requestRoute(1);
+        } else {
+          reject(new Error('Google route request timed out. Check network or address validity.'));
+        }
+      }, 12000);
 
-    directionsService.route(
-      {
-        origin: fullRouteAddresses[0],
-        destination: fullRouteAddresses[fullRouteAddresses.length - 1],
-        waypoints: fullRouteAddresses.slice(1, -1).map((address) => ({
-          location: address,
-          stopover: true,
-        })),
-        travelMode: window.google.maps.TravelMode.DRIVING,
-        optimizeWaypoints: false,
-      },
-      (result, status) => {
+      directionsService.route(routeRequest, (result, status) => {
+        if (attemptFinished) return;
+        attemptFinished = true;
         clearTimeout(timeout);
         if (status === 'OK' && result?.routes?.[0]) {
           resolve(result);
+        } else if (attempt === 0 && ['UNKNOWN_ERROR', 'OVER_QUERY_LIMIT'].includes(status)) {
+          console.warn('[routes] transient browser route failure; retrying once', { status });
+          setTimeout(() => requestRoute(1), 300);
         } else {
           reject(new Error(`Google Directions API failed with status: ${status}.`));
         }
-      }
-    );
+      });
+    };
+    requestRoute(0);
   });
 
   const routeLegs = directionsResult.routes[0].legs || [];

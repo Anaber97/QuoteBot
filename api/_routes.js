@@ -32,7 +32,7 @@ export async function resolveGoogleLocalities(addresses, { apiKey } = {}) {
 export async function computeServerRoute(addresses, { apiKey } = {}) {
   const key = apiKey || getServerEnv('GOOGLE_MAPS_API_KEY');
   if (!key) throw new Error('Missing server-side Google Maps API key.');
-  const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+  const request = {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -49,7 +49,23 @@ export async function computeServerRoute(addresses, { apiKey } = {}) {
       languageCode: 'en-US',
       units: 'IMPERIAL',
     }),
-  });
+  };
+  const retryableStatuses = new Set([429, 500, 502, 503, 504]);
+  let response;
+  let networkError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', request);
+      networkError = null;
+    } catch (error) {
+      networkError = error;
+    }
+    const shouldRetry = attempt === 0 && (networkError || retryableStatuses.has(response?.status));
+    if (!shouldRetry) break;
+    console.warn('[routes] transient Google Routes failure; retrying once', { status: response?.status || 'network' });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  if (networkError) throw Object.assign(new Error('Google Routes could not be reached.'), { status: 502, cause: networkError });
   if (!response.ok) {
     const detail = await response.json().catch(() => ({}));
     const error = new Error(detail?.error?.message || `Google Routes failed (${response.status}).`);
