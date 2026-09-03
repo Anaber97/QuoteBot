@@ -3,7 +3,7 @@ import { MapPin, Trash2 } from 'lucide-react';
 import { loadGoogleMaps } from '../../lib/googleMaps';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID;
+const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'b2a8bbbaef4c9498e7600aeb';
 
 const toTitleCase = (value) =>
   String(value || '')
