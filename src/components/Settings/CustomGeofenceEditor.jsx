@@ -30,6 +30,10 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
   zoneRef.current = zone;
   onChangeRef.current = onChange;
   const [status, setStatus] = useState('Search for a city or municipality to define this geofence.');
+  const reviewQuery = buildReviewQuery(zone);
+  const reviewMapUrl = API_KEY && reviewQuery
+    ? `https://www.google.com/maps/embed/v1/place?key=${API_KEY}&q=${encodeURIComponent(reviewQuery)}`
+    : null;
 
   useEffect(() => {
     if (!zoneRef.current) return;
@@ -224,18 +228,38 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         <p className="mt-1 text-[10px] text-slate-500">Flat rate prices contained trips. Surcharge adds either a percentage or dollar amount to applicable trips.</p>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-[10px] font-semibold text-slate-300">City-limit boundary</p>
-            <p className="text-[10px] text-slate-500">Click around the city limits in order. The last point connects back to the first.</p>
+      <div className={`grid grid-cols-1 gap-3 ${reviewMapUrl ? 'lg:grid-cols-2' : ''}`}>
+        {reviewMapUrl && (
+          <div className="space-y-2">
+            <div>
+              <p className="text-[10px] font-semibold text-slate-300">Google municipality reference</p>
+              <p className="text-[10px] text-slate-500">Use Google&apos;s displayed municipal outline as the visual guide.</p>
+            </div>
+            <iframe
+              title={`Google boundary reference for ${reviewQuery}`}
+              src={reviewMapUrl}
+              width="100%"
+              height="288"
+              loading="lazy"
+              allowFullScreen
+              referrerPolicy="no-referrer-when-downgrade"
+              className="rounded-lg border border-slate-700 bg-[#080c14]"
+            />
           </div>
-          <div className="flex shrink-0 gap-1.5">
-            <button type="button" disabled={!zone.shape?.length} onClick={() => onChange('shape', zone.shape.slice(0, -1))} className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40">Undo</button>
-            <button type="button" disabled={!zone.shape?.length} onClick={() => onChange('shape', [])} className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40">Clear</button>
+        )}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-[10px] font-semibold text-slate-300">TowCalc pricing boundary</p>
+              <p className="text-[10px] text-slate-500">Click matching points in order. The last point connects back to the first.</p>
+            </div>
+            <div className="flex shrink-0 gap-1.5">
+              <button type="button" disabled={!zone.shape?.length} onClick={() => onChange('shape', zone.shape.slice(0, -1))} className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40">Undo</button>
+              <button type="button" disabled={!zone.shape?.length} onClick={() => onChange('shape', [])} className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40">Clear</button>
+            </div>
           </div>
+          <div ref={mapElementRef} role="application" aria-label="Draw city-limit boundary" className="h-72 overflow-hidden rounded-lg border border-slate-700 bg-[#080c14]" />
         </div>
-        <div ref={mapElementRef} role="application" aria-label="Draw city-limit boundary" className="h-64 overflow-hidden rounded-lg border border-slate-700 bg-[#080c14]" />
       </div>
 
       <div className="rounded-lg border border-slate-800 bg-[#0b1220] p-2.5 text-[10px] text-slate-400">
