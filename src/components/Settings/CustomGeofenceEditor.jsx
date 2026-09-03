@@ -3,6 +3,7 @@ import { MapPin, Trash2 } from 'lucide-react';
 import { loadGoogleMaps } from '../../lib/googleMaps';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID;
 
 const toTitleCase = (value) =>
   String(value || '')
@@ -26,15 +27,14 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
   const mapRef = useRef(null);
   const polygonRef = useRef(null);
   const vertexMarkersRef = useRef([]);
+  const boundaryLayerRef = useRef(null);
+  const mapControlRef = useRef(null);
+  const mapControlButtonsRef = useRef({ undo: null, clear: null });
   const zoneRef = useRef(zone);
   const onChangeRef = useRef(onChange);
   zoneRef.current = zone;
   onChangeRef.current = onChange;
   const [status, setStatus] = useState('Search for a city or municipality to define this geofence.');
-  const reviewQuery = buildReviewQuery(zone);
-  const reviewMapUrl = API_KEY && reviewQuery
-    ? `https://www.google.com/maps/embed/v1/place?key=${API_KEY}&q=${encodeURIComponent(reviewQuery)}`
-    : null;
 
   useEffect(() => {
     if (!zoneRef.current) return;
@@ -58,11 +58,55 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         const map = new google.maps.Map(mapElementRef.current, {
           center: existingShape[0] || { lat: 39.5, lng: -98.35 },
           zoom: existingShape.length ? 11 : 4,
+          ...(MAP_ID ? { mapId: MAP_ID } : {}),
           mapTypeControl: true,
           streetViewControl: false,
           fullscreenControl: true,
         });
         mapRef.current = map;
+        const controls = document.createElement('div');
+        controls.className = 'm-2 flex overflow-hidden rounded-lg border border-slate-300 bg-white shadow-lg';
+        const makeControlButton = (label, action) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = label;
+          button.className = 'min-h-10 px-3 text-xs font-bold text-slate-800 disabled:cursor-not-allowed disabled:opacity-40';
+          button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            action();
+          });
+          controls.appendChild(button);
+          return button;
+        };
+        mapControlButtonsRef.current.undo = makeControlButton('Undo point', () => {
+          const shape = Array.isArray(zoneRef.current?.shape) ? zoneRef.current.shape : [];
+          onChangeRef.current('shape', shape.slice(0, -1));
+        });
+        mapControlButtonsRef.current.clear = makeControlButton('Clear', () => onChangeRef.current('shape', []));
+        mapControlButtonsRef.current.undo.disabled = existingShape.length === 0;
+        mapControlButtonsRef.current.clear.disabled = existingShape.length === 0;
+        map.controls[google.maps.ControlPosition.TOP_LEFT].push(controls);
+        mapControlRef.current = controls;
+
+        const showGoogleBoundary = (placeId) => {
+          if (!MAP_ID || !placeId || typeof map.getFeatureLayer !== 'function') return false;
+          try {
+            const layer = map.getFeatureLayer('LOCALITY');
+            layer.style = ({ feature }) => feature.placeId === placeId ? {
+              strokeColor: '#f97316',
+              strokeOpacity: 1,
+              strokeWeight: 3,
+              fillColor: '#f97316',
+              fillOpacity: 0.08,
+            } : null;
+            boundaryLayerRef.current = layer;
+            return true;
+          } catch (error) {
+            console.warn('Google municipality boundary layer unavailable:', error);
+            return false;
+          }
+        };
         polygonRef.current = new google.maps.Polygon({
           map,
           paths: existingShape,
@@ -109,6 +153,7 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
           onChangeRef.current('city', nextCity);
           onChangeRef.current('state', nextState);
           onChangeRef.current('localityQuery', nextQuery);
+          onChangeRef.current('placeId', place?.place_id || '');
           if (!currentZone?.name || currentZone.name === 'New Municipality Zone') {
             onChangeRef.current('name', nextQuery || nextCity || currentZone?.name || 'Custom Geofence');
           }
@@ -117,7 +162,10 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
             map.setCenter(place.geometry.location);
             map.setZoom(11);
           }
-          setStatus(nextQuery ? `Selected ${nextQuery}.` : 'Select a city from the suggestions.');
+          const boundaryVisible = showGoogleBoundary(place?.place_id);
+          setStatus(nextQuery
+            ? `Selected ${nextQuery}. ${boundaryVisible ? 'Google reference boundary is outlined in orange.' : 'Draw the pricing boundary in cyan.'}`
+            : 'Select a city from the suggestions.');
         });
 
         const currentZone = zoneRef.current;
@@ -128,6 +176,7 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         }
 
         const currentReviewQuery = buildReviewQuery(zoneRef.current);
+        if (zoneRef.current?.placeId) showGoogleBoundary(zoneRef.current.placeId);
         setStatus(currentReviewQuery ? `Reviewing ${currentReviewQuery}.` : 'Search for a city or municipality to define this geofence.');
 
       } catch (error) {
@@ -143,8 +192,13 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
       if (placeListener) placeListener.remove();
       if (mapClickListener) mapClickListener.remove();
       if (polygonRef.current) polygonRef.current.setMap(null);
+      if (boundaryLayerRef.current) boundaryLayerRef.current.style = null;
       vertexMarkersRef.current.forEach((marker) => marker.setMap(null));
       vertexMarkersRef.current = [];
+      if (mapControlRef.current) mapControlRef.current.remove();
+      mapControlRef.current = null;
+      mapControlButtonsRef.current = { undo: null, clear: null };
+      boundaryLayerRef.current = null;
       autocompleteRef.current = null;
       polygonRef.current = null;
       mapRef.current = null;
@@ -155,6 +209,8 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
     if (!polygonRef.current) return;
     const shape = Array.isArray(zone?.shape) ? zone.shape : [];
     polygonRef.current.setPath(shape);
+    if (mapControlButtonsRef.current.undo) mapControlButtonsRef.current.undo.disabled = shape.length === 0;
+    if (mapControlButtonsRef.current.clear) mapControlButtonsRef.current.clear.disabled = shape.length === 0;
     vertexMarkersRef.current.forEach((marker) => marker.setMap(null));
     vertexMarkersRef.current = [];
     if (!mapRef.current || !window.google?.maps) return;
@@ -249,37 +305,14 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
         <p className="mt-1 text-[10px] text-slate-500">Flat rate prices contained trips. Surcharge adds either a percentage or dollar amount to applicable trips.</p>
       </div>
 
-      <div className={`grid grid-cols-1 gap-3 ${reviewMapUrl ? 'lg:grid-cols-2' : ''}`}>
-        {reviewMapUrl && (
-          <div className="space-y-2">
-            <div>
-              <p className="text-[10px] font-semibold text-slate-300">Google municipality reference</p>
-              <p className="text-[10px] text-slate-500">Use Google&apos;s displayed municipal outline as the visual guide.</p>
-            </div>
-            <iframe
-              title={`Google boundary reference for ${reviewQuery}`}
-              src={reviewMapUrl}
-              width="100%"
-              height="288"
-              loading="lazy"
-              allowFullScreen
-              referrerPolicy="no-referrer-when-downgrade"
-              className="rounded-lg border border-slate-700 bg-[#080c14]"
-            />
-          </div>
-        )}
+      <div className="grid grid-cols-1 gap-3">
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-[10px] font-semibold text-slate-300">TowCalc pricing boundary</p>
-              <p className="text-[10px] text-slate-500">Click matching points in order. The last point connects back to the first.</p>
-            </div>
-            <div className="flex shrink-0 gap-1.5">
-              <button type="button" disabled={!zone.shape?.length} onClick={() => onChange('shape', zone.shape.slice(0, -1))} className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40">Undo</button>
-              <button type="button" disabled={!zone.shape?.length} onClick={() => onChange('shape', [])} className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40">Clear</button>
-            </div>
+          <div>
+            <p className="text-[10px] font-semibold text-slate-300">Municipality and pricing boundary</p>
+            <p className="text-[10px] text-slate-500"><span className="font-semibold text-orange-400">Orange</span> is Google&apos;s municipality reference. Click matching points to draw TowCalc&apos;s <span className="font-semibold text-cyan-400">cyan</span> pricing polygon.</p>
           </div>
           <div ref={mapElementRef} role="application" aria-label="Draw city-limit boundary" className="h-72 overflow-hidden rounded-lg border border-slate-700 bg-[#080c14]" />
+          {!MAP_ID && <p className="text-[10px] text-amber-300">Google&apos;s reference layer needs a configured vector Map ID. Polygon drawing still works.</p>}
         </div>
       </div>
 
