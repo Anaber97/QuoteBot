@@ -25,6 +25,7 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
   const autocompleteRef = useRef(null);
   const mapRef = useRef(null);
   const polygonRef = useRef(null);
+  const vertexMarkersRef = useRef([]);
   const zoneRef = useRef(zone);
   const onChangeRef = useRef(onChange);
   zoneRef.current = zone;
@@ -142,6 +143,8 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
       if (placeListener) placeListener.remove();
       if (mapClickListener) mapClickListener.remove();
       if (polygonRef.current) polygonRef.current.setMap(null);
+      vertexMarkersRef.current.forEach((marker) => marker.setMap(null));
+      vertexMarkersRef.current = [];
       autocompleteRef.current = null;
       polygonRef.current = null;
       mapRef.current = null;
@@ -150,7 +153,25 @@ export default function CustomGeofenceEditor({ zone, onChange, onSave, onDelete 
 
   useEffect(() => {
     if (!polygonRef.current) return;
-    polygonRef.current.setPath(Array.isArray(zone?.shape) ? zone.shape : []);
+    const shape = Array.isArray(zone?.shape) ? zone.shape : [];
+    polygonRef.current.setPath(shape);
+    vertexMarkersRef.current.forEach((marker) => marker.setMap(null));
+    vertexMarkersRef.current = [];
+    if (!mapRef.current || !window.google?.maps) return;
+    vertexMarkersRef.current = shape.map((point) => new window.google.maps.Marker({
+      position: point,
+      map: mapRef.current,
+      clickable: false,
+      zIndex: 10,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 5,
+        fillColor: '#22d3ee',
+        fillOpacity: 1,
+        strokeColor: '#0f172a',
+        strokeWeight: 2,
+      },
+    }));
   }, [zone?.shape]);
 
   if (!zone) return null;

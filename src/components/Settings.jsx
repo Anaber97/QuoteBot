@@ -30,8 +30,8 @@ const cloneNormalizedConfig = (value) => JSON.parse(JSON.stringify(normalizeConf
 
 export default function Settings({ config, onSaveConfig, currentUserRole, profile }) {
   const [activeSubTab, setActiveSubTab] = useState('pricing');
-  const [formData, setFormData] = useState(() => cloneNormalizedConfig(config));
-  const [savedFormData, setSavedFormData] = useState(() => cloneNormalizedConfig(config));
+  const [formData, setFormDataState] = useState(() => cloneNormalizedConfig(config));
+  const [editRevision, setEditRevision] = useState(0);
   const [companyUsers, setCompanyUsers] = useState([]);
   const [clientAccounts, setClientAccounts] = useState([]);
   const [inviteName, setInviteName] = useState('');
@@ -53,17 +53,20 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   const [selectedGeofenceId, setSelectedGeofenceId] = useState(null);
   const [draftCustomGeofence, setDraftCustomGeofence] = useState(null);
 
+  const setFormData = (update) => {
+    setFormDataState(update);
+    setEditRevision((revision) => revision + 1);
+    setSaveStatus(null);
+  };
+
   useEffect(() => {
     if (config) {
-      setFormData(cloneNormalizedConfig(config));
-      setSavedFormData(cloneNormalizedConfig(config));
+      setFormDataState(cloneNormalizedConfig(config));
+      setEditRevision(0);
     }
   }, [config]);
 
-  const hasUnsavedChanges = useMemo(
-    () => JSON.stringify(formData) !== JSON.stringify(savedFormData),
-    [formData, savedFormData]
-  );
+  const hasUnsavedChanges = editRevision > 0;
 
   useEffect(() => {
     if (!profile?.company_id) {
@@ -249,8 +252,8 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
       // Use the exact object we sent as the new in-memory source of truth.
       const savedConfig = normalizeConfig(result?.config || normalizedConfig);
       setSaveStatus({ type: 'success', message: 'Configuration saved successfully!' });
-      setFormData(cloneNormalizedConfig(savedConfig));
-      setSavedFormData(cloneNormalizedConfig(savedConfig));
+      setFormDataState(cloneNormalizedConfig(savedConfig));
+      setEditRevision(0);
       if (onSaveConfig) onSaveConfig(savedConfig);
     } catch (err) {
       console.error('Error saving app_config:', err);
