@@ -1,5 +1,5 @@
-import React from 'react';
-import { ArrowDown, ArrowUp, DollarSign, Clock, Plus, Trash2 } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { GripVertical, DollarSign, Clock, Plus, Trash2 } from 'lucide-react';
 
 export default function PricingTab({
   formData,
@@ -20,8 +20,11 @@ export default function PricingTab({
   updateClientPortalTier,
   addClientPortalTier,
   removeClientPortalTier,
+  reorderClientPortalTier,
   updateClientPortal,
 }) {
+  const dragStateRef = useRef(null);
+  const [dragging, setDragging] = useState(null);
   const pricingMode = formData.pricing?.pricing_mode === 'mileage' ? 'mileage' : 'hourly';
   const isMileageMode = pricingMode === 'mileage';
   const rateUnit = isMileageMode ? '$/mi' : '$/hr';
@@ -48,6 +51,39 @@ export default function PricingTab({
       const current = rules.find((rule) => Number(rule.vehicleCount) === count) || { vehicleCount: count, minWidth: 0, minHeight: 0, surcharge: 0 };
       return count === vehicleCount ? { ...current, [field]: Number(value) || 0 } : current;
     }));
+  };
+  const reorderRow = (list, fromIndex, toIndex) => {
+    const itemCount = list === 'equipment'
+      ? (formData.client_portal?.weight_tiers || []).length
+      : (formData.pricing?.custom_truck_classes || []).length;
+    if (fromIndex === toIndex || toIndex < 0 || toIndex >= itemCount) return;
+    const direction = toIndex - fromIndex;
+    if (list === 'equipment') reorderClientPortalTier(fromIndex, direction);
+    else reorderTruckClass(fromIndex, direction);
+  };
+  const startDrag = (list, index, event) => {
+    dragStateRef.current = { list, index };
+    setDragging({ list, index });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const moveDrag = (event) => {
+    const active = dragStateRef.current;
+    if (!active) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(`[data-reorder-list="${active.list}"]`);
+    const targetIndex = Number(target?.dataset?.reorderIndex);
+    if (!Number.isInteger(targetIndex) || targetIndex === active.index) return;
+    reorderRow(active.list, active.index, targetIndex);
+    dragStateRef.current = { ...active, index: targetIndex };
+    setDragging({ ...active, index: targetIndex });
+  };
+  const stopDrag = () => {
+    dragStateRef.current = null;
+    setDragging(null);
+  };
+  const handleReorderKey = (list, index, event) => {
+    if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    reorderRow(list, index, event.key === 'ArrowUp' ? index - 1 : index + 1);
   };
   const systemSurcharges = [
     { field: 'metro_multiplier', label: 'Metro', defaultValue: 28.57, trigger: 'Automatic · Metro Zone' },
@@ -97,15 +133,18 @@ export default function PricingTab({
 
       <div className="order-2 bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
         <div className="flex items-center justify-between"><div><h4 className="font-bold text-slate-200 text-xs">Equipment Weight Pricing</h4><p className="text-[10px] text-slate-400">Used by the Equipment Calculator with the selected pricing mode.</p></div><button type="button" onClick={addClientPortalTier} className="rounded-lg border border-blue-500/30 px-2.5 py-1 text-blue-400"><Plus className="inline w-3 h-3" /> Add class</button></div>
-        <div className="hidden gap-2 px-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr_auto]"><span>Min Weight (lbs.)</span><span>Max Weight (lbs.)</span><span>Rate ({rateUnit})</span><span>Permit ($)</span><span>Drive Buffer (%)</span><span>Load / Unload (min.)</span><span>Delete</span></div>
-        {(formData.client_portal?.weight_tiers || []).map((tier, index) => <div key={tier.id || index} className="grid gap-2 rounded-lg border border-slate-800 bg-[#121824] p-2.5 sm:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr_auto]">
+        <div className="hidden gap-2 px-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr_auto]"><span>Min Weight (lbs.)</span><span>Max Weight (lbs.)</span><span>Rate ({rateUnit})</span><span>Permit ($)</span><span>Drive Buffer (%)</span><span>Load / Unload (min.)</span><span>Reorder / Delete</span></div>
+        {(formData.client_portal?.weight_tiers || []).map((tier, index) => <div key={tier.id || index} data-reorder-list="equipment" data-reorder-index={index} className={`grid gap-2 rounded-lg border bg-[#121824] p-2.5 transition sm:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr_auto] ${dragging?.list === 'equipment' && dragging.index === index ? 'border-cyan-400 opacity-70' : 'border-slate-800'}`}>
           <input type="number" value={tier.minWeight} onChange={(e) => updateClientPortalTier(index, 'minWeight', e.target.value)} placeholder="Min lbs" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <input type="number" value={tier.maxWeight} onChange={(e) => updateClientPortalTier(index, 'maxWeight', e.target.value)} placeholder="Max lbs" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <input type="number" step={isMileageMode ? '0.01' : '1'} value={isMileageMode ? (tier.mileageRate ?? 5) : (tier.hourlyRate ?? tier.rate)} onChange={(e) => updateClientPortalTier(index, isMileageMode ? 'mileageRate' : 'hourlyRate', e.target.value)} placeholder={rateUnit} className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <input type="number" min="0" step="1" value={tier.permitCost ?? 150} onChange={(e) => updateClientPortalTier(index, 'permitCost', e.target.value)} placeholder="Permit $" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <input type="number" value={tier.drive_time_buffer ?? 10} onChange={(e) => updateClientPortalTier(index, 'drive_time_buffer', e.target.value)} placeholder="Drive %" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
           <input type="number" value={tier.load_unload_base_mins ?? 30} onChange={(e) => updateClientPortalTier(index, 'load_unload_base_mins', e.target.value)} placeholder="Load mins" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <button type="button" onClick={() => removeClientPortalTier(index)} aria-label={`Delete equipment weight class ${index + 1}`} title="Delete class" className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5" /></button>
+          <div className="flex items-center justify-end gap-1">
+            <button type="button" aria-label={`Drag equipment weight class ${index + 1} to reorder`} title="Drag to reorder; arrow keys also work" onPointerDown={(event) => startDrag('equipment', index, event)} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag} onKeyDown={(event) => handleReorderKey('equipment', index, event)} className="inline-flex touch-none cursor-grab items-center justify-center rounded border border-slate-700 px-2 py-2 text-slate-300 active:cursor-grabbing"><GripVertical className="h-4 w-4" /></button>
+            <button type="button" onClick={() => removeClientPortalTier(index)} aria-label={`Delete equipment weight class ${index + 1}`} title="Delete class" className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5" /></button>
+          </div>
         </div>)}
       </div>
 
@@ -239,7 +278,7 @@ export default function PricingTab({
           <span className="pb-2 text-center text-[9px] uppercase tracking-wide text-slate-600">Default</span>
         </div>
         {formData.pricing?.custom_truck_classes?.map((tc, idx) => (
-          <div key={tc.id} className={`grid gap-2 bg-[#121824] p-2.5 rounded-lg border border-slate-800 sm:items-end ${classTableColumns}`}>
+          <div key={tc.id} data-reorder-list="truck" data-reorder-index={idx} className={`grid gap-2 bg-[#121824] p-2.5 rounded-lg border transition sm:items-end ${classTableColumns} ${dragging?.list === 'truck' && dragging.index === idx ? 'border-cyan-400 opacity-70' : 'border-slate-800'}`}>
             <input
               type="text"
               placeholder="Class Name"
@@ -278,8 +317,7 @@ export default function PricingTab({
                 />
               </label>}
               <div className="flex items-center justify-end gap-1">
-                <button type="button" disabled={idx === 0} onClick={() => reorderTruckClass(idx, -1)} aria-label={`Move ${tc.name} up`} title="Move class up" className="inline-flex items-center justify-center rounded border border-slate-700 px-2 py-2 text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
-                <button type="button" disabled={idx === formData.pricing.custom_truck_classes.length - 1} onClick={() => reorderTruckClass(idx, 1)} aria-label={`Move ${tc.name} down`} title="Move class down" className="inline-flex items-center justify-center rounded border border-slate-700 px-2 py-2 text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
+                <button type="button" aria-label={`Drag ${tc.name} to reorder`} title="Drag to reorder; arrow keys also work" onPointerDown={(event) => startDrag('truck', idx, event)} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag} onKeyDown={(event) => handleReorderKey('truck', idx, event)} className="inline-flex touch-none cursor-grab items-center justify-center rounded border border-slate-700 px-2 py-2 text-slate-300 active:cursor-grabbing"><GripVertical className="h-4 w-4" /></button>
                 <button type="button" onClick={() => removeTruckClass(tc.id)} aria-label={`Delete ${tc.name}`} title="Delete class" className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
           </div>

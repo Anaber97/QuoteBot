@@ -359,6 +359,17 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
     setFormData((prev) => ({ ...prev, client_portal: { ...prev.client_portal, weight_tiers: (prev.client_portal?.weight_tiers || []).filter((_, tierIndex) => tierIndex !== index) } }));
   };
 
+  const reorderClientPortalTier = (index, direction) => {
+    setFormData((prev) => {
+      const tiers = [...(prev.client_portal?.weight_tiers || [])];
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= tiers.length) return prev;
+      const [movedTier] = tiers.splice(index, 1);
+      tiers.splice(targetIndex, 0, movedTier);
+      return { ...prev, client_portal: { ...prev.client_portal, weight_tiers: tiers } };
+    });
+  };
+
   const addClientPortalClient = () => {
     const newClient = {
       id: `client-${Date.now()}`,
@@ -840,6 +851,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
           updateClientPortalTier={updateClientPortalTier}
           addClientPortalTier={addClientPortalTier}
           removeClientPortalTier={removeClientPortalTier}
+          reorderClientPortalTier={reorderClientPortalTier}
           updateClientPortal={updateClientPortal}
         />
       )}

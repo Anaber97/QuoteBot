@@ -81,8 +81,21 @@ describe('Settings unsaved-change behavior', () => {
     render(<Settings config={DEFAULT_CONFIG} onSaveConfig={() => {}} currentUserRole="manager" profile={baseProfile} />);
     const firstClass = screen.getAllByPlaceholderText('Class Name')[0];
     expect(firstClass).toHaveValue('Standard Tow / Flatbed');
-    fireEvent.click(screen.getByRole('button', { name: /Move Standard Tow \/ Flatbed down/i }));
+    fireEvent.keyDown(screen.getByRole('button', { name: /Drag Standard Tow \/ Flatbed to reorder/i }), { key: 'ArrowDown' });
     expect(screen.getAllByPlaceholderText('Class Name')[1]).toHaveValue('Standard Tow / Flatbed');
+    expect(screen.getByRole('button', { name: /save settings/i })).toBeEnabled();
+  });
+
+  test('reorders equipment pricing rows from the drag handle keyboard control', async () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.client_portal.weight_tiers = [
+      { id: 'light', minWeight: 0, maxWeight: 10000, hourlyRate: 100 },
+      { id: 'heavy', minWeight: 10001, maxWeight: 999999, hourlyRate: 200 },
+    ];
+    render(<Settings config={config} onSaveConfig={() => {}} currentUserRole="manager" profile={baseProfile} />);
+    expect(screen.getAllByPlaceholderText('Min lbs')[0]).toHaveValue(0);
+    fireEvent.keyDown(screen.getByRole('button', { name: /Drag equipment weight class 1 to reorder/i }), { key: 'ArrowDown' });
+    expect(screen.getAllByPlaceholderText('Min lbs')[0]).toHaveValue(10001);
     expect(screen.getByRole('button', { name: /save settings/i })).toBeEnabled();
   });
 
