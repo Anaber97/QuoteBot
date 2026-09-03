@@ -130,6 +130,16 @@ export async function evaluateCustomGeofences(_cleanWaypoints, coordsList, compa
         };
       }
 
+      if (pricingMode === 'max_rate') {
+        if (!containsPickup || !containsDropoff) return null;
+        return {
+          ...zone,
+          charge: { feeType: 'max', value: Number(zone.price ?? zone.value ?? 0) || 0 },
+          containsPickup,
+          containsDropoff,
+        };
+      }
+
       if (!anyRoutePointInside) return null;
       return {
         ...zone,

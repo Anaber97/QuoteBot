@@ -333,6 +333,7 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
           >
             <option value="surcharge">Surcharge</option>
             <option value="flat_rate">Flat rate ($)</option>
+            <option value="max_rate">Max. rate ($)</option>
           </select>
         </div>
       </div>
@@ -348,7 +349,7 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_8rem]">
         <div>
-          <label className="mb-1 block text-[10px] text-slate-400">Charge value</label>
+          <label className="mb-1 block text-[10px] text-slate-400">{zone.pricingMode === 'max_rate' ? 'Maximum quote' : 'Charge value'}</label>
           <input
             type="number"
             value={zone.price ?? ''}
@@ -359,9 +360,9 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
         </div>
         <div>
           <label className="mb-1 block text-[10px] text-slate-400">Priority</label>
-          <input type="number" min="0" max="999" step="1" value={zone.priority ?? 0} onChange={(e) => onChange('priority', e.target.value)} className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white font-mono" />
+          <input aria-label="Priority" type="number" min="0" max="999" step="1" value={zone.priority ?? 0} onChange={(e) => onChange('priority', e.target.value)} className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white font-mono" />
         </div>
-        <p className="text-[10px] text-slate-500 sm:col-span-2">Higher priority wins when zones overlap. Zones tied at the highest priority stack together.</p>
+        <p className="text-[10px] text-slate-500 sm:col-span-2">{zone.pricingMode === 'max_rate' ? 'The normal quote is kept when lower, or capped at this amount when higher. ' : ''}Higher priority wins when zones overlap. Zones tied at the highest priority stack together.</p>
       </div>
 
       <div className="space-y-2 rounded-lg border border-slate-700 bg-[#0b1220] p-2.5">

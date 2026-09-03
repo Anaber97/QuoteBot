@@ -308,7 +308,7 @@ test('server quote applies only the highest-priority overlapping custom zones', 
     route: { ...route, customerRoutePoints: [{ lat: 32.5, lng: -94.5 }] },
   });
   assert.deepEqual(result.quoteDetails.customZoneNames, ['High']);
-  assert.equal(result.minQuote, 25);
+  assert.equal(result.minQuote, 225);
 });
 
 test('company custom-zone priority applies to clients without custom pricing', () => {
@@ -327,4 +327,18 @@ test('company custom-zone priority applies to clients without custom pricing', (
   });
   assert.deepEqual(result.quoteDetails.customZoneNames, ['High']);
   assert.equal(result.minQuote, 200);
+});
+
+test('max-rate zones cap a high quote but do not raise a lower quote', () => {
+  const maxConfig = structuredClone(config);
+  const shape = [{ lat: 32, lng: -95 }, { lat: 32, lng: -94 }, { lat: 33, lng: -94 }, { lat: 33, lng: -95 }];
+  maxConfig.geofences.customZones = [{ id: 'cap', name: 'Town cap', priority: 10, pricingMode: 'max_rate', price: 200, shape }];
+  const capped = quote({ config: maxConfig, route: { ...route, customerRoutePoints: [{ lat: 32.5, lng: -94.5 }, { lat: 32.6, lng: -94.6 }] } });
+  assert.equal(capped.minQuote, 200);
+  assert.equal(capped.maxQuote, 200);
+
+  maxConfig.geofences.customZones[0].price = 500;
+  const belowCap = quote({ config: maxConfig, route: { ...route, customerRoutePoints: [{ lat: 32.5, lng: -94.5 }, { lat: 32.6, lng: -94.6 }] } });
+  assert.equal(belowCap.minQuote, 200);
+  assert.equal(belowCap.maxQuote, 200);
 });

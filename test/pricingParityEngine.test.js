@@ -301,6 +301,28 @@ test('calculatePermitRequirements no permit for normal shipments', () => {
   assert.equal(result.permitFee, 0);
 });
 
+test('calculateFinalQuotes caps high quotes and preserves lower quotes', () => {
+  const capped = calculateFinalQuotes({
+    pricingQuantity: 3,
+    minRate: 125,
+    maxRate: 135,
+    rounding: 25,
+    maxOverride: 350,
+  });
+  assert.equal(capped.minQuote, 350);
+  assert.equal(capped.maxQuote, 350);
+
+  const belowCap = calculateFinalQuotes({
+    pricingQuantity: 2,
+    minRate: 125,
+    maxRate: 135,
+    rounding: 25,
+    maxOverride: 350,
+  });
+  assert.equal(belowCap.minQuote, 250);
+  assert.equal(belowCap.maxQuote, 275);
+});
+
 test('resolveEscortRequirement selects the highest width or height rule', () => {
   const rules = [
     { vehicleCount: 1, minWidth: 144, minHeight: 168, surcharge: 250 },

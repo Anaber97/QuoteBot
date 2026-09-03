@@ -142,7 +142,7 @@ export function calculateSurcharges({
   }
 
   // Custom geofence surcharges (always applied if matched)
-  customMatches.forEach((zone) => {
+  customMatches.filter((zone) => zone.pricingMode !== 'max_rate').forEach((zone) => {
     add(zone.charge?.feeType || 'percent', zone.charge?.value);
   });
 
@@ -162,8 +162,16 @@ export function calculateSurcharges({
  */
 export function getFlatOverride(customMatches = []) {
   return customMatches
-    .filter((zone) => zone.charge?.feeType === 'flat')
+    .filter((zone) => zone.pricingMode === 'flat_rate' || (!zone.pricingMode && zone.charge?.feeType === 'flat'))
     .reduce((max, zone) => Math.max(max, toFinite(zone.charge?.value, 0)), 0);
+}
+
+export function getMaxOverride(customMatches = []) {
+  const limits = customMatches
+    .filter((zone) => zone.pricingMode === 'max_rate')
+    .map((zone) => toFinite(zone.charge?.value ?? zone.price, 0))
+    .filter((value) => value > 0);
+  return limits.length ? Math.min(...limits) : 0;
 }
 
 /**
@@ -182,13 +190,15 @@ export function calculateFinalQuotes({
   customRate = null,
   customQuantity = null,
   flatOverride = 0,
+  maxOverride = 0,
 }) {
+  const applyMaximum = (value) => maxOverride > 0 ? Math.min(value, maxOverride) : value;
   if (flatOverride > 0) {
     const overriddenQuote = roundToNearest(flatOverride, rounding) + permitFee;
     return {
-      minQuote: overriddenQuote,
-      maxQuote: overriddenQuote,
-      customQuote: overriddenQuote,
+      minQuote: applyMaximum(overriddenQuote),
+      maxQuote: applyMaximum(overriddenQuote),
+      customQuote: applyMaximum(overriddenQuote),
     };
   }
 
@@ -210,7 +220,11 @@ export function calculateFinalQuotes({
     );
   }
 
-  return { minQuote, maxQuote, customQuote };
+  return {
+    minQuote: applyMaximum(minQuote),
+    maxQuote: applyMaximum(maxQuote),
+    customQuote: customQuote == null ? null : applyMaximum(customQuote),
+  };
 }
 
 /**

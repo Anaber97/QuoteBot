@@ -5,6 +5,7 @@ import {
   calculateTimeMetrics,
   calculateSurcharges,
   getFlatOverride,
+  getMaxOverride,
   calculateFinalQuotes as calculateFinalQuotesPure,
   calculatePermitRequirements as calculatePermitPure,
   resolveEscortRequirement,
@@ -85,7 +86,7 @@ function findCustomZones(_localities, routePoints, config) {
     const polygon = Array.isArray(zone.shape) && zone.shape.length >= 3;
     if (!polygon) return false;
     const hits = routePoints.some((point) => pointInPolygon(point, zone.shape));
-    if ((zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) !== 'flat_rate') return hits;
+    if (!['flat_rate', 'max_rate'].includes(zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge'))) return hits;
     const pickupHit = routePoints[0] && pointInPolygon(routePoints[0], zone.shape);
     const dropoffHit = routePoints.at(-1) && pointInPolygon(routePoints.at(-1), zone.shape);
     return pickupHit && dropoffHit;
@@ -93,7 +94,9 @@ function findCustomZones(_localities, routePoints, config) {
     ...zone,
     charge: (zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) === 'flat_rate'
       ? { feeType: 'flat', value: toFinite(zone.price ?? zone.value) }
-      : { feeType: zone.surchargeFeeType === 'flat' ? 'flat' : 'percent', value: toFinite(zone.price ?? zone.value) },
+      : (zone.pricingMode === 'max_rate'
+        ? { feeType: 'max', value: toFinite(zone.price ?? zone.value) }
+        : { feeType: zone.surchargeFeeType === 'flat' ? 'flat' : 'percent', value: toFinite(zone.price ?? zone.value) }),
   }));
   return selectHighestPriorityZones(matches);
 }
@@ -166,6 +169,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   });
 
   const flatOverride = getFlatOverride(customMatches);
+  const maxOverride = getMaxOverride(customMatches);
   const interval = toFinite(useWeightTierPricing ? tier?.rounding_interval ?? clientPricing.rounding_interval : pricing.rounding_interval, 25);
   const pricingQuantity = standardPricingMode === 'mileage' ? totalMiles : rawTotalHours;
 
@@ -204,6 +208,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     customRate: role !== 'client' ? toFinite(input.customRate) : null,
     customQuantity,
     flatOverride,
+    maxOverride,
   });
 
   return {

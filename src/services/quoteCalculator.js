@@ -9,6 +9,7 @@ import {
   calculateTimeMetrics,
   calculateSurcharges,
   getFlatOverride,
+  getMaxOverride,
   calculateFinalQuotes as calculateFinalQuotesPure,
   resolveEscortRequirement,
 } from '../lib/pricingEngine';
@@ -309,6 +310,7 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
 
   // Check for flat override
   const flatOverride = getFlatOverride(quoteData.customMatches || []);
+  const maxOverride = getMaxOverride(quoteData.customMatches || []);
 
   // Determine pricing quantity
   const pricingQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : quoteData.rawTotalHours;
@@ -332,6 +334,7 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     customRate: customRate != null ? customRate : null,
     customQuantity: customLoadUnloadMins !== null && customLoadUnloadMins !== '' ? customQuantity : null,
     flatOverride,
+    maxOverride,
   });
 
   return {

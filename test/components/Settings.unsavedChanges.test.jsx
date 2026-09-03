@@ -86,6 +86,20 @@ describe('Settings unsaved-change behavior', () => {
     expect(screen.getByRole('button', { name: /save settings/i })).toBeEnabled();
   });
 
+  test('editing an existing custom geofence priority enables Save Settings', async () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.geofences.customZones = [{
+      id: 'town', name: 'Small Town', city: 'Small Town', state: 'TX', priority: 0,
+      pricingMode: 'max_rate', price: 300,
+      shape: [{ lat: 32, lng: -95 }, { lat: 32, lng: -94 }, { lat: 33, lng: -94 }],
+    }];
+    render(<Settings config={config} onSaveConfig={() => {}} currentUserRole="manager" profile={baseProfile} />);
+    fireEvent.click(screen.getByRole('button', { name: /geofences/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Small Town/i }));
+    fireEvent.change(await screen.findByLabelText('Priority'), { target: { value: '20' } });
+    expect(screen.getByRole('button', { name: /save settings/i })).toBeEnabled();
+  });
+
   test('a failed save keeps the unsaved-changes state and surfaces the error', async () => {
     authenticatedFetchMock.mockResolvedValue({
       ok: false,

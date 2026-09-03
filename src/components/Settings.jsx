@@ -657,6 +657,18 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
 
   const updateDraftCustomGeofence = (field, value) => {
     setDraftCustomGeofence((prev) => (prev ? { ...prev, [field]: value } : prev));
+    const savedZones = formData.geofences?.customZones || [];
+    if (draftCustomGeofence?.id && savedZones.some((zone) => zone.id === draftCustomGeofence.id)) {
+      setFormData((prev) => ({
+        ...prev,
+        geofences: {
+          ...prev.geofences,
+          customZones: (prev.geofences?.customZones || []).map((zone) => (
+            zone.id === draftCustomGeofence.id ? { ...zone, [field]: value } : zone
+          )),
+        },
+      }));
+    }
   };
 
   const saveCustomGeofence = () => {
