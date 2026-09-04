@@ -1,5 +1,4 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
-import { withSupabase } from "@supabase/server";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 const DEFAULT_FROM = "TowCalc <noreply@towcalc.com>";
@@ -11,10 +10,29 @@ type EmailRequest = {
 };
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 
-export default {
-  // Only TowCalc's trusted server may use this as an email relay.
-  fetch: withSupabase({ auth: "secret" }, async (request) => {
+const securelyEqual = (left: string, right: string) => {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  if (leftBytes.length !== rightBytes.length) return false;
+  let difference = 0;
+  for (let index = 0; index < leftBytes.length; index += 1) difference |= leftBytes[index] ^ rightBytes[index];
+  return difference === 0;
+};
+
+Deno.serve(async (request) => {
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+    // This function has gateway JWT verification disabled so server-held Supabase
+    // credentials work consistently. Keep the relay private by verifying the
+    // service-role credential inside the function before parsing any email data.
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() || "";
+    const authorization = request.headers.get("authorization")?.trim() || "";
+    const apiKey = request.headers.get("apikey")?.trim() || "";
+    const bearer = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
+    if (!serviceRoleKey || (!securelyEqual(bearer, serviceRoleKey) && !securelyEqual(apiKey, serviceRoleKey))) {
+      console.warn("Rejected unauthorized email relay request");
+      return json({ error: "Unauthorized" }, 401);
+    }
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY")?.trim();
     if (!resendApiKey) {
@@ -71,5 +89,4 @@ export default {
     }
 
     return json({ success: true, id: result?.id });
-  }),
-};
+});
