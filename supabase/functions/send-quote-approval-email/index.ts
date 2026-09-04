@@ -81,8 +81,9 @@ Deno.serve(async (request) => {
       return json({ error: "A valid subject is required" }, 400);
     }
     if (!html || html.length > 100_000) return json({ error: "Valid email content is required" }, 400);
-    if (attachments.some((item) => item.content_type !== "application/pdf" || !item.content || item.content.length > 10_000_000)) {
-      return json({ error: "Only valid PDF attachments are accepted" }, 400);
+    const allowedAttachmentTypes = new Set(["application/pdf", "image/png", "image/jpeg", "image/webp"]);
+    if (attachments.some((item) => !allowedAttachmentTypes.has(item.content_type) || !item.content || item.content.length > 10_000_000)) {
+      return json({ error: "Only valid PDF or image attachments are accepted" }, 400);
     }
 
     const resendResponse = await fetch(RESEND_API_URL, {
