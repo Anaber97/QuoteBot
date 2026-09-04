@@ -31,8 +31,12 @@ const hasServerCredential = async (request: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim();
   if (!supabaseUrl) return false;
-  const verification = await fetch(`${supabaseUrl}/auth/v1/admin/users?page=1&per_page=1`, {
-    headers: { Authorization: `Bearer ${presentedKey}`, apikey: presentedKey },
+  // New Supabase secret keys authenticate at the API gateway via `apikey`;
+  // they are not JWTs and therefore cannot be verified by Auth's user endpoint.
+  // equipment_specs is intentionally revoked from anon/authenticated, so a
+  // successful REST read proves this is a server credential without exposing data.
+  const verification = await fetch(`${supabaseUrl}/rest/v1/equipment_specs?select=id&limit=1`, {
+    headers: { apikey: presentedKey },
   }).catch(() => null);
   return verification?.ok === true;
 };
