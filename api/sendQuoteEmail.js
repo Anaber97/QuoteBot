@@ -1,6 +1,7 @@
-import { canAccessQuote, enforceRateLimit, escapeHtml, requireUser, sendApiError } from './_security.js';
+import { canAccessQuote, enforceRateLimit, escapeHtml, getTrustedSiteUrl, requireUser, sendApiError } from './_security.js';
 import { buildQuotePdf, loadQuoteDocumentContext } from './_quoteDocument.js';
 import { getServerEnv } from './_env.js';
+import { signBolAccess } from './_bolAccess.js';
 
 const validEmail = (value) => /^\S+@\S+\.\S+$/.test(String(value || '').trim());
 
@@ -48,8 +49,9 @@ export default async function handler(req, res) {
 
     let bolLink = '';
     if (quote.bol_path) {
-      const { data } = await admin.storage.from('quote-bols').createSignedUrl(quote.bol_path, 60 * 60 * 24);
-      bolLink = data?.signedUrl || '';
+      const expiresAt = Math.floor(Date.now() / 1000) + (60 * 60 * 24);
+      const signature = signBolAccess(quote.id, expiresAt);
+      bolLink = `${getTrustedSiteUrl(req)}/api/openBol?quote=${encodeURIComponent(quote.id)}&expires=${expiresAt}&signature=${signature}`;
     }
     const safe = (value, fallback = 'N/A') => escapeHtml(value || fallback);
     const details = quote.quote_details && typeof quote.quote_details === 'object' ? quote.quote_details : {};
