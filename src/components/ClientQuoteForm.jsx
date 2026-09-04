@@ -6,10 +6,11 @@ import { loadGoogleMaps } from '../lib/googleMaps';
 import CoBranding from './CoBranding';
 
 export default function ClientQuoteForm({ companyRates, onCalculate, isCalculating, title = 'Client Self-Service Quote Portal', onReset, initialQuote = null, client = null }) {
-  const confidenceStyles = {
-    low: 'bg-red-500',
-    medium: 'bg-amber-400',
-    high: 'bg-emerald-500',
+  const verificationStyles = {
+    Verified: 'bg-emerald-500',
+    Corroborated: 'bg-blue-400',
+    Unverified: 'bg-amber-400',
+    Conflict: 'bg-red-500',
   };
   // Equipment selection state
   const [searchQuery, setSearchQuery] = useState('');
@@ -139,9 +140,10 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     setMake(item.make || '');
     setModel(item.model || '');
     setSerialNumber('');
-    setWeight(item.operating_weight_lbs || '');
-    setWidth(item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : '') || '');
-    setHeight(item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : '') || '');
+    const mayAutofill = ['Verified', 'Corroborated'].includes(item.verification_status);
+    setWeight(mayAutofill ? item.operating_weight_lbs || '' : '');
+    setWidth(mayAutofill ? item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : '') || '' : '');
+    setHeight(mayAutofill ? item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : '') || '' : '');
     setSearchResults([]);
   };
 
@@ -264,8 +266,8 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
                     <p className="text-xs font-semibold text-slate-300 flex items-center gap-2">
                       {item.make} {item.model}
                       <span className="inline-flex items-center gap-1 text-[9px] uppercase tracking-wide text-slate-400">
-                        <span className={`h-2 w-2 rounded-full ${confidenceStyles[item.confidence] || confidenceStyles.medium}`} />
-                        {item.confidence || 'medium'}
+                        <span className={`h-2 w-2 rounded-full ${verificationStyles[item.verification_status] || verificationStyles.Unverified}`} />
+                        {item.verification_status || 'Unverified'}
                       </span>
                     </p>
                     {item.serial_number && (

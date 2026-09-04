@@ -1,65 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  isHighConfidenceEquipmentResult,
-  matchesEquipmentSearch,
-  normalizeQuoteHistoryEquipment,
-} from '../api/searchEquipment.js';
+import { deriveVerificationStatus, matchesEquipmentSearch, normalizeSourcedResults } from '../api/searchEquipment.js';
 
-const validResult = {
-  make: 'Caterpillar',
-  model: '320D',
-  serial_number: null,
-  operating_weight_lbs: 45000,
-  width_in: 102,
-  height_in: 138,
-  confidence: 'high',
-};
-
-test('accepts an exact, plausible, high-confidence make and model match', () => {
-  assert.equal(isHighConfidenceEquipmentResult(validResult, 'CAT 320D'), true);
+const source = (overrides = {}) => ({
+  url: 'https://example.com/spec', operating_weight_lbs: 45000, width_in: 102, height_in: 138, ...overrides,
 });
 
-test('rejects medium-confidence AI equipment', () => {
-  assert.equal(isHighConfidenceEquipmentResult({ ...validResult, confidence: 'medium' }, 'CAT 320D'), false);
+test('manufacturer evidence is Verified', () => {
+  assert.equal(deriveVerificationStatus([source({ is_manufacturer: true })]), 'Verified');
 });
 
-test('rejects a high-confidence result whose model does not match the search', () => {
-  assert.equal(isHighConfidenceEquipmentResult(validResult, 'John Deere 850J'), false);
+test('two agreeing independent sources are Corroborated', () => {
+  assert.equal(deriveVerificationStatus([source(), source({ url: 'https://other.example/spec', operating_weight_lbs: 45100 })]), 'Corroborated');
 });
 
-test('rejects implausible specifications', () => {
-  assert.equal(isHighConfidenceEquipmentResult({ ...validResult, operating_weight_lbs: 900000 }, 'CAT 320D'), false);
+test('disagreeing complete sources are Conflict', () => {
+  assert.equal(deriveVerificationStatus([source(), source({ url: 'https://other.example/spec', operating_weight_lbs: 52000 })]), 'Conflict');
 });
 
-test('accepts an exact serial-number search', () => {
-  assert.equal(isHighConfidenceEquipmentResult({ ...validResult, serial_number: 'ABC-123' }, 'ABC-123'), true);
+test('one non-manufacturer source is Unverified', () => {
+  assert.equal(deriveVerificationStatus([source()]), 'Unverified');
 });
 
-test('matches a combined make and model search across separate fields', () => {
+test('matches a combined make and model search', () => {
   assert.equal(matchesEquipmentSearch({ make: 'Hyundai', model: '50D-9' }, 'Hyundai 50D-9'), true);
 });
 
-test('matches a partial historical model search', () => {
-  assert.equal(matchesEquipmentSearch({ make: 'Caterpillar', model: '320D' }, 'CAT 320'), true);
+test('rejects evidence URLs not returned by web search citations', () => {
+  const result = normalizeSourcedResults({
+    citations: ['https://trusted.example/spec'],
+    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', operating_weight_lbs: 45000, width_in: 102, height_in: 138, evidence: [source()] }] }) } }],
+  }, 'CAT 320D')[0];
+  assert.equal(result.verification_status, 'Unverified');
+  assert.deepEqual(result.sources, []);
 });
-
-test('normalizes searchable equipment from quote history', () => {
-  assert.deepEqual(
-    normalizeQuoteHistoryEquipment({ make: 'Caterpillar', model: '320', weight: 45000, width: 102, height: 138 }),
-    {
-      make: 'Caterpillar',
-      model: '320',
-      name: 'Caterpillar 320',
-      serial_number: null,
-      operating_weight_lbs: 45000,
-      width_in: 102,
-      height_in: 138,
-      source: 'quote-history',
-      confidence: 'high',
-      width_ft: 8.5,
-      height_ft: 11.5,
-    }
-  );
-});
-

@@ -1,5 +1,4 @@
 // src/services/equipmentSpecs.js
-import { supabase } from '../lib/supabase';
 import { authenticatedFetch } from '../lib/api';
 
 // Standard legal limits for non-permitted flatbed/stepdeck transport
@@ -24,35 +23,20 @@ function normalizeDimensionResults(results) {
       height_in: heightIn != null ? Number(heightIn) : null,
       width_ft: widthIn != null ? Number((widthIn / 12).toFixed(1)) : null,
       height_ft: heightIn != null ? Number((heightIn / 12).toFixed(1)) : null,
-      confidence: ['low', 'medium', 'high'].includes(String(item?.confidence || '').toLowerCase())
-        ? String(item.confidence).toLowerCase()
-        : (item?.source === 'ai-gateway' ? 'medium' : 'high'),
+      verification_status: ['Verified', 'Corroborated', 'Unverified', 'Conflict'].includes(item?.verification_status)
+        ? item.verification_status
+        : 'Unverified',
     };
   });
 }
 
 /**
- * Searches the 'equipment_specs' table in Supabase by Make, Model, or Serial Number.
- * Falls back to a direct Supabase query if the API endpoint is unavailable.
+ * Uses the authenticated server search so source verification cannot be bypassed.
  */
 export async function searchEquipmentSpecs(query) {
   if (!query || query.trim().length < 2) return { results: [], source: '' };
 
   const cleanQuery = query.trim();
-
-  try {
-    const { data, error: supabaseError } = await supabase
-      .from('equipment_specs')
-      .select('*')
-      .or(`make.ilike.%${cleanQuery.toLowerCase()}%,model.ilike.%${cleanQuery.toLowerCase()}%,serial_number.ilike.%${cleanQuery.toLowerCase()}%`)
-      .limit(8);
-
-    if (!supabaseError && Array.isArray(data) && data.length > 0) {
-      return { results: normalizeDimensionResults(data).slice(0, 8), source: 'supabase' };
-    }
-  } catch (error) {
-    console.warn('Direct Supabase lookup failed:', error);
-  }
 
   try {
     const response = await authenticatedFetch(`/api/searchEquipment?query=${encodeURIComponent(cleanQuery)}`, {
