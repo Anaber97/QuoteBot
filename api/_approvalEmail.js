@@ -1,5 +1,6 @@
 import { escapeHtml } from './_security.js';
 import { buildQuotePdf, loadQuoteDocumentContext } from './_quoteDocument.js';
+import { getServerEnv } from './_env.js';
 
 export async function sendStoredApprovalEmail(admin, profile, quote) {
   const context = await loadQuoteDocumentContext(admin, quote);
@@ -18,6 +19,7 @@ export async function sendStoredApprovalEmail(admin, profile, quote) {
     <li>Permit flags: ${safe(Array.isArray(details.permitFlags) && details.permitFlags.length ? details.permitFlags.join(', ') : 'None')}</li></ul>
     <p>Submitted by ${safe(profile.full_name || profile.email)}. Quote reference: ${safe(document.reference)}</p></div></div>`;
   const { data, error } = await admin.functions.invoke('send-quote-approval-email', {
+    headers: { 'x-towcalc-server-key': getServerEnv('SUPABASE_SERVICE_ROLE_KEY') },
     body: { to: recipient, subject: `Quote approval required - ${document.reference}`, html,
       idempotencyKey: `approval-${quote.id}-${Date.now()}`,
       attachments: [{ filename: document.filename, content: document.bytes.toString('base64'), content_type: 'application/pdf' }],

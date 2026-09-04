@@ -24,9 +24,10 @@ const hasServerCredential = async (request: Request) => {
   const authorization = request.headers.get("authorization")?.trim() || "";
   const apiKey = request.headers.get("apikey")?.trim() || "";
   const bearer = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
-  const presentedKey = bearer || apiKey;
+  const explicitServerKey = request.headers.get("x-towcalc-server-key")?.trim() || "";
+  const presentedKey = explicitServerKey || bearer || apiKey;
 
-  if (legacyServiceRoleKey && (securelyEqual(bearer, legacyServiceRoleKey) || securelyEqual(apiKey, legacyServiceRoleKey))) return true;
+  if (legacyServiceRoleKey && [explicitServerKey, bearer, apiKey].some((key) => securelyEqual(key, legacyServiceRoleKey))) return true;
   if (!presentedKey.startsWith("sb_secret_")) return false;
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim();
