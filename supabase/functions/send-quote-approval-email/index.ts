@@ -19,17 +19,31 @@ const securelyEqual = (left: string, right: string) => {
   return difference === 0;
 };
 
+const hasServerCredential = async (request: Request) => {
+  const legacyServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() || "";
+  const authorization = request.headers.get("authorization")?.trim() || "";
+  const apiKey = request.headers.get("apikey")?.trim() || "";
+  const bearer = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
+  const presentedKey = bearer || apiKey;
+
+  if (legacyServiceRoleKey && (securelyEqual(bearer, legacyServiceRoleKey) || securelyEqual(apiKey, legacyServiceRoleKey))) return true;
+  if (!presentedKey.startsWith("sb_secret_")) return false;
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim();
+  if (!supabaseUrl) return false;
+  const verification = await fetch(`${supabaseUrl}/auth/v1/admin/users?page=1&per_page=1`, {
+    headers: { Authorization: `Bearer ${presentedKey}`, apikey: presentedKey },
+  }).catch(() => null);
+  return verification?.ok === true;
+};
+
 Deno.serve(async (request) => {
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
     // This function has gateway JWT verification disabled so server-held Supabase
     // credentials work consistently. Keep the relay private by verifying the
     // service-role credential inside the function before parsing any email data.
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() || "";
-    const authorization = request.headers.get("authorization")?.trim() || "";
-    const apiKey = request.headers.get("apikey")?.trim() || "";
-    const bearer = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
-    if (!serviceRoleKey || (!securelyEqual(bearer, serviceRoleKey) && !securelyEqual(apiKey, serviceRoleKey))) {
+    if (!(await hasServerCredential(request))) {
       console.warn("Rejected unauthorized email relay request");
       return json({ error: "Unauthorized" }, 401);
     }

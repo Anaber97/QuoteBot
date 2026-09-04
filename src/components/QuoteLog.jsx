@@ -17,6 +17,7 @@ export default function QuoteLog({ onSelectQuote, profile }) {
   const [page, setPage] = useState(0); const [hasMore, setHasMore] = useState(false);
   const [searchInput, setSearchInput] = useState(''); const [searchTerm, setSearchTerm] = useState('');
   const [notice, setNotice] = useState(null); const [dialog, setDialog] = useState(null); const [email, setEmail] = useState('');
+  const [busyAction, setBusyAction] = useState('');
   const fileRef = useRef(null); const pendingQuoteRef = useRef(null); const isClientPortal = profile?.role === 'client';
 
   const fetchLogs = useCallback(async (nextPage = 0) => {
@@ -38,23 +39,24 @@ export default function QuoteLog({ onSelectQuote, profile }) {
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
   const openQuote = async (log) => {
-    setBusyId(log.id); setError(null);
+    setBusyId(log.id); setBusyAction('open'); setError(null);
     const { data, error: detailError } = await supabase.from('quote_logs').select('*').eq('id', log.id).single();
-    setBusyId(null);
+    setBusyId(null); setBusyAction('');
     if (detailError) return setError('Quote details could not be loaded. Please retry.');
     onSelectQuote?.(data);
   };
 
   const callEmail = async (log, action, recipient = null) => {
-    setBusyId(log.id);
+    setBusyId(log.id); setBusyAction(action === 'share' ? 'email' : 'dispatch');
+    setNotice({ tone: 'progress', message: action === 'share' ? 'Sending quote email…' : 'Sending dispatch request…' });
     try {
       const response = await authenticatedFetch('/api/sendQuoteEmail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quoteId: log.id, action, recipient }) });
       const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Email could not be sent.');
       setNotice({ message: action === 'share' ? 'Quote emailed.' : 'Quote sent for dispatch.' });
-    } catch (emailError) { setNotice({ tone: 'error', message: emailError.message }); } finally { setBusyId(null); }
+    } catch (emailError) { setNotice({ tone: 'error', message: emailError.message }); } finally { setBusyId(null); setBusyAction(''); }
   };
   const savePdf = async (log) => {
-    setBusyId(log.id);
+    setBusyId(log.id); setBusyAction('pdf'); setNotice({ tone: 'progress', message: 'Preparing quote PDF…' });
     try {
       const response = await authenticatedFetch(`/api/sendQuoteEmail?quoteId=${encodeURIComponent(log.id)}`);
       if (!response.ok) { const body = await response.json(); throw new Error(body.error || 'PDF could not be generated.'); }
@@ -62,24 +64,31 @@ export default function QuoteLog({ onSelectQuote, profile }) {
       link.href = url; link.download = `${quoteReference(log)}.pdf`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
       setNotice({ message: 'Branded quote PDF downloaded.' });
     } catch (pdfError) { setNotice({ tone: 'error', message: pdfError.message }); }
-    finally { setBusyId(null); }
+    finally { setBusyId(null); setBusyAction(''); }
   };
   const attachBol = (log) => { pendingQuoteRef.current = log; fileRef.current?.click(); };
   const handleBolFile = async (event) => {
     const file = event.target.files?.[0]; const log = pendingQuoteRef.current; event.target.value = ''; if (!log || !file) return;
-    if (!allowedBol(file)) return setNotice({ tone: 'error', message: 'Choose a PDF, PNG, JPG, or WebP file.' }); setBusyId(log.id);
+    if (!allowedBol(file)) return setNotice({ tone: 'error', message: 'Choose a PDF, PNG, JPG, or WebP file.' }); setBusyId(log.id); setBusyAction('upload'); setNotice({ tone: 'progress', message: 'Uploading BOL…' });
     try {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_'); const path = `${profile.company_id}/${log.id}/${crypto.randomUUID()}-${safeName}`;
       const { error: uploadError } = await supabase.storage.from('quote-bols').upload(path, file, { contentType: file.type, upsert: false }); if (uploadError) throw uploadError;
       const { error: updateError } = await supabase.from('quote_logs').update({ bol_path: path, bol_name: file.name, bol_type: file.type }).eq('id', log.id); if (updateError) throw updateError;
       await fetchLogs();
       setNotice({ message: 'BOL attached.' });
-    } catch (uploadError) { setNotice({ tone: 'error', message: uploadError.message }); setBusyId(null); }
+    } catch (uploadError) { setNotice({ tone: 'error', message: uploadError.message }); }
+    finally { setBusyId(null); setBusyAction(''); }
   };
-  const openBol = async (log) => { const { data, error: signError } = await supabase.storage.from('quote-bols').createSignedUrl(log.bol_path, 60); if (signError) return setNotice({ tone: 'error', message: signError.message }); window.open(data.signedUrl, '_blank', 'noopener,noreferrer'); };
+  const openBol = async (log) => {
+    setBusyId(log.id); setBusyAction('bol'); setNotice({ tone: 'progress', message: 'Opening BOL…' });
+    const { data, error: signError } = await supabase.storage.from('quote-bols').createSignedUrl(log.bol_path, 60);
+    if (signError) setNotice({ tone: 'error', message: signError.message });
+    else { window.open(data.signedUrl, '_blank', 'noopener,noreferrer'); setNotice({ message: 'BOL opened.' }); }
+    setBusyId(null); setBusyAction('');
+  };
   const removeBol = async (log) => {
     if (!log.bol_path) return;
-    setBusyId(log.id);
+    setBusyId(log.id); setBusyAction('remove'); setNotice({ tone: 'progress', message: 'Removing BOL…' });
     try {
       const { error: removeError } = await supabase.storage.from('quote-bols').remove([log.bol_path]);
       if (removeError) throw removeError;
@@ -87,10 +96,10 @@ export default function QuoteLog({ onSelectQuote, profile }) {
       if (updateError) throw updateError;
       await fetchLogs();
       setNotice({ message: 'BOL removed.' });
-    } catch (removeError) { setNotice({ tone: 'error', message: removeError.message }); } finally { setBusyId(null); }
+    } catch (removeError) { setNotice({ tone: 'error', message: removeError.message }); } finally { setBusyId(null); setBusyAction(''); }
   };
   const updateStatus = async (log, status) => {
-    setBusyId(log.id);
+    setBusyId(log.id); setBusyAction('status'); setNotice({ tone: 'progress', message: 'Updating quote status…' });
     try {
       const response = await authenticatedFetch('/api/updateQuoteStatus', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quoteId: log.id, status }) });
       const body = await response.json();
@@ -99,7 +108,7 @@ export default function QuoteLog({ onSelectQuote, profile }) {
       setNotice({ message: `Quote marked ${statusLabel(status)}.` });
     } catch (statusError) {
       setNotice({ tone: 'error', message: statusError.message });
-    } finally { setBusyId(null); }
+    } finally { setBusyId(null); setBusyAction(''); }
   };
 
   const searchForm = <form onSubmit={(event) => { event.preventDefault(); const next = searchInput.trim(); setPage(0); if (next === searchTerm) fetchLogs(0); else setSearchTerm(next); }} className="flex flex-col gap-2 sm:flex-row">
@@ -122,13 +131,13 @@ export default function QuoteLog({ onSelectQuote, profile }) {
       <div className="text-slate-400 space-y-0.5">{isClientQuote && <p><strong className="text-slate-300">Equipment:</strong> {equipmentLabel}</p>}{!isClientQuote && <p><strong className="text-slate-300">Base:</strong> {log.base_yard_id || 'N/A'}</p>}<p><strong className="text-slate-300">Waypoints:</strong> {Array.isArray(log.all_waypoints) ? log.all_waypoints.join(' ➔ ') : 'N/A'}</p>{!isClientQuote && <p><strong className="text-slate-300">Hours:</strong> {Number(log.total_hours || 0).toFixed(2)} hrs</p>}{isClientQuote && <p><strong className="text-slate-300">BOL:</strong> {log.bol_name || 'Not attached'}</p>}</div>
       {!isClientPortal && isClientQuote && <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Status<select value={log.status || 'submitted'} disabled={busyId === log.id} onChange={(event) => updateStatus(log, event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs normal-case text-white">{QUOTE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>}
       <div className={`grid grid-cols-2 ${isClientQuote ? (log.bol_path ? 'sm:grid-cols-5' : 'sm:grid-cols-4') : ''} gap-1.5 pt-1`}>
-        <button type="button" onClick={() => openQuote(log)} disabled={busyId === log.id} className="rounded-lg border border-blue-500/30 px-2 py-2 font-semibold text-blue-300">{busyId === log.id ? 'Opening…' : 'Open'}</button>
-        <button type="button" onClick={() => setShareId(shareId === log.id ? null : log.id)} className="rounded-lg border border-blue-500/30 px-2 py-2 font-semibold text-blue-300">Share</button>
-        {isClientQuote && <button type="button" onClick={() => log.bol_path ? openBol(log) : attachBol(log)} disabled={busyId === log.id} className="rounded-lg border border-slate-700 px-2 py-2 font-semibold text-slate-300">{log.bol_path ? 'View BOL' : 'Attach BOL'}</button>}
-        {isClientQuote && log.bol_path && <button type="button" onClick={() => setDialog({ type: 'remove', log })} disabled={busyId === log.id} className="rounded-lg border border-red-500/30 px-2 py-2 font-semibold text-red-300">Remove BOL</button>}
-        {isClientQuote && <button type="button" onClick={() => callEmail(log, 'action')} disabled={busyId === log.id} className="rounded-lg border border-amber-500/30 px-2 py-2 font-semibold text-amber-300">Send for Dispatch</button>}
+        <button type="button" onClick={() => openQuote(log)} disabled={busyId === log.id} className="rounded-lg border border-blue-500/30 px-2 py-2 font-semibold text-blue-300 transition hover:bg-blue-500/10 active:scale-95 disabled:opacity-60">{busyId === log.id && busyAction === 'open' ? 'Opening…' : 'Open'}</button>
+        <button type="button" onClick={() => setShareId(shareId === log.id ? null : log.id)} className="rounded-lg border border-blue-500/30 px-2 py-2 font-semibold text-blue-300 transition hover:bg-blue-500/10 active:scale-95">{shareId === log.id ? 'Close Share' : 'Share'}</button>
+        {isClientQuote && <button type="button" onClick={() => log.bol_path ? openBol(log) : attachBol(log)} disabled={busyId === log.id} className="rounded-lg border border-slate-700 px-2 py-2 font-semibold text-slate-300 transition hover:bg-slate-800 active:scale-95 disabled:opacity-60">{busyId === log.id && ['bol', 'upload'].includes(busyAction) ? (busyAction === 'upload' ? 'Uploading…' : 'Opening…') : log.bol_path ? 'View BOL' : 'Attach BOL'}</button>}
+        {isClientQuote && log.bol_path && <button type="button" onClick={() => setDialog({ type: 'remove', log })} disabled={busyId === log.id} className="rounded-lg border border-red-500/30 px-2 py-2 font-semibold text-red-300 transition hover:bg-red-500/10 active:scale-95 disabled:opacity-60">{busyId === log.id && busyAction === 'remove' ? 'Removing…' : 'Remove BOL'}</button>}
+        {isClientQuote && <button type="button" onClick={() => callEmail(log, 'action')} disabled={busyId === log.id} className="rounded-lg border border-amber-500/30 px-2 py-2 font-semibold text-amber-300 transition hover:bg-amber-500/10 active:scale-95 disabled:opacity-60">{busyId === log.id && busyAction === 'dispatch' ? 'Sending…' : 'Send for Dispatch'}</button>}
       </div>
-      {shareId === log.id && <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-800 bg-[#080c14] p-2"><button type="button" onClick={() => savePdf(log)} className="rounded bg-slate-800 px-2 py-2 font-semibold text-white">Save as PDF</button><button type="button" onClick={() => { setEmail(''); setDialog({ type: 'email', log }); }} className="rounded bg-blue-600 px-2 py-2 font-semibold text-white">Send as Email</button></div>}
+      {shareId === log.id && <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-800 bg-[#080c14] p-2"><button type="button" disabled={busyId === log.id} onClick={() => savePdf(log)} className="rounded bg-slate-800 px-2 py-2 font-semibold text-white transition hover:bg-slate-700 active:scale-95 disabled:opacity-60">{busyId === log.id && busyAction === 'pdf' ? 'Preparing…' : 'Save as PDF'}</button><button type="button" onClick={() => { setEmail(''); setDialog({ type: 'email', log }); }} className="rounded bg-blue-600 px-2 py-2 font-semibold text-white transition hover:bg-blue-500 active:scale-95">Send as Email</button></div>}
     </div>;})}
     <div className="flex items-center justify-between pt-2" aria-label="Quote history pagination">
       <button type="button" disabled={page === 0 || loading} onClick={() => fetchLogs(page - 1)} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold disabled:opacity-40">Previous</button>
