@@ -4,6 +4,7 @@ import { Search, ShieldAlert, Truck, MapPin } from 'lucide-react';
 import { searchEquipmentSpecs, calculatePermitRequirements } from '../services/equipmentSpecs';
 import { loadGoogleMaps } from '../lib/googleMaps';
 import CoBranding from './CoBranding';
+import Dialog from './Dialog';
 
 export default function ClientQuoteForm({ companyRates, onCalculate, isCalculating, title = 'Client Self-Service Quote Portal', onReset, initialQuote = null, client = null }) {
   const verificationStyles = {
@@ -21,6 +22,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
+  const [pendingUnverifiedEquipment, setPendingUnverifiedEquipment] = useState(null);
 
   // Specs state
   const [weight, setWeight] = useState('');
@@ -133,18 +135,26 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     };
   }, []);
 
-  const handleSelectEquipment = (item) => {
+  const applyEquipmentSelection = (item, useSpecs) => {
     const fullName = `${item.make} ${item.model}`.trim();
     setSelectedEquipmentName(fullName);
     setSearchQuery(fullName);
     setMake(item.make || '');
     setModel(item.model || '');
     setSerialNumber('');
-    const mayAutofill = ['Verified', 'Corroborated'].includes(item.verification_status);
-    setWeight(mayAutofill ? item.operating_weight_lbs || '' : '');
-    setWidth(mayAutofill ? item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : '') || '' : '');
-    setHeight(mayAutofill ? item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : '') || '' : '');
+    setWeight(useSpecs ? item.operating_weight_lbs || '' : '');
+    setWidth(useSpecs ? item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : '') || '' : '');
+    setHeight(useSpecs ? item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : '') || '' : '');
     setSearchResults([]);
+  };
+
+  const handleSelectEquipment = (item) => {
+    const status = item.verification_status || 'Unverified';
+    if (status === 'Unverified') {
+      setPendingUnverifiedEquipment(item);
+      return;
+    }
+    applyEquipmentSelection(item, ['Verified', 'Corroborated'].includes(status));
   };
 
   const handleSubmit = (e) => {
@@ -177,6 +187,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const handleReset = () => {
     setSearchQuery(''); setSearchResults([]); setSelectedEquipmentName(''); setMake(''); setModel(''); setSerialNumber('');
     setWeight(''); setWidth(''); setHeight(''); setPickupAddr(''); setDropoffAddr(''); setWaypoints([]); setAttachmentType(''); setAttachmentWeight(''); setPermitInfo(null);
+    setPendingUnverifiedEquipment(null);
     onReset?.();
   };
 
@@ -218,12 +229,13 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Equipment Search Bar */}
         <div className="relative">
-          <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+          <label htmlFor="equipment-search" className="block text-xs font-semibold text-slate-300 mb-1.5">
             Equipment Search (Make/Model, or Serial #)
           </label>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-500" />
             <input
+              id="equipment-search"
               type="text"
               value={searchQuery}
               onKeyDown={handleKeyDown}
@@ -291,8 +303,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         {/* Equipment Identity Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Make</label>
+            <label htmlFor="equipment-make" className="block text-[11px] text-slate-400 mb-1">Make</label>
             <input
+              id="equipment-make"
               type="text"
               value={make}
               onChange={(e) => setMake(e.target.value)}
@@ -301,8 +314,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             />
           </div>
           <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Model</label>
+            <label htmlFor="equipment-model" className="block text-[11px] text-slate-400 mb-1">Model</label>
             <input
+              id="equipment-model"
               type="text"
               value={model}
               onChange={(e) => setModel(e.target.value)}
@@ -311,8 +325,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             />
           </div>
           <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Serial Number</label>
+            <label htmlFor="equipment-serial-number" className="block text-[11px] text-slate-400 mb-1">Serial Number</label>
             <input
+              id="equipment-serial-number"
               type="text"
               value={serialNumber}
               onChange={(e) => setSerialNumber(e.target.value)}
@@ -325,8 +340,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         {/* Equipment Dimension Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Operating Weight (lbs)</label>
+            <label htmlFor="equipment-weight" className="block text-[11px] text-slate-400 mb-1">Operating Weight (lbs)</label>
             <input
+              id="equipment-weight"
               type="number"
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
@@ -335,8 +351,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             />
           </div>
           <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Width (in)</label>
+            <label htmlFor="equipment-width" className="block text-[11px] text-slate-400 mb-1">Width (in)</label>
             <input
+              id="equipment-width"
               type="number"
               step="1"
               value={width}
@@ -346,8 +363,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             />
           </div>
           <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Height (in)</label>
+            <label htmlFor="equipment-height" className="block text-[11px] text-slate-400 mb-1">Height (in)</label>
             <input
+              id="equipment-height"
               type="number"
               step="1"
               value={height}
@@ -455,6 +473,28 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         <button type="button" onClick={handleReset} className="light-reset-button rounded-xl border border-slate-700 py-3 text-xs font-semibold text-slate-300 hover:bg-slate-800">RESET</button>
         </div>
       </form>
+      <Dialog
+        open={Boolean(pendingUnverifiedEquipment)}
+        title="Use unverified equipment specs?"
+        confirmLabel="Use these specs"
+        onClose={() => setPendingUnverifiedEquipment(null)}
+        onConfirm={() => {
+          applyEquipmentSelection(pendingUnverifiedEquipment, true);
+          setPendingUnverifiedEquipment(null);
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" aria-hidden="true" />
+          <div className="space-y-2">
+            <p>
+              These specs have not been verified against a manufacturer source or corroborated by multiple independent sources.
+            </p>
+            <p className="font-semibold text-amber-300">
+              Inaccurate weight or dimensions may result in an incorrect quote, permit requirement, or escort charge.
+            </p>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
