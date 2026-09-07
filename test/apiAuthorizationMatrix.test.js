@@ -32,46 +32,6 @@ function mockSecurityModule(overrides = {}) {
   };
 }
 
-// ===== notifyApproval.js: tenant + role isolation =====
-
-test('notifyApproval rejects a request for a quote in a different company', async (t) => {
-  const quote = { id: 'q1', company_id: 'company-b', client_id: null, quote_source: 'main_calculator' };
-  t.mock.module('../api/_security.js', mockSecurityModule({
-    requireUser: async () => ({ admin: createFakeAdmin({ tableResponders: { quote_logs: () => ({ data: null, error: { message: 'not found' } }) } }), profile: { id: 'u1', role: 'manager', company_id: 'company-a' } }),
-  }));
-  t.mock.module('../api/_approvalEmail.js', { exports: { sendStoredApprovalEmail: async () => {} } });
-  const { default: handler } = await freshImport('../api/notifyApproval.js');
-  const { req, res } = createMockReqRes({ method: 'POST', body: { quoteId: quote.id } });
-  await handler(req, res);
-  assert.equal(res.statusCode, 404); // company-scoped query never finds cross-tenant quote
-});
-
-test('notifyApproval rejects a dispatcher acting outside their permitted actions on a client quote', async (t) => {
-  const quote = { id: 'q1', company_id: 'company-a', client_id: 'client-a', quote_source: 'client_portal' };
-  t.mock.module('../api/_security.js', mockSecurityModule({
-    requireUser: async () => ({ admin: createFakeAdmin({ tableResponders: { quote_logs: () => ({ data: quote, error: null }) } }), profile: { id: 'u1', role: 'client', company_id: 'company-a', client_id: 'client-b' } }),
-  }));
-  t.mock.module('../api/_approvalEmail.js', { exports: { sendStoredApprovalEmail: async () => {} } });
-  const { default: handler } = await freshImport('../api/notifyApproval.js');
-  const { req, res } = createMockReqRes({ method: 'POST', body: { quoteId: quote.id } });
-  await handler(req, res);
-  assert.equal(res.statusCode, 403); // wrong client_id
-});
-
-test('notifyApproval allows the owning client to request dispatch', async (t) => {
-  const quote = { id: 'q1', company_id: 'company-a', client_id: 'client-a', quote_source: 'client_portal' };
-  let emailSent = false;
-  t.mock.module('../api/_security.js', mockSecurityModule({
-    requireUser: async () => ({ admin: createFakeAdmin({ tableResponders: { quote_logs: () => ({ data: quote, error: null }) } }), profile: { id: 'u1', role: 'client', company_id: 'company-a', client_id: 'client-a' } }),
-  }));
-  t.mock.module('../api/_approvalEmail.js', { exports: { sendStoredApprovalEmail: async () => { emailSent = true; } } });
-  const { default: handler } = await freshImport('../api/notifyApproval.js');
-  const { req, res } = createMockReqRes({ method: 'POST', body: { quoteId: quote.id } });
-  await handler(req, res);
-  assert.equal(res.statusCode, 200);
-  assert.equal(emailSent, true);
-});
-
 // ===== inviteUser.js: manager-only =====
 
 test('inviteUser is rejected before reaching business logic when caller is not a manager', async (t) => {

@@ -7,7 +7,7 @@ Prepared for September 2, 2026.
 After this checklist:
 
 - TowCalc account invitations and password-reset messages are delivered from a TowCalc address.
-- Quote shares, approval notices, and dispatch requests are delivered from a TowCalc address.
+- Quote shares and button-initiated dispatch requests are delivered from a TowCalc address.
 - SPF, DKIM, and DMARC protect deliverability.
 - A real-user test proves both email paths work.
 
@@ -18,8 +18,7 @@ After this checklist:
 | Account invite | `api/inviteUser.js` → Supabase Auth | Custom SMTP in Supabase Auth |
 | Password reset | Supabase Auth | Custom SMTP in Supabase Auth |
 | Dispatch request | `api/sendQuoteEmail.js` → Supabase Edge Function | Deployed `send-quote-approval-email` function and email-provider secret |
-| Approval notice | `api/_approvalEmail.js` → same Edge Function | Same function and secret |
-| Quote share/BOL notice | `api/sendQuoteEmail.js` → same Edge Function | Same function and secret |
+| Quote share | `api/sendQuoteEmail.js` → same Edge Function | Same function and secret |
 
 Configuring Supabase SMTP alone does **not** configure dispatch emails.
 
@@ -105,7 +104,7 @@ Run these against production with clearly marked test data:
 | Request password reset | Reset link opens TowCalc and succeeds once |
 | Share a quote | Recipient gets correct customer, equipment, route, and amount |
 | Submit a dispatch request | Configured dispatch/contact inbox receives it |
-| Attach a BOL and request dispatch | Email contains a working signed link that expires |
+| Attach a BOL and request dispatch | Email contains the quote PDF and BOL as attachments |
 | Force an invalid recipient | UI shows failure; no false success |
 
 For every delivered message, inspect “original message” headers and confirm SPF, DKIM, and DMARC pass. Also check spam, provider delivery logs, Supabase Auth logs, Edge Function logs, and Vercel runtime logs.
@@ -140,4 +139,3 @@ For every delivered message, inspect “original message” headers and confirm 
 - [Supabase: Send emails with custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp)
 - [Supabase: Sending emails from Edge Functions](https://supabase.com/docs/guides/functions/examples/send-emails)
 - [Supabase production checklist](https://supabase.com/docs/guides/deployment/going-into-prod)
-

@@ -83,8 +83,6 @@ test('sign in -> calculate & save -> reopen -> change status (end-to-end)', asyn
       resolveGoogleLocalities: async () => [],
     },
   });
-  t.mock.module('../api/_approvalEmail.js', { exports: { sendStoredApprovalEmail: async () => {} } });
-
   // ----- Step 2: calculate & save a quote -----
   const { default: createQuoteHandler } = await freshImport('../api/createQuote.js');
   const { req: createReq, res: createRes } = createMockReqRes({
@@ -136,8 +134,6 @@ test('workflow rejects a second manager from a different company trying to reope
       resolveGoogleLocalities: async () => [],
     },
   });
-  t.mock.module('../api/_approvalEmail.js', { exports: { sendStoredApprovalEmail: async () => {} } });
-
   const { default: createQuoteHandler } = await freshImport('../api/createQuote.js');
   const { req: createReq, res: createRes } = createMockReqRes({
     method: 'POST',

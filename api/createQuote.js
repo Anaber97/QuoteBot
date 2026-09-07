@@ -1,6 +1,5 @@
 import { calculateAuthoritativeQuote } from './_quoteEngine.js';
 import { computeServerRoute, resolveGoogleLocalities } from './_routes.js';
-import { sendStoredApprovalEmail } from './_approvalEmail.js';
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
 
 const text = (value, maximum = 240) => String(value || '').trim().slice(0, maximum);
@@ -91,12 +90,7 @@ export default async function handler(req, res) {
     const { data: quote, error: insertError } = await admin.from('quote_logs').insert(payload).select('*').single();
     if (insertError) throw insertError;
 
-    let notificationWarning = '';
-    if (profile.role === 'client' && calculated.approvalRequired) {
-      try { await sendStoredApprovalEmail(admin, profile, quote); }
-      catch (error) { console.error('Stored quote approval notification failed:', error); notificationWarning = 'Quote saved, but its approval email could not be sent.'; }
-    }
-    return res.status(201).json({ success: true, quote, notificationWarning });
+    return res.status(201).json({ success: true, quote });
   } catch (error) {
     const provider = String(error?.message || '').toLowerCase().includes('google') ? 'maps' : 'database';
     return sendApiError(res, error, 'Unable to create quote.', { route: '/api/createQuote', provider });

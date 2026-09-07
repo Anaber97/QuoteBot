@@ -473,8 +473,7 @@ export default function App() {
         if (updateError) throw updateError;
       }
 
-      const warning = result.notificationWarning ? ` ${result.notificationWarning}` : '';
-      setNotice({ message: `${attachmentFile ? 'Quote logged with BOL attached!' : 'Quote successfully logged!'}${warning}` });
+      setNotice({ message: attachmentFile ? 'Quote logged with BOL attached!' : 'Quote successfully logged!' });
       dispatch({ type: 'RESET_FORM' });
       setQuoteData(null);
     } catch (err) {

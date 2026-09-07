@@ -18,7 +18,7 @@ Quote submission is server-authoritative. Apply `20260818154500_server_authorita
 
 ## Quality checks
 
-- `npm test` runs the Node.js test suite (`test/*.test.js`): pricing-engine parity between the browser and server calculators, config-schema normalization and validation, the quote-status transition state machine, an API authorization matrix (tenant/role isolation across `createQuote`, `updateQuoteStatus`, `inviteUser`, `getAppConfig`, `saveAppConfig`, `sendQuoteEmail`, `notifyApproval`), invite lifecycle handling (expiry, reuse, email mismatch), a static replay of every Supabase migration to verify effective RLS policies (including BOL storage tenant isolation), and a full sign-in → calculate → save → reopen → change-status workflow test.
+- `npm test` runs the Node.js test suite (`test/*.test.js`): pricing-engine parity between the browser and server calculators, config-schema normalization and validation, the quote-status transition state machine, an API authorization matrix (tenant/role isolation across `createQuote`, `updateQuoteStatus`, `inviteUser`, `getAppConfig`, `saveAppConfig`, and `sendQuoteEmail`), invite lifecycle handling (expiry, reuse, email mismatch), a static replay of every Supabase migration to verify effective RLS policies (including BOL storage tenant isolation), and a full sign-in → calculate → save → reopen → change-status workflow test.
 - `npm run test:components` runs React component tests (`test/components/*.test.jsx`) covering Settings unsaved-change/save-error behavior and App-level auth identity changes / failed profile loads.
 - `npm run test:all` runs both suites — this is what CI runs.
 - `npm run lint` checks the source.
