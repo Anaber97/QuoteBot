@@ -90,8 +90,10 @@ export default function QuoteResultsCard({
     quoteData?.hasMetroZone ? { key: 'metro', active: activeOverrides?.metro } : null,
     quoteData?.hasHazardZone ? { key: 'hazard', active: activeOverrides?.hazard } : null,
     quoteData?.hasCustomZone ? { key: 'custom', active: true } : null,
-  ].filter(Boolean);
-  const availableCustomSurcharges = (companyRates.pricing?.custom_surcharges || []).filter((item) => item.active !== false);
+  ].filter((item) => item?.active === true);
+  const appliedCustomSurcharges = (companyRates.pricing?.custom_surcharges || []).filter((item) =>
+    item.active !== false && activeOverrides?.customSurcharges?.[item.id] === true
+  );
   const metroCodes = Array.isArray(quoteData?.metroCodes) && quoteData.metroCodes.length > 0 ? quoteData.metroCodes : [];
   const metroFeeMode = companyRates?.pricing?.surchargeModes?.metro_multiplier || companyRates?.surcharges?.surchargeModes?.metro_multiplier || 'percent';
   const metroFeeValue = companyRates?.pricing?.metro_multiplier ?? companyRates?.surcharges?.metro_multiplier ?? 28.57;
@@ -222,7 +224,7 @@ export default function QuoteResultsCard({
       {isDispatcherView && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
-            {dispatcherSurcharges.map(({ key, active }) => {
+            {dispatcherSurcharges.map(({ key }) => {
               const style = BADGE_STYLES[key];
               if (!style) return null;
               return (
@@ -230,26 +232,25 @@ export default function QuoteResultsCard({
                   key={key}
                   type="button"
                   onClick={() => toggleOverride(key)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${active ? style.active : style.disabled}`}
-                  title={active ? 'Click to disable surcharge' : 'Click to restore surcharge'}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${style.active}`}
+                  title="Click to remove surcharge"
                 >
                   <span>{key === 'metro' ? metroBadgeLabel : style.label}</span>
                   <span className="rounded bg-black/20 px-1 text-[10px] font-black leading-none opacity-80">
-                    {active ? '✕' : '↺'}
+                    ✕
                   </span>
                 </button>
               );
             })}
-            {availableCustomSurcharges.map((item) => {
-              const active = activeOverrides?.customSurcharges?.[item.id] === true;
+            {appliedCustomSurcharges.map((item) => {
               return (
-              <button key={item.id} type="button" onClick={() => toggleCustomSurcharge(item.id)} title={active ? 'Click to disable surcharge' : 'Click to restore surcharge'} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${active ? BADGE_STYLES.custom.active : BADGE_STYLES.custom.disabled}`}>
+              <button key={item.id} type="button" onClick={() => toggleCustomSurcharge(item.id)} title="Click to remove surcharge" className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-semibold text-violet-300 transition">
                 <span>{item.name} ({item.feeType === 'percent' ? `+${item.value}%` : `+$${item.value}`})</span>
-                <span className="rounded bg-black/20 px-1 text-[10px] font-black leading-none opacity-80">{active ? '✕' : '↺'}</span>
+                <span className="rounded bg-black/20 px-1 text-[10px] font-black leading-none opacity-80">✕</span>
               </button>
               );
             })}
-            {dispatcherSurcharges.length === 0 && availableCustomSurcharges.length === 0 && (
+            {dispatcherSurcharges.length === 0 && appliedCustomSurcharges.length === 0 && (
               <span className="text-[10px] uppercase tracking-wide text-slate-500">No surcharge add-ons applied</span>
             )}
           </div>
