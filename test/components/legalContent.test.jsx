@@ -47,6 +47,27 @@ describe('legal surfaces', () => {
     }));
   });
 
+  it('allows an inactive custom surcharge to be added to an equipment quote', async () => {
+    const user = userEvent.setup();
+    const dispatch = vi.fn();
+    render(<QuoteResultsCard
+      isDispatcherView
+      dispatch={dispatch}
+      companyRates={{ pricing: { rounding_interval: 1, custom_surcharges: [{ id: 'fuel', name: 'Fuel', feeType: 'flat', value: 25, active: true }] } }}
+      state={{
+        quoteData: { pricingMode: 'equipment-weight-tier', fixedRate: 100, rawTotalHours: 1, baseMinQuote: 100, baseMaxQuote: 100 },
+        activeOverrides: { customSurcharges: {} },
+      }}
+    />);
+
+    expect(screen.getByText('$100')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Fuel.*↺/i }));
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'SET_OVERRIDE',
+      payload: { key: 'customSurcharges', value: { fuel: true } },
+    }));
+  });
+
   it('provides a keyboard-operable, labeled, initially unchecked acknowledgment', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

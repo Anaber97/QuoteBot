@@ -90,11 +90,7 @@ export default function QuoteResultsCard({
     quoteData?.hasHazardZone ? { key: 'hazard', active: activeOverrides?.hazard } : null,
     quoteData?.hasCustomZone ? { key: 'custom', active: true } : null,
   ].filter(Boolean);
-  const selectedCustomSurcharges = (companyRates.pricing?.custom_surcharges || []).filter((item) =>
-    item.active !== false && (
-      quoteData?.appliedCustomSurcharges?.[item.id] === true || activeOverrides?.customSurcharges?.[item.id] === true
-    )
-  );
+  const availableCustomSurcharges = (companyRates.pricing?.custom_surcharges || []).filter((item) => item.active !== false);
   const metroCodes = Array.isArray(quoteData?.metroCodes) && quoteData.metroCodes.length > 0 ? quoteData.metroCodes : [];
   const metroFeeMode = companyRates?.pricing?.surchargeModes?.metro_multiplier || companyRates?.surcharges?.surchargeModes?.metro_multiplier || 'percent';
   const metroFeeValue = companyRates?.pricing?.metro_multiplier ?? companyRates?.surcharges?.metro_multiplier ?? 28.57;
@@ -243,7 +239,7 @@ export default function QuoteResultsCard({
                 </button>
               );
             })}
-            {selectedCustomSurcharges.map((item) => {
+            {availableCustomSurcharges.map((item) => {
               const active = activeOverrides?.customSurcharges?.[item.id] === true;
               return (
               <button key={item.id} type="button" onClick={() => toggleCustomSurcharge(item.id)} title={active ? 'Click to disable surcharge' : 'Click to restore surcharge'} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${active ? BADGE_STYLES.custom.active : BADGE_STYLES.custom.disabled}`}>
@@ -252,7 +248,7 @@ export default function QuoteResultsCard({
               </button>
               );
             })}
-            {dispatcherSurcharges.length === 0 && selectedCustomSurcharges.length === 0 && (
+            {dispatcherSurcharges.length === 0 && availableCustomSurcharges.length === 0 && (
               <span className="text-[10px] uppercase tracking-wide text-slate-500">No surcharge add-ons applied</span>
             )}
           </div>
