@@ -160,11 +160,12 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
 
   // Use shared surcharge calculation
   const { multiplier, flatSum } = calculateSurcharges({
-    metroMatches: !useWeightTierPricing ? metroMatches : [],
-    hazardMatches: !useWeightTierPricing ? hazardMatches : [],
+    metroMatches,
+    hazardMatches,
     customMatches,
     customSurcharges: pricing.custom_surcharges || [],
     useWeightTierPricing,
+    allowRouteSurcharges: role !== 'client',
     overrides,
   });
 
@@ -222,7 +223,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     permit,
     escort,
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
-    appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(!useWeightTierPricing && metroMatches.length && overrides.metro), hazard: Boolean(!useWeightTierPricing && hazardMatches.length && overrides.hazard), customZone: Boolean(customMatches.length) },
+    appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(role !== 'client' && metroMatches.length && overrides.metro !== false), hazard: Boolean(role !== 'client' && hazardMatches.length && overrides.hazard !== false), customZone: Boolean(customMatches.length) },
     routeLegs: route.legs,
     quoteDetails: { ...(input.equipment || {}), permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
   };

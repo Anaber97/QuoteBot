@@ -74,7 +74,8 @@ export default function QuoteResultsCard({
     activeOverrides,
     state?.customRateInput ?? state?.customRate ?? 0,
     companyRates,
-    state?.customLoadUnloadMins ?? null
+    state?.customLoadUnloadMins ?? null,
+    isDispatcherView
   );
   const permitFee = Number(quoteData?.equipmentMeta?.permitFee || quoteData?.permitFee || 0);
   const escort = quoteData?.escort || quoteData?.equipmentMeta?.escort || { vehicleCount: 0, surcharge: 0 };

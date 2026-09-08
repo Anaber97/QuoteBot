@@ -278,7 +278,7 @@ export async function calculateQuoteData({
  * Calculates effective multiplier and final min/max/custom pricing.
  * Uses shared pricingEngine to ensure parity with server calculations.
  */
-export function calculateFinalQuotes(quoteData, activeOverrides, customRate, companyRates = {}, customLoadUnloadMins = null) {
+export function calculateFinalQuotes(quoteData, activeOverrides, customRate, companyRates = {}, customLoadUnloadMins = null, allowEquipmentRouteSurcharges = false) {
   if (!quoteData) {
     return { currentMinQuote: 0, currentMaxQuote: 0, customCalculatedQuote: null, effectiveMultiplier: 1.0 };
   }
@@ -305,6 +305,7 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     customMatches: quoteData.customMatches || [],
     customSurcharges: pricing.custom_surcharges || [],
     useWeightTierPricing: quoteData.pricingMode === 'equipment-weight-tier',
+    allowRouteSurcharges: quoteData.pricingMode !== 'equipment-weight-tier' || allowEquipmentRouteSurcharges,
     overrides: activeOverrides,
   });
 

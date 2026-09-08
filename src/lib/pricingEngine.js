@@ -115,6 +115,7 @@ export function calculateSurcharges({
   customMatches = [],
   customSurcharges = [],
   useWeightTierPricing = false,
+  allowRouteSurcharges = !useWeightTierPricing,
   overrides = {},
 }) {
   const charge = { multiplier: 1, flat: 0 };
@@ -129,13 +130,11 @@ export function calculateSurcharges({
     }
   };
 
-  // Metro surcharge (only if not using weight tier)
-  if (!useWeightTierPricing && metroMatches.length > 0 && overrides.metro !== false) {
+  if (allowRouteSurcharges && metroMatches.length > 0 && overrides.metro !== false) {
     add(metroMatches[0].charge?.feeType || 'percent', metroMatches[0].charge?.value);
   }
 
-  // Hazard surcharges (only if not using weight tier)
-  if (!useWeightTierPricing && hazardMatches.length > 0 && overrides.hazard !== false) {
+  if (allowRouteSurcharges && hazardMatches.length > 0 && overrides.hazard !== false) {
     hazardMatches.forEach((zone) => {
       add(zone.charge?.feeType || 'percent', zone.charge?.value);
     });

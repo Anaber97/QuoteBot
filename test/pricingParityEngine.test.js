@@ -301,6 +301,25 @@ test('calculatePermitRequirements no permit for normal shipments', () => {
   assert.equal(result.permitFee, 0);
 });
 
+test('route surcharges can be toggled for staff equipment pricing', () => {
+  const metroZone = { charge: { feeType: 'percent', value: 25 } };
+  const enabled = calculateSurcharges({
+    metroMatches: [metroZone],
+    useWeightTierPricing: true,
+    allowRouteSurcharges: true,
+    overrides: { metro: true },
+  });
+  const disabled = calculateSurcharges({
+    metroMatches: [metroZone],
+    useWeightTierPricing: true,
+    allowRouteSurcharges: true,
+    overrides: { metro: false },
+  });
+
+  assert.equal(enabled.multiplier, 1.25);
+  assert.equal(disabled.multiplier, 1);
+});
+
 test('calculateFinalQuotes caps high quotes and preserves lower quotes', () => {
   const capped = calculateFinalQuotes({
     pricingQuantity: 3,

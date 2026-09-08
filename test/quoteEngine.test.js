@@ -150,6 +150,23 @@ test('metro and hazard route matches apply configured charges', () => {
   assert.ok(result.minQuote > 200);
 });
 
+test('equipment calculator metro override controls the geofence charge', () => {
+  const zoneConfig = structuredClone(config);
+  zoneConfig.geofences.disabledZones = [];
+  const enabled = quote({
+    config: zoneConfig,
+    input: { quoteSource: 'equipment_calculator', waypoints: ['Dallas, TX', 'Fort Worth, TX'], activeOverrides: { metro: true } },
+  });
+  const disabled = quote({
+    config: zoneConfig,
+    input: { quoteSource: 'equipment_calculator', waypoints: ['Dallas, TX', 'Fort Worth, TX'], activeOverrides: { metro: false } },
+  });
+
+  assert.equal(enabled.appliedSurcharges.metro, true);
+  assert.equal(disabled.appliedSurcharges.metro, false);
+  assert.ok(enabled.minQuote > disabled.minQuote);
+});
+
 test('permit fees cover oversize and interstate equipment', () => {
   const permitConfig = structuredClone(config);
   permitConfig.pricing.base_permit_fee = 200;
