@@ -316,16 +316,17 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
   // Determine pricing quantity
   const pricingQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : quoteData.rawTotalHours;
 
-  // Calculate custom quantity if custom load time is provided
-  let customQuantity = pricingQuantity;
+  // A dispatcher-entered load/unload time replaces the configured on-site time
+  // for hourly pricing. Mileage pricing remains based on routed miles.
+  let effectivePricingQuantity = pricingQuantity;
   if (customLoadUnloadMins !== null && customLoadUnloadMins !== '') {
     const customHours = Math.max(0, quoteData.rawTotalHours + (Number(customLoadUnloadMins) - Number(quoteData.loadUnloadTime || 0)) / 60);
-    customQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : customHours;
+    effectivePricingQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : customHours;
   }
 
   // Use shared final quote calculation
   const result = calculateFinalQuotesPure({
-    pricingQuantity,
+    pricingQuantity: effectivePricingQuantity,
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
@@ -333,7 +334,7 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     permitFee: 0, // Browser doesn't calculate permit fees
     rounding: roundingInterval,
     customRate: customRate != null ? customRate : null,
-    customQuantity: customLoadUnloadMins !== null && customLoadUnloadMins !== '' ? customQuantity : null,
+    customQuantity: effectivePricingQuantity,
     flatOverride,
     maxOverride,
   });

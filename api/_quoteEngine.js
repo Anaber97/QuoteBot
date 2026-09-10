@@ -192,14 +192,14 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   });
 
   // Use shared final quote calculation
-  let customQuantity = null;
-  if (role !== 'client' && toFinite(input.customLoadUnloadMins) > 0) {
-    const customHours = input.customLoadUnloadMins == null ? rawTotalHours : Math.max(0, rawTotalHours + (toFinite(input.customLoadUnloadMins) - loadUnloadMinutes) / 60);
-    customQuantity = standardPricingMode === 'mileage' ? totalMiles : customHours;
+  let effectivePricingQuantity = pricingQuantity;
+  if (role !== 'client' && input.customLoadUnloadMins != null) {
+    const customHours = Math.max(0, rawTotalHours + (toFinite(input.customLoadUnloadMins) - loadUnloadMinutes) / 60);
+    effectivePricingQuantity = standardPricingMode === 'mileage' ? totalMiles : customHours;
   }
 
   const quoteResult = calculateFinalQuotesPure({
-    pricingQuantity,
+    pricingQuantity: effectivePricingQuantity,
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
@@ -207,7 +207,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     permitFee: permit.permitFee,
     rounding: interval,
     customRate: role !== 'client' ? toFinite(input.customRate) : null,
-    customQuantity,
+    customQuantity: role !== 'client' ? effectivePricingQuantity : null,
     flatOverride,
     maxOverride,
   });

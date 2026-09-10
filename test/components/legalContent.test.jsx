@@ -64,6 +64,38 @@ describe('legal surfaces', () => {
     expect(screen.getByText(/No surcharge add-ons applied/i)).toBeInTheDocument();
   });
 
+  it('calculates a custom hourly rate without requiring a load-time override', () => {
+    render(<QuoteResultsCard
+      isDispatcherView
+      dispatch={vi.fn()}
+      companyRates={{ pricing: { rounding_interval: 1 } }}
+      state={{
+        quoteData: { pricingMode: 'equipment-weight-tier', pricingRateMode: 'hourly', fixedRate: 100, rawTotalHours: 2, baseMinQuote: 200, baseMaxQuote: 200 },
+        activeOverrides: { customSurcharges: {} },
+        customRateInput: '150',
+        customLoadUnloadMins: '',
+      }}
+    />);
+
+    expect(screen.getByText('Custom rate estimate: $300')).toBeInTheDocument();
+  });
+
+  it('applies custom load and unload time to the displayed hourly quote', () => {
+    render(<QuoteResultsCard
+      isDispatcherView
+      dispatch={vi.fn()}
+      companyRates={{ pricing: { rounding_interval: 1 } }}
+      state={{
+        quoteData: { pricingMode: 'equipment-weight-tier', pricingRateMode: 'hourly', fixedRate: 100, rawTotalHours: 2, loadUnloadTime: 30, baseMinQuote: 200, baseMaxQuote: 200 },
+        activeOverrides: { customSurcharges: {} },
+        customRateInput: '',
+        customLoadUnloadMins: '60',
+      }}
+    />);
+
+    expect(screen.getByText('$250')).toBeInTheDocument();
+  });
+
   it('provides a keyboard-operable, labeled, initially unchecked acknowledgment', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

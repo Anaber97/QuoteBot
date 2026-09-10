@@ -23,7 +23,7 @@ export function normalizeQuoteInput(body, profile) {
     isRoadClub: client ? false : Boolean(body.isRoadClub),
     activeOverrides: client ? {} : (body.activeOverrides && typeof body.activeOverrides === 'object' ? body.activeOverrides : {}),
     customRate: client ? null : number(body.customRate, 100000),
-    customLoadUnloadMins: client ? null : (body.customLoadUnloadMins == null ? null : number(body.customLoadUnloadMins, 10080)),
+    customLoadUnloadMins: client ? null : (body.customLoadUnloadMins == null || body.customLoadUnloadMins === '' ? null : number(body.customLoadUnloadMins, 10080)),
     customerName: text(body.customerName, 160),
     customerPhone: text(body.customerPhone, 60),
     notes: text(body.notes, 2000),

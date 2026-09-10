@@ -288,6 +288,47 @@ test('hourly mode remains the default when no pricing mode is saved', () => {
   assert.equal(result.minQuote, 200);
 });
 
+test('custom hourly rate works without a custom load time', () => {
+  const result = quote({ input: { customRate: 175 } });
+  assert.equal(result.customQuote, 275);
+});
+
+test('custom load time changes the standard hourly quote', () => {
+  const result = quote({ input: { customLoadUnloadMins: 60 } });
+  assert.equal(result.minQuote, 275);
+  assert.equal(result.maxQuote, 275);
+});
+
+test('custom load time combines with a custom hourly rate', () => {
+  const result = quote({ input: { customRate: 175, customLoadUnloadMins: 60 } });
+  assert.equal(result.customQuote, 375);
+});
+
+test('zero custom load time removes configured load time', () => {
+  const result = quote({ input: { customLoadUnloadMins: 0 } });
+  assert.equal(result.minQuote, 150);
+});
+
+test('empty custom load time stays unset', () => {
+  const result = normalizeQuoteInput({ waypoints: ['Pickup', 'Dropoff'], customLoadUnloadMins: '' }, { role: 'dispatch' });
+  assert.equal(result.customLoadUnloadMins, null);
+});
+
+test('custom mileage rate uses routed miles without a custom load time', () => {
+  const mileageConfig = structuredClone(config);
+  mileageConfig.pricing.pricing_mode = 'mileage';
+  const result = quote({ config: mileageConfig, input: { customRate: 10 } });
+  assert.equal(result.customQuote, 100);
+});
+
+test('custom load time does not alter mileage pricing', () => {
+  const mileageConfig = structuredClone(config);
+  mileageConfig.pricing.pricing_mode = 'mileage';
+  const standard = quote({ config: mileageConfig });
+  const overridden = quote({ config: mileageConfig, input: { customLoadUnloadMins: 120 } });
+  assert.equal(overridden.minQuote, standard.minQuote);
+});
+
 test('equipment pricing ignores municipality rates but keeps selected custom surcharges', () => {
   const equipmentConfig = structuredClone(config);
   equipmentConfig.geofences.customZones = [{ id: 'henderson', city: 'Henderson', state: 'TX', pricingMode: 'flat_rate', price: 100 }];
