@@ -130,7 +130,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   if (useWeightTierPricing && !tier) throw Object.assign(new Error(`No equipment weight class is configured for ${totalWeight.toLocaleString()} lbs.`), { status: 400 });
 
   // Use shared time metrics calculation
-  const { rawTotalHours, loadUnloadMinutes } = calculateTimeMetrics({
+  const { rawTotalHours, loadUnloadMinutes, driveTimeBufferPercent } = calculateTimeMetrics({
     rawDriveMinutes: route.rawDriveMinutes,
     baseLoadMinutes: toFinite(useWeightTierPricing ? tier?.load_unload_base_mins : selectedClass?.load_unload_base_mins ?? clientPricing.load_unload_base_mins ?? pricing.load_unload_base_mins, 30),
     extraStopMinutes: toFinite(clientPricing.extra_stop_mins ?? pricing.extra_stop_mins, 15),
@@ -215,6 +215,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   return {
     totalMiles,
     totalHours: Number(rawTotalHours.toFixed(2)),
+    driveTimeBufferPercent,
     pricingMode: useWeightTierPricing ? 'equipment-weight-tier' : standardPricingMode,
     minQuote: quoteResult.minQuote,
     maxQuote: quoteResult.maxQuote,
@@ -225,6 +226,6 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
     appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(role !== 'client' && metroMatches.length && overrides.metro !== false), hazard: Boolean(role !== 'client' && hazardMatches.length && overrides.hazard !== false), customZone: Boolean(customMatches.length) },
     routeLegs: route.legs,
-    quoteDetails: { ...(input.equipment || {}), permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
+    quoteDetails: { ...(input.equipment || {}), driveTimeBufferPercent, permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
   };
 }

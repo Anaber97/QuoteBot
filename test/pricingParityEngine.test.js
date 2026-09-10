@@ -134,6 +134,7 @@ test('calculateTimeMetrics applies drive time buffer correctly', () => {
   assert.equal(result.adjustedDriveMinutes, 66);
   assert.equal(result.loadUnloadMinutes, 45);
   assert.equal(result.rawTotalHours, 1.85);
+  assert.equal(result.driveTimeBufferPercent, 10);
 });
 
 test('calculateTimeMetrics applies weight tier buffer', () => {
@@ -149,6 +150,7 @@ test('calculateTimeMetrics applies weight tier buffer', () => {
   assert.equal(result.adjustedDriveMinutes, 72);
   assert.equal(result.loadUnloadMinutes, 45);
   assert.equal(result.rawTotalHours, 1.95);
+  assert.equal(result.driveTimeBufferPercent, 20);
 });
 
 test('calculateSurcharges applies percent surcharges correctly', () => {

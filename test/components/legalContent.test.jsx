@@ -96,6 +96,21 @@ describe('legal surfaces', () => {
     expect(screen.getByText('$250')).toBeInTheDocument();
   });
 
+  it('shows the drive-time buffer actually used by the quote calculation', () => {
+    render(<QuoteResultsCard
+      isDispatcherView
+      dispatch={vi.fn()}
+      companyRates={{ pricing: { drive_time_buffer: 10 } }}
+      state={{
+        quoteData: { pricingMode: 'hourly', rawTotalHours: 2, baseMinQuote: 200, baseMaxQuote: 200, driveTimeBufferPercent: 22, legsDetails: [{ label: 'Base → Stop', minutes: 60 }] },
+        activeOverrides: { customSurcharges: {} },
+        showDetails: true,
+      }}
+    />);
+
+    expect(screen.getByText(/Adjusted Drive Time \(\+22%\)/i)).toBeInTheDocument();
+  });
+
   it('provides a keyboard-operable, labeled, initially unchecked acknowledgment', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

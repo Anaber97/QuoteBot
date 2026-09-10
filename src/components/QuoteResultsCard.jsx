@@ -280,9 +280,7 @@ export default function QuoteResultsCard({
               ))}
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                 <span>
-                  Adjusted Drive Time (+{isFixedEquipmentQuote
-                    ? Number(quoteData.driveTimeBufferPercent ?? 10)
-                    : Number(companyRates?.pricing?.drive_time_buffer ?? 10)}%)
+                  Adjusted Drive Time (+{Number(quoteData.driveTimeBufferPercent ?? companyRates?.pricing?.drive_time_buffer ?? 10)}%)
                 </span>
                 <span className="font-semibold text-slate-200">{Math.round(Number(quoteData?.adjustedDriveMin || 0))} mins</span>
               </div>

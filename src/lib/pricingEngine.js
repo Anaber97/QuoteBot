@@ -70,7 +70,7 @@ export function resolveBaseRates({
 /**
  * Calculates adjusted drive time and total work hours from raw route data.
  * @param {Object} options
- * @returns {Object} { rawTotalHours, adjustedDriveMinutes, loadUnloadMinutes }
+ * @returns {Object} { rawTotalHours, adjustedDriveMinutes, loadUnloadMinutes, driveTimeBufferPercent }
  */
 export function calculateTimeMetrics({
   rawDriveMinutes = 0,
@@ -101,6 +101,7 @@ export function calculateTimeMetrics({
     rawTotalHours,
     adjustedDriveMinutes: Math.round(adjustedDriveMinutes),
     loadUnloadMinutes: Math.round(loadUnloadMinutes),
+    driveTimeBufferPercent: Number(((driveBuffer - 1) * 100).toFixed(2)),
   };
 }
 

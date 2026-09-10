@@ -176,7 +176,7 @@ export async function calculateQuoteData({
 
   // Shared with the server (api/_quoteEngine.js) so browser and server never
   // independently re-derive the buffered drive time / on-site time math.
-  const { rawTotalHours, adjustedDriveMinutes: bufferedDriveMins, loadUnloadMinutes: totalOnSiteMins } = calculateTimeMetrics({
+  const { rawTotalHours, adjustedDriveMinutes: bufferedDriveMins, loadUnloadMinutes: totalOnSiteMins, driveTimeBufferPercent } = calculateTimeMetrics({
     rawDriveMinutes: rawTotalMins,
     baseLoadMinutes: clientLoadMins ?? baseLoadMins,
     extraStopMinutes: clientExtraStopMins ?? extraStopMins,
@@ -269,7 +269,7 @@ export async function calculateQuoteData({
       : null,
     pricingMode: useWeightTierPricing ? 'equipment-weight-tier' : standardPricingMode,
     weightTierLabel: useWeightTierPricing ? matchingTier.label : null,
-    driveTimeBufferPercent: useWeightTierPricing ? Number(matchingTier?.drive_time_buffer ?? 10) || 10 : null,
+    driveTimeBufferPercent,
     escort,
   };
 }
