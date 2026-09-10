@@ -47,10 +47,12 @@ describe('legal surfaces', () => {
     }));
   });
 
-  it('hides inactive surcharge badges from an equipment quote', () => {
+  it('keeps a matched surcharge available to restore after it is removed', async () => {
+    const user = userEvent.setup();
+    const dispatch = vi.fn();
     render(<QuoteResultsCard
       isDispatcherView
-      dispatch={vi.fn()}
+      dispatch={dispatch}
       companyRates={{ pricing: { rounding_interval: 1, custom_surcharges: [{ id: 'fuel', name: 'Fuel', feeType: 'flat', value: 25, active: true }] } }}
       state={{
         quoteData: { pricingMode: 'equipment-weight-tier', fixedRate: 100, rawTotalHours: 1, baseMinQuote: 100, baseMaxQuote: 100, hasMetroZone: true },
@@ -60,8 +62,11 @@ describe('legal surfaces', () => {
 
     expect(screen.getByText('$100')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Fuel/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Metro/i })).not.toBeInTheDocument();
+    const metroRestore = screen.getByRole('button', { name: /Metro.*↻/i });
+    expect(metroRestore).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByText(/No surcharge add-ons applied/i)).toBeInTheDocument();
+    await user.click(metroRestore);
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_OVERRIDE', payload: { key: 'metro', value: true } });
   });
 
   it('calculates a custom hourly rate without requiring a load-time override', () => {

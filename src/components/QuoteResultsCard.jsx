@@ -90,10 +90,13 @@ export default function QuoteResultsCard({
     quoteData?.hasMetroZone ? { key: 'metro', active: activeOverrides?.metro } : null,
     quoteData?.hasHazardZone ? { key: 'hazard', active: activeOverrides?.hazard } : null,
     quoteData?.hasCustomZone ? { key: 'custom', active: true } : null,
-  ].filter((item) => item?.active === true);
-  const appliedCustomSurcharges = (companyRates.pricing?.custom_surcharges || []).filter((item) =>
-    item.active !== false && activeOverrides?.customSurcharges?.[item.id] === true
+  ].filter(Boolean);
+  const quoteCustomSurcharges = quoteData?.appliedCustomSurcharges || {};
+  const availableCustomSurcharges = (companyRates.pricing?.custom_surcharges || []).filter((item) =>
+    item.active !== false && quoteCustomSurcharges[item.id] === true
   );
+  const hasAppliedSurcharges = dispatcherSurcharges.some((item) => item.active === true)
+    || availableCustomSurcharges.some((item) => activeOverrides?.customSurcharges?.[item.id] === true);
   const metroCodes = Array.isArray(quoteData?.metroCodes) && quoteData.metroCodes.length > 0 ? quoteData.metroCodes : [];
   const metroFeeMode = companyRates?.pricing?.surchargeModes?.metro_multiplier || companyRates?.surcharges?.surchargeModes?.metro_multiplier || 'percent';
   const metroFeeValue = companyRates?.pricing?.metro_multiplier ?? companyRates?.surcharges?.metro_multiplier ?? 28.57;
@@ -224,7 +227,7 @@ export default function QuoteResultsCard({
       {isDispatcherView && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
-            {dispatcherSurcharges.map(({ key }) => {
+            {dispatcherSurcharges.map(({ key, active }) => {
               const style = BADGE_STYLES[key];
               if (!style) return null;
               return (
@@ -232,25 +235,27 @@ export default function QuoteResultsCard({
                   key={key}
                   type="button"
                   onClick={() => toggleOverride(key)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${style.active}`}
-                  title="Click to remove surcharge"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${active ? style.active : style.disabled}`}
+                  title={active ? 'Click to remove surcharge' : 'Click to restore surcharge'}
+                  aria-pressed={active}
                 >
                   <span>{key === 'metro' ? metroBadgeLabel : style.label}</span>
                   <span className="rounded bg-black/20 px-1 text-[10px] font-black leading-none opacity-80">
-                    ✕
+                    {active ? '✕' : '↻'}
                   </span>
                 </button>
               );
             })}
-            {appliedCustomSurcharges.map((item) => {
+            {availableCustomSurcharges.map((item) => {
+              const active = activeOverrides?.customSurcharges?.[item.id] === true;
               return (
-              <button key={item.id} type="button" onClick={() => toggleCustomSurcharge(item.id)} title="Click to remove surcharge" className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-semibold text-violet-300 transition">
+              <button key={item.id} type="button" onClick={() => toggleCustomSurcharge(item.id)} title={active ? 'Click to remove surcharge' : 'Click to restore surcharge'} aria-pressed={active} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${active ? 'border-violet-500/30 bg-violet-500/10 text-violet-300' : BADGE_STYLES.custom.disabled}`}>
                 <span>{item.name} ({item.feeType === 'percent' ? `+${item.value}%` : `+$${item.value}`})</span>
-                <span className="rounded bg-black/20 px-1 text-[10px] font-black leading-none opacity-80">✕</span>
+                <span className="rounded bg-black/20 px-1 text-[10px] font-black leading-none opacity-80">{active ? '✕' : '↻'}</span>
               </button>
               );
             })}
-            {dispatcherSurcharges.length === 0 && appliedCustomSurcharges.length === 0 && (
+            {!hasAppliedSurcharges && (
               <span className="text-[10px] uppercase tracking-wide text-slate-500">No surcharge add-ons applied</span>
             )}
           </div>
