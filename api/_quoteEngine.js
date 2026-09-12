@@ -11,6 +11,9 @@ import {
   resolveEscortRequirement,
 } from '../src/lib/pricingEngine.js';
 
+import { evaluateOsow } from '../src/lib/osow.js';
+import { resolveRouteStates } from '../src/lib/routeStates.js';
+
 const toFinite = (value, fallback = 0) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -175,7 +178,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const pricingQuantity = standardPricingMode === 'mileage' ? totalMiles : rawTotalHours;
 
   // Calculate permit fee
-  const permit = calculatePermitPure({
+  let permit = calculatePermitPure({
     weight: totalWeight,
     width: toFinite(input.equipment?.width),
     height: toFinite(input.equipment?.height),
@@ -185,11 +188,21 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
       ? toFinite(tier?.permitCost, toFinite(config?.pricing?.base_permit_fee, 150))
       : toFinite(config?.pricing?.base_permit_fee, 150),
   });
-  const escort = resolveEscortRequirement({
+  let escort = resolveEscortRequirement({
     width: toFinite(input.equipment?.width),
     height: toFinite(input.equipment?.height),
     rules: config?.client_portal?.escort_rules,
   });
+
+  let osow = null;
+  if (useWeightTierPricing && config.client_portal?.osow_pricing?.enabled) {
+    const companyTier = (config.client_portal.weight_tiers || []).find((item) => totalWeight >= toFinite(item.minWeight) && totalWeight <= toFinite(item.maxWeight, 999999));
+    osow = evaluateOsow({ weight: totalWeight, width: input.equipment?.width, height: input.equipment?.height,
+      tier: { ...tier, permitCost: tier?.permitCost ?? pricing.base_permit_fee ?? 150, averageClearanceIn: companyTier?.averageClearanceIn, averageVehicleWeightLbs: companyTier?.averageVehicleWeightLbs },
+      states: resolveRouteStates(customerRoutePoints), routeKnown: customerRoutePoints.length > 1,
+      limits: config.state_transport_limits || [], pricing: config.client_portal.osow_pricing });
+    permit = osow; escort = osow.escort;
+  }
 
   // Use shared final quote calculation
   let effectivePricingQuantity = pricingQuantity;
@@ -203,8 +216,8 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
-    surchargeFlatSum: flatSum + escort.surcharge,
-    permitFee: permit.permitFee,
+    surchargeFlatSum: flatSum + (osow ? 0 : escort.surcharge),
+    permitFee: permit.permitFee + (osow ? escort.surcharge : 0),
     rounding: interval,
     customRate: role !== 'client' ? toFinite(input.customRate) : null,
     customQuantity: role !== 'client' ? effectivePricingQuantity : null,
@@ -220,12 +233,13 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     minQuote: quoteResult.minQuote,
     maxQuote: quoteResult.maxQuote,
     customQuote: quoteResult.customQuote,
-    approvalRequired: totalWeight >= toFinite(clientConfig?.approval_threshold ?? config?.client_portal?.approval_threshold, 80000),
+    approvalRequired: Boolean(osow?.reviewRequired) || totalWeight >= toFinite(clientConfig?.approval_threshold ?? config?.client_portal?.approval_threshold, 80000),
     permit,
+    osow,
     escort,
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
     appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(role !== 'client' && metroMatches.length && overrides.metro !== false), hazard: Boolean(role !== 'client' && hazardMatches.length && overrides.hazard !== false), customZone: Boolean(customMatches.length) },
     routeLegs: route.legs,
-    quoteDetails: { ...(input.equipment || {}), driveTimeBufferPercent, permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
+    quoteDetails: { ...(input.equipment || {}), osow, driveTimeBufferPercent, permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
   };
 }

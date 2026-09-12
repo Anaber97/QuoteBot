@@ -14,6 +14,8 @@ import {
   resolveEscortRequirement,
 } from '../lib/pricingEngine';
 
+import { evaluateOsow } from '../lib/osow.js';
+
 export { roundToNearest }; // Re-export for backward compatibility
 
 /**
@@ -187,7 +189,7 @@ export async function calculateQuoteData({
     selectedClass,
   });
   const totalMiles = totalMeters * 0.000621371;
-  const escort = resolveEscortRequirement({ width: equipmentWidth, height: equipmentHeight, rules: companyRates?.client_portal?.escort_rules });
+  let escort = resolveEscortRequirement({ width: equipmentWidth, height: equipmentHeight, rules: companyRates?.client_portal?.escort_rules });
 
   // Shared with the server so rate resolution can't silently drift.
   const { minRate: baseMinRate, maxRate: baseMaxRate, standardPricingMode } = resolveBaseRates({
@@ -222,6 +224,17 @@ export async function calculateQuoteData({
   const customerRoutePoints = routeLegs.slice(1, cleanWaypoints.length).flatMap((leg) =>
     (leg.steps || []).flatMap((step) => (step.path || []).map(toPoint).filter(Boolean))
   );
+  let osow = null;
+  if (useWeightTierPricing && companyRates.client_portal?.osow_pricing?.enabled) {
+    const { resolveRouteStates } = await import('../lib/routeStates.js');
+    const { loadOsowLimits } = await import('./osowLimits.js');
+    const companyTier = (companyRates.client_portal.weight_tiers || []).find((item) => clientWeight >= Number(item.minWeight) && clientWeight <= Number(item.maxWeight));
+    osow = evaluateOsow({ weight: clientWeight, width: equipmentWidth, height: equipmentHeight,
+      tier: { ...matchingTier, permitCost: matchingTier?.permitCost ?? pricing.base_permit_fee ?? 150, averageClearanceIn: companyTier?.averageClearanceIn, averageVehicleWeightLbs: companyTier?.averageVehicleWeightLbs },
+      states: resolveRouteStates(customerRoutePoints), routeKnown: customerRoutePoints.length > 1,
+      limits: await loadOsowLimits(), pricing: companyRates.client_portal.osow_pricing });
+    escort = osow.escort;
+  }
   const metroMatches = await evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates, customerRoutePoints);
   const hazardMatches = await evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates, customerRoutePoints);
   const resolvedLocations = (companyRates?.geofences?.customZones || []).length > 0 ? await geocodeAll(cleanWaypoints) : [];
@@ -242,7 +255,7 @@ export async function calculateQuoteData({
     totalMiles,
     selectedTruckClassId,
     isHeavy,
-    approvalRequired: clientWeight >= Number(clientConfig?.approval_threshold ?? companyRates?.client_portal?.approval_threshold ?? 80000),
+    approvalRequired: Boolean(osow?.reviewRequired) || clientWeight >= Number(clientConfig?.approval_threshold ?? companyRates?.client_portal?.approval_threshold ?? 80000),
     hasAfterHours: isAfterHours,
     hasRoadClub: isRoadClub,
     hasMetroZone: hitMetroZone || isMetro,
@@ -271,6 +284,7 @@ export async function calculateQuoteData({
     weightTierLabel: useWeightTierPricing ? matchingTier.label : null,
     driveTimeBufferPercent,
     escort,
+    osow,
   };
 }
 
@@ -330,9 +344,9 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
-    surchargeFlatSum: flatSum + Number(quoteData?.escort?.surcharge || 0),
-    permitFee: 0, // Browser doesn't calculate permit fees
-    rounding: roundingInterval,
+    surchargeFlatSum: flatSum + (quoteData.osow ? 0 : Number(quoteData?.escort?.surcharge || 0)),
+    permitFee: quoteData.osow ? Number(quoteData.osow.permitFee || 0) + Number(quoteData.escort?.surcharge || 0) : 0,
+    rounding: quoteData.osow ? Number(quoteData.roundingInterval || roundingInterval) : roundingInterval,
     customRate: customRate != null ? customRate : null,
     customQuantity: effectivePricingQuantity,
     flatOverride,

@@ -74,6 +74,11 @@ export default async function handler(req, res) {
     route.localities = (config?.geofences?.customZones || []).length > 0
       ? await resolveGoogleLocalities(input.waypoints)
       : [];
+    if (config.client_portal?.osow_pricing?.enabled && (profile.role === 'client' || input.quoteSource === 'equipment_calculator')) {
+      const { data, error } = await admin.from('state_transport_limits').select('*');
+      if (error) throw error;
+      config.state_transport_limits = data;
+    }
     const calculated = calculateAuthoritativeQuote({ input, config, clientConfig, route, role: profile.role });
     const payload = {
       company_id: profile.company_id, user_id: profile.id, client_id: profile.role === 'client' ? profile.client_id : null,

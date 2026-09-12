@@ -17,6 +17,7 @@ import { calculateAuthoritativeQuote } from '../../api/_quoteEngine.js';
 vi.mock('../../src/lib/googleMaps.js', () => ({
   loadGoogleMaps: vi.fn(async () => {}),
 }));
+vi.mock('../../src/services/osowLimits.js', () => ({ loadOsowLimits: vi.fn() }));
 
 // A fake google.maps.LatLng: real ones expose lat()/lng() as functions,
 // which quoteCalculator.js's toPoint() checks for.
@@ -156,6 +157,22 @@ describe('browser vs. server quote parity (real public entry points)', () => {
       },
     });
 
+    expect(browser.currentMinQuote).toBe(server.minQuote);
+    expect(browser.currentMaxQuote).toBe(server.maxQuote);
+  });
+
+  test('routed OSOW permit and escort charges match with weight-class rounding', async () => {
+    const limits = [{state_code:'TX',legal_width_in:102,legal_height_in:168,legal_weight_lbs:80000,one_escort_width_in:144,one_escort_height_in:180,two_escort_width_in:168,two_escort_height_in:192}];
+    const { loadOsowLimits } = await import('../../src/services/osowLimits.js');
+    loadOsowLimits.mockResolvedValue(limits);
+    const points = [{lat:32.7767,lng:-96.797},{lat:32.7555,lng:-97.3308}];
+    installFakeGoogleMaps({ legs:[LEG_BASE_TO_PICKUP,{...LEG_PICKUP_TO_DROPOFF,steps:[{path:points.map((p)=>fakeLatLng(p.lat,p.lng))}]},LEG_DROPOFF_TO_BASE] });
+    const config = {...sharedConfig, state_transport_limits:limits,client_portal:{osow_pricing:{enabled:true,generalPermit:173,oneEscort:303,twoEscort:553},weight_tiers:[{minWeight:0,maxWeight:999999,rate:100,permitCost:150,rounding_interval:5,averageClearanceIn:48,averageVehicleWeightLbs:30000}]}};
+    const { calculateQuoteData, calculateFinalQuotes } = await import('../../src/services/quoteCalculator.js');
+    const data = await calculateQuoteData({currentBase:sharedConfig.bases[0],waypoints:[PICKUP_ADDRESS,DROPOFF_ADDRESS],companyRates:config,clientWeight:50001,equipmentWidth:170,equipmentHeight:120,useWeightTierPricing:true});
+    const browser = calculateFinalQuotes(data,{},null,config);
+    const server = calculateAuthoritativeQuote({role:'client',config,input:{waypoints:[PICKUP_ADDRESS,DROPOFF_ADDRESS],equipment:{weight:50000,attachmentWeight:1,width:170,height:120}},route:{totalMeters:ROUTE_LEGS.reduce((n,l)=>n+l.distance.value,0),rawDriveMinutes:40,customerRoutePoints:points,legs:[]}});
+    expect(data.osow).toEqual(server.osow);
     expect(browser.currentMinQuote).toBe(server.minQuote);
     expect(browser.currentMaxQuote).toBe(server.maxQuote);
   });

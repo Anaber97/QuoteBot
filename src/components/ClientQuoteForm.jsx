@@ -81,6 +81,10 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
 
   // Recalculate permit flags whenever specs or locations change
   useEffect(() => {
+    if (companyRates.client_portal?.osow_pricing?.enabled) {
+      setPermitInfo({ flags: ['State-specific OSOW flags and pricing are evaluated when the route is calculated.'], permitFee: 0 });
+      return;
+    }
     if (weight || width || height || pickupAddr || dropoffAddr) {
       const analysis = calculatePermitRequirements({
         weight,

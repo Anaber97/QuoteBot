@@ -158,6 +158,8 @@ export const normalizeClientPortalTier = (tier = {}, index = 0) => {
     rate: hourlyRate,
     hourlyRate,
     mileageRate: toFinite(tier.mileageRate ?? tier.mileage_rate, 5),
+    averageClearanceIn: tier.averageClearanceIn == null || tier.averageClearanceIn === '' ? null : toFinite(tier.averageClearanceIn, 0),
+    averageVehicleWeightLbs: tier.averageVehicleWeightLbs == null || tier.averageVehicleWeightLbs === '' ? null : toFinite(tier.averageVehicleWeightLbs, 0),
     permitCost: toFinite(tier.permitCost ?? tier.permit_cost ?? tier.permitFee, 150),
     rounding_interval: ROUNDING_OPTIONS.includes(Number(tier.rounding_interval)) ? Number(tier.rounding_interval) : 25,
     drive_time_buffer: toFinite(tier.drive_time_buffer, 10),
@@ -301,6 +303,7 @@ export function normalizeConfig(rawConfig = {}) {
     rounding_interval: toFinite(baseConfig.client_portal?.rounding_interval, DEFAULT_CLIENT_PORTAL.rounding_interval),
     use_custom_pricing: baseConfig.client_portal?.use_custom_pricing === true,
     disclosure: baseConfig.client_portal?.disclosure || DEFAULT_CLIENT_PORTAL.disclosure,
+    osow_pricing: { enabled: false, generalPermit: null, oneEscort: null, twoEscort: null, ...(baseConfig.client_portal?.osow_pricing || {}) },
     escort_rules: [1, 2].map((vehicleCount) => {
       const saved = asArray(baseConfig.client_portal?.escort_rules).find((rule) => Number(rule.vehicleCount) === vehicleCount) || DEFAULT_CLIENT_PORTAL.escort_rules[vehicleCount - 1];
       return {

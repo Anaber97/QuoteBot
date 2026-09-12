@@ -399,7 +399,7 @@ export default function App() {
         useWeightTierPricing: true,
       });
 
-      const permitFee = Number(permitInfo?.permitFee || 0);
+      const permitFee = Number(data.osow?.permitFee ?? permitInfo?.permitFee ?? 0);
 
       setQuoteData({
         ...data,
@@ -413,7 +413,8 @@ export default function App() {
           width,
           height,
           permitFee,
-          permitFlags: permitInfo?.flags || [],
+          permitFlags: data.osow?.flags ?? permitInfo?.flags ?? [],
+          osow: data.osow,
           attachmentType,
           attachmentWeight: Number(attachmentWeight || 0),
         },

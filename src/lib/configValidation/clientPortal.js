@@ -37,6 +37,11 @@ const validateWeightTier = (tier, index) => {
     errors.push({ message: `permitCost: ${permitCost.error}`, path: `${path}.permitCost` });
   }
 
+  for (const field of ['averageClearanceIn', 'averageVehicleWeightLbs']) {
+    if (tier[field] == null || tier[field] === '') continue;
+    const check = validateNumber(tier[field], { min: 0, max: field === 'averageClearanceIn' ? 1000 : 1000000 });
+    if (!check.valid) errors.push({ message: `${field}: ${check.error}`, path: `${path}.${field}` });
+  }
   return errors;
 };
 
@@ -74,6 +79,14 @@ export function validateClientPortalSection(portal, result) {
     });
   }
 
+  if (portal.osow_pricing) {
+    if (typeof portal.osow_pricing.enabled !== 'boolean') addError(result, 'OSOW enabled must be boolean', 'client_portal.osow_pricing.enabled');
+    for (const field of ['generalPermit', 'oneEscort', 'twoEscort']) {
+      if (portal.osow_pricing[field] == null) continue;
+      const check = validateNumber(portal.osow_pricing[field], { min: 0, max: 100000 });
+      if (!check.valid) addError(result, check.error, `client_portal.osow_pricing.${field}`);
+    }
+  }
   if (Array.isArray(portal.escort_rules)) {
     portal.escort_rules.slice(0, 2).forEach((rule, index) => {
       ['minWidth', 'minHeight', 'surcharge'].forEach((field) => {

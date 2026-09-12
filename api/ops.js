@@ -63,6 +63,15 @@ async function searchQuotes(req, res) {
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ status: 'error' });
+  if (req.query?.check === 'osow-limits') {
+    try {
+      const { admin } = await requireUser(req);
+      const { data, error } = await admin.from('state_transport_limits').select('*').order('state_code');
+      if (error) throw error;
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({ limits: data });
+    } catch (error) { return sendApiError(res, error, 'Unable to load OSOW limits.'); }
+  }
   if (req.query?.check === 'synthetic') return synthetic(req, res);
   if (req.query?.check === 'quote-search') return searchQuotes(req, res);
   return health(res);

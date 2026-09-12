@@ -78,9 +78,10 @@ export default function QuoteResultsCard({
     isDispatcherView
   );
   const permitFee = Number(quoteData?.equipmentMeta?.permitFee || quoteData?.permitFee || 0);
+  const osow = quoteData?.osow || quoteData?.equipmentMeta?.osow;
   const escort = quoteData?.escort || quoteData?.equipmentMeta?.escort || { vehicleCount: 0, surcharge: 0 };
   const attachmentWeight = Number(quoteData?.equipmentMeta?.attachmentWeight || 0);
-  const effectiveMinQuote = currentMinQuote + permitFee;
+  const effectiveMinQuote = currentMinQuote + (osow ? 0 : permitFee);
   const clientPrice = effectiveMinQuote;
   const isFixedEquipmentQuote = quoteData?.pricingMode === 'equipment-weight-tier';
   const isMileageQuote = (quoteData?.pricingRateMode || quoteData?.pricingMode) === 'mileage';
@@ -207,6 +208,12 @@ export default function QuoteResultsCard({
             Permit surcharge included: +${permitFee.toFixed(2)}
           </div>
         )}
+        {osow && <div className="my-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+          <strong>OSOW estimate{osow.reviewRequired ? ' — review required' : ''}</strong>
+          <p>Flags cover the supplied width, height, GVW and escort thresholds. Confirm axle/length limits, bridge clearances, travel restrictions and special escorts separately.</p>
+          <p>Route states: {osow.states.map((row) => row.state).join(', ') || 'Unresolved'}. Loaded height: {osow.loadedHeight} in. GVW: {Number(osow.grossWeight).toLocaleString()} lbs.</p>
+          {[...osow.flags, ...osow.reviewReasons].map((flag, i) => <p key={i}>{flag}</p>)}
+        </div>}
         {Number(escort.vehicleCount) > 0 && <div className="inline-block rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-bold text-cyan-300">
           {escort.vehicleCount} escort vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}: +${Number(escort.surcharge || 0).toFixed(2)}
         </div>}
@@ -331,7 +338,12 @@ export default function QuoteResultsCard({
                 <span>Weight Class Permit Cost</span>
                 <span className="font-semibold text-amber-300">+${permitFee.toFixed(2)}</span>
               </div>}
-              {Number(escort.vehicleCount) > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
+              {osow && <div className="my-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+          <strong>OSOW estimate{osow.reviewRequired ? ' — review required' : ''}</strong>
+          <p>Route states: {osow.states.map((row) => row.state).join(', ') || 'Unresolved'}. Loaded height: {osow.loadedHeight} in. GVW: {Number(osow.grossWeight).toLocaleString()} lbs.</p>
+          {[...osow.flags, ...osow.reviewReasons].map((flag, i) => <p key={i}>{flag}</p>)}
+        </div>}
+        {Number(escort.vehicleCount) > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                 <span>{escort.vehicleCount} Escort Vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}</span>
                 <span className="font-semibold text-cyan-300">+${Number(escort.surcharge || 0).toFixed(2)}</span>
               </div>}
