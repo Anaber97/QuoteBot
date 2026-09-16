@@ -85,6 +85,29 @@ function allowedSourceUrls(payload) {
   return new Set(values.map((entry) => cleanUrl(typeof entry === 'string' ? entry : entry?.url)).filter(Boolean));
 }
 
+function responseOutputText(payload) {
+  if (text(payload?.output_text)) return text(payload.output_text);
+  return (Array.isArray(payload?.output) ? payload.output : []).flatMap((item) =>
+    Array.isArray(item?.content) ? item.content : []
+  ).filter((item) => item?.type === 'output_text').map((item) => text(item?.text)).join('\n');
+}
+
+function responseCitations(payload) {
+  return (Array.isArray(payload?.output) ? payload.output : []).flatMap((item) =>
+    Array.isArray(item?.content) ? item.content : []
+  ).flatMap((item) => Array.isArray(item?.annotations) ? item.annotations : [])
+    .map((annotation) => annotation?.url || annotation?.url_citation?.url)
+    .map(cleanUrl)
+    .filter(Boolean);
+}
+
+function webSearchPayload(payload) {
+  return {
+    results: parseJson(responseOutputText(payload)).results || [],
+    citations: responseCitations(payload),
+  };
+}
+
 function isManufacturerDomain(source) {
   const publisher = normalizeSearchText(source?.publisher).replaceAll(' ', '');
   const normalizedMake = deFuzzEquipmentQuery(source?.make);
@@ -190,7 +213,7 @@ async function extractManufacturerSpecs(url, make, model, gatewayToken) {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${gatewayToken}` },
     signal: AbortSignal.timeout(25_000),
     body: JSON.stringify({
-      model: getServerEnv('EQUIPMENT_DOCUMENT_MODEL') || 'perplexity/sonar-pro', stream: false, temperature: 0,
+      model: getServerEnv('EQUIPMENT_DOCUMENT_MODEL') || 'openai/gpt-5.6-luna', stream: false, temperature: 0,
       messages: [
         { role: 'system', content: 'Extract exact equipment transport specs from the supplied manufacturer PDF text only. Do not browse, infer, estimate, or use outside knowledge. Use overall/stowed machine width and overall/stowed machine height, not track width, lift height, reach, or an attachment dimension. Return only JSON: {"operating_weight_lbs":number,"transport_width_in":number,"transport_height_in":number}. Return null when all three cannot be established for one exact model/configuration.' },
         { role: 'user', content: `Manufacturer: ${make}; model: ${model}; source URL: ${url}\n\nPDF text:\n${documentText}` },
@@ -335,15 +358,13 @@ export default async function handler(req, res) {
     const gatewayToken = getServerEnv('AI_GATEWAY_API_KEY') || getServerEnv('VERCEL_OIDC_TOKEN') || text(Array.isArray(oidcHeader) ? oidcHeader[0] : oidcHeader);
     if (!gatewayToken) return res.status(200).json({ results: [], source: '', error: 'Equipment search authentication is unavailable.' });
 
-    const gatewayResponse = await fetch('https://ai-gateway.vercel.sh/v1/chat/completions', {
+    const gatewayResponse = await fetch('https://ai-gateway.vercel.sh/v1/responses', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${gatewayToken}` },
       signal: AbortSignal.timeout(45000),
       body: JSON.stringify({
-        model: getServerEnv('EQUIPMENT_SEARCH_MODEL') || 'perplexity/sonar-pro', stream: false,
-        messages: [
-          { role: 'system', content: 'Search the live web for up to three likely exact heavy-equipment matches. Normalize common brand aliases, punctuation, spacing, partial model numbers, serial numbers, and model-year text. Never estimate, merge configurations, or combine values from separate sources. For every result, establish operating weight (lbs), transport height (in), and transport width (in) for one exact configuration. Read manufacturer PDF dimension drawings as well as tables: use the stowed/overall machine height and overall machine width shown in the drawing, never boom/lift height, track width, or attachment reach. A manufacturer product page or manufacturer PDF is Verified. Otherwise, return a result only when two or more agreeing non-manufacturer sources corroborate all three values; those results are Unverified and require customer confirmation. Exclude conflicting, incomplete, and single-source non-manufacturer results. Every evidence URL must be a page actually returned by this search. Return only a JSON object—no Markdown and no prose—with this shape: {"results":[{"make":"","model":"","configuration":null,"serial_number":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0,"evidence":[{"url":"https://...","title":"","publisher":"","is_manufacturer":false,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0}]}]}. Use an empty results array if any required measurement cannot be sourced; never use 0 as a placeholder.' },
-          { role: 'user', content: `Research "${query}". Search specifically for an exact-model manufacturer spec sheet/product page with operating weight, transport height, and transport width. Return up to three likely exact matches, or an empty results array when no reliable match is found.` },
-        ],
+        model: getServerEnv('EQUIPMENT_SEARCH_MODEL') || 'openai/gpt-5.6-luna',
+        tools: [{ type: 'web_search', search_context_size: 'low' }],
+        input: `Search the live web for up to three likely exact matches for "${query}". Normalize common brand aliases, punctuation, spacing, partial model numbers, serial numbers, and model-year text. Never estimate, merge configurations, or combine values from separate sources. For each match establish operating weight (lbs), transport height (in), and transport width (in) for one exact configuration. Prefer a manufacturer product page or manufacturer PDF; read the overall/stowed dimensions shown in a spec drawing, never lift height, track width, or attachment reach. A manufacturer page/PDF is Verified. Otherwise include a match only with two agreeing non-manufacturer sources and mark it Unverified. Exclude incomplete or conflicting matches. Return JSON only, with no Markdown: {"results":[{"make":"","model":"","configuration":null,"serial_number":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0,"evidence":[{"url":"https://...","title":"","publisher":"","is_manufacturer":false,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0}]}]}. Evidence URLs must be the actual web-search sources. Use an empty results array if any required measurement cannot be sourced; never use 0 as a placeholder.`,
       }),
     });
     if (!gatewayResponse.ok) {
@@ -355,8 +376,12 @@ export default async function handler(req, res) {
       throw error;
     }
     const gatewayPayload = await gatewayResponse.json();
-    let results = normalizeSourcedResults(gatewayPayload, query);
-    if (!results.length) results = await enrichManufacturerPdfResults(gatewayPayload, query, gatewayToken);
+    const sourcedPayload = webSearchPayload(gatewayPayload);
+    let results = normalizeSourcedResults(sourcedPayload, query);
+    if (!results.length) results = await enrichManufacturerPdfResults({
+      ...sourcedPayload,
+      choices: [{ message: { content: JSON.stringify(sourcedPayload) } }],
+    }, query, gatewayToken);
     await persistSafeResults(results, admin, profile.company_id);
     const payload = { results, source: results.length ? 'web' : '', error: results.length ? '' : 'No sourced exact-model specifications found.' };
     if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
