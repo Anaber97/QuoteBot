@@ -64,6 +64,18 @@ test('keeps URL-only manufacturer citations when the result includes complete sp
   assert.equal(result.operating_weight_lbs, 45000);
 });
 
+test('accepts a complete direct manufacturer PDF when the gateway omits citations', () => {
+  const result = normalizeSourcedResults({ results: [{
+    make: 'Yanmar', model: 'TL100VS', operating_weight_lbs: 10555, transport_width_in: 78, transport_height_in: 84.5,
+    evidence: [source({
+      url: 'https://yanmarce.com/specs/tl100vs.pdf', publisher: 'Yanmar Compact Equipment', is_manufacturer: true,
+      operating_weight_lbs: 10555, transport_width_in: 78, transport_height_in: 84.5,
+    })],
+  }] }, 'Yanmar TL100');
+  assert.equal(result[0].verification_status, 'Verified');
+  assert.equal(result[0].transport_height_in, 84.5);
+});
+
 test('uses provider-returned citations when the model evidence URL does not match', () => {
   const results = normalizeSourcedResults({
     citations: ['https://trusted.example/spec', 'https://second.example/spec'],

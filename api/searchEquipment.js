@@ -1,11 +1,15 @@
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
 import { operationalEvent, reportOperationalError } from './_monitoring.js';
 import { getServerEnv } from './_env.js';
+import { extractText, getDocumentProxy } from 'unpdf';
 
 const responseCache = new Map();
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const SAFE_STATUSES = new Set(['Verified']);
 const SOURCE_AGREEMENT_TOLERANCE = 0.025;
+const MAX_MANUFACTURER_PDF_BYTES = 8 * 1024 * 1024;
+const MAX_MANUFACTURER_PDF_PAGES = 12;
+const MAX_MANUFACTURER_TEXT_CHARS = 16_000;
 const BRAND_ALIASES = new Map([
   ['cat', 'caterpillar'], ['caterpillar', 'caterpillar'],
   ['deere', 'john deere'], ['johndeere', 'john deere'],
@@ -159,6 +163,71 @@ function parseJson(value) {
   }
 }
 
+async function extractPdfText(url) {
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(12_000),
+    headers: { Accept: 'application/pdf,application/octet-stream;q=0.9' },
+  });
+  if (!response.ok) throw new Error(`Manufacturer PDF fetch failed (${response.status}).`);
+  const declaredSize = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredSize) && declaredSize > MAX_MANUFACTURER_PDF_BYTES) throw new Error('Manufacturer PDF is too large.');
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > MAX_MANUFACTURER_PDF_BYTES) throw new Error('Manufacturer PDF is too large.');
+  const pdf = await getDocumentProxy(bytes);
+  try {
+    if (pdf.numPages > MAX_MANUFACTURER_PDF_PAGES) throw new Error('Manufacturer PDF has too many pages.');
+    const { text: extracted } = await extractText(pdf, { mergePages: true });
+    return text(extracted).slice(0, MAX_MANUFACTURER_TEXT_CHARS);
+  } finally {
+    await pdf.destroy?.();
+  }
+}
+
+async function extractManufacturerSpecs(url, make, model, gatewayToken) {
+  const documentText = await extractPdfText(url);
+  if (!documentText) return null;
+  const response = await fetch('https://ai-gateway.vercel.sh/v1/chat/completions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${gatewayToken}` },
+    signal: AbortSignal.timeout(25_000),
+    body: JSON.stringify({
+      model: getServerEnv('EQUIPMENT_DOCUMENT_MODEL') || 'openai/gpt-5.4', stream: false, temperature: 0,
+      messages: [
+        { role: 'system', content: 'Extract exact equipment transport specs from the supplied manufacturer PDF text only. Do not browse, infer, estimate, or use outside knowledge. Use overall/stowed machine width and overall/stowed machine height, not track width, lift height, reach, or an attachment dimension. Return only JSON: {"operating_weight_lbs":number,"transport_width_in":number,"transport_height_in":number}. Return null when all three cannot be established for one exact model/configuration.' },
+        { role: 'user', content: `Manufacturer: ${make}; model: ${model}; source URL: ${url}\n\nPDF text:\n${documentText}` },
+      ],
+    }),
+  });
+  if (!response.ok) throw new Error(`Manufacturer extraction failed (${response.status}).`);
+  const payload = await response.json();
+  const parsed = parseJson(payload?.choices?.[0]?.message?.content);
+  return hasCompleteSpecs(parsed) ? {
+    operating_weight_lbs: specNumber(parsed, 'operating_weight_lbs'),
+    transport_width_in: specNumber(parsed, 'width_in'),
+    transport_height_in: specNumber(parsed, 'height_in'),
+  } : null;
+}
+
+export async function enrichManufacturerPdfResults(payload, query, gatewayToken) {
+  const parsed = parseJson(payload?.choices?.[0]?.message?.content);
+  const candidates = Array.isArray(parsed?.results) ? parsed.results : [];
+  let changed = false;
+  for (const item of candidates) {
+    if (hasCompleteSpecs(item)) continue;
+    const source = (Array.isArray(item?.evidence) ? item.evidence : []).find((entry) => entry?.is_manufacturer === true && /\.pdf(?:$|[?#])/i.test(text(entry?.url)));
+    if (!source) continue;
+    try {
+      const extracted = await extractManufacturerSpecs(cleanUrl(source.url), text(item.make), text(item.model), gatewayToken);
+      if (!extracted) continue;
+      Object.assign(item, extracted);
+      Object.assign(source, extracted);
+      changed = true;
+    } catch (error) {
+      operationalEvent('info', 'manufacturer_pdf_extraction_skipped', { route: '/api/searchEquipment', reason: text(error.message).slice(0, 120) });
+    }
+  }
+  return changed ? normalizeSourcedResults({ results: candidates }, query) : [];
+}
+
 export function normalizeSourcedResults(payload, query = '') {
   const parsed = typeof payload?.choices?.[0]?.message?.content === 'string' ? parseJson(payload.choices[0].message.content) : payload;
   const allowedUrls = allowedSourceUrls(payload);
@@ -279,7 +348,8 @@ export default async function handler(req, res) {
     });
     if (!gatewayResponse.ok) throw new Error(`AI Gateway request failed (${gatewayResponse.status}).`);
     const gatewayPayload = await gatewayResponse.json();
-    const results = normalizeSourcedResults(gatewayPayload, query);
+    let results = normalizeSourcedResults(gatewayPayload, query);
+    if (!results.length) results = await enrichManufacturerPdfResults(gatewayPayload, query, gatewayToken);
     if (!results.length) {
       const content = text(gatewayPayload?.choices?.[0]?.message?.content);
       const parsed = parseJson(content);
