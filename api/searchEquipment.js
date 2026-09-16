@@ -1,5 +1,5 @@
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
-import { reportOperationalError } from './_monitoring.js';
+import { operationalEvent, reportOperationalError } from './_monitoring.js';
 import { getServerEnv } from './_env.js';
 
 const responseCache = new Map();
@@ -289,7 +289,22 @@ export default async function handler(req, res) {
       }),
     });
     if (!gatewayResponse.ok) throw new Error(`AI Gateway request failed (${gatewayResponse.status}).`);
-    const results = normalizeSourcedResults(await gatewayResponse.json(), query);
+    const gatewayPayload = await gatewayResponse.json();
+    const results = normalizeSourcedResults(gatewayPayload, query);
+    if (!results.length) {
+      const content = text(gatewayPayload?.choices?.[0]?.message?.content);
+      const parsed = parseJson(content);
+      operationalEvent('info', 'equipment_search_zero_results', {
+        route: '/api/searchEquipment',
+        model: text(gatewayPayload?.model) || getServerEnv('EQUIPMENT_SEARCH_MODEL') || 'perplexity/sonar-pro',
+        queryLength: query.length,
+        contentLength: content.length,
+        contentPreview: content.slice(0, 400),
+        citationCount: Array.isArray(gatewayPayload?.citations) ? gatewayPayload.citations.length : 0,
+        searchResultCount: Array.isArray(gatewayPayload?.search_results) ? gatewayPayload.search_results.length : 0,
+        parsedResultCount: Array.isArray(parsed?.results) ? parsed.results.length : 0,
+      });
+    }
     await persistSafeResults(results, admin, profile.company_id);
     const payload = { results, source: results.length ? 'web' : '', error: results.length ? '' : 'No sourced exact-model specifications found.' };
     if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
