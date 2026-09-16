@@ -110,8 +110,35 @@ function hasReliableWebEvidence(evidence = []) {
 }
 
 function parseJson(value) {
-  try { return JSON.parse(text(value).replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()); }
-  catch { return { results: [] }; }
+  const content = text(value).replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+  try { return JSON.parse(content); }
+  catch {
+    // Sonar appends inline source markers after its JSON despite an explicit
+    // JSON-only instruction. Extract the first complete JSON object instead
+    // of treating an otherwise valid search response as an empty result.
+    const start = content.indexOf('{');
+    if (start < 0) return { results: [] };
+    let depth = 0; let quoted = false; let escaped = false;
+    for (let index = start; index < content.length; index += 1) {
+      const character = content[index];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') quoted = false;
+        continue;
+      }
+      if (character === '"') quoted = true;
+      else if (character === '{') depth += 1;
+      else if (character === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          try { return JSON.parse(content.slice(start, index + 1)); }
+          catch { return { results: [] }; }
+        }
+      }
+    }
+    return { results: [] };
+  }
 }
 
 export function normalizeSourcedResults(payload, query = '') {
@@ -231,7 +258,7 @@ export default async function handler(req, res) {
     const results = normalizeSourcedResults(await gatewayResponse.json(), query);
     await persistSafeResults(results, admin, profile.company_id);
     const payload = { results, source: results.length ? 'web' : '', error: results.length ? '' : 'No sourced exact-model specifications found.' };
-    responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
+    if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
     return res.status(200).json(payload);
   } catch (error) {
     void reportOperationalError(error, { event: 'provider_failure', route: '/api/searchEquipment', provider: 'ai-gateway' });

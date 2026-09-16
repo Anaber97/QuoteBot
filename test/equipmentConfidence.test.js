@@ -72,3 +72,12 @@ test('uses provider-returned citations when the model evidence URL does not matc
   assert.equal(results[0].sources[0].url, 'https://trusted.example/spec');
   assert.equal(results[0].verification_status, 'Unverified');
 });
+
+test('parses Sonar JSON followed by inline citation markers', () => {
+  const result = normalizeSourcedResults({
+    citations: ['https://manufacturer.example/spec'],
+    choices: [{ message: { content: '{"results":[{"make":"CAT","model":"320D","operating_weight_lbs":45000,"transport_width_in":102,"transport_height_in":138,"evidence":[{"url":"https://manufacturer.example/spec","is_manufacturer":true}]}]}\n[1]' } }],
+  }, 'CAT 320D')[0];
+  assert.equal(result.verification_status, 'Verified');
+  assert.equal(result.width_in, 102);
+});
