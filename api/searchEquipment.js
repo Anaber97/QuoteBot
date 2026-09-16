@@ -214,6 +214,7 @@ async function extractManufacturerSpecs(url, make, model, gatewayToken) {
     signal: AbortSignal.timeout(25_000),
     body: JSON.stringify({
       model: getServerEnv('EQUIPMENT_DOCUMENT_MODEL') || 'openai/gpt-5.6-luna', stream: false, temperature: 0,
+      providerOptions: { gateway: { only: ['openai'] } },
       messages: [
         { role: 'system', content: 'Extract exact equipment transport specs from the supplied manufacturer PDF text only. Do not browse, infer, estimate, or use outside knowledge. Use overall/stowed machine width and overall/stowed machine height, not track width, lift height, reach, or an attachment dimension. Return only JSON: {"operating_weight_lbs":number,"transport_width_in":number,"transport_height_in":number}. Return null when all three cannot be established for one exact model/configuration.' },
         { role: 'user', content: `Manufacturer: ${make}; model: ${model}; source URL: ${url}\n\nPDF text:\n${documentText}` },
@@ -364,6 +365,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: getServerEnv('EQUIPMENT_SEARCH_MODEL') || 'openai/gpt-5.6-luna',
         tools: [{ type: 'web_search', search_context_size: 'low' }],
+        providerOptions: { gateway: { only: ['openai'] } },
         input: `Search the live web for up to three likely exact matches for "${query}". Normalize common brand aliases, punctuation, spacing, partial model numbers, serial numbers, and model-year text. Never estimate, merge configurations, or combine values from separate sources. For each match establish operating weight (lbs), transport height (in), and transport width (in) for one exact configuration. Prefer a manufacturer product page or manufacturer PDF; read the overall/stowed dimensions shown in a spec drawing, never lift height, track width, or attachment reach. A manufacturer page/PDF is Verified. Otherwise include a match only with two agreeing non-manufacturer sources and mark it Unverified. Exclude incomplete or conflicting matches. Return JSON only, with no Markdown: {"results":[{"make":"","model":"","configuration":null,"serial_number":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0,"evidence":[{"url":"https://...","title":"","publisher":"","is_manufacturer":false,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0}]}]}. Evidence URLs must be the actual web-search sources. Use an empty results array if any required measurement cannot be sourced; never use 0 as a placeholder.`,
       }),
     });
