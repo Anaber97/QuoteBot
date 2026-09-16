@@ -14,17 +14,19 @@ function normalizeDimensionResults(results) {
   }
 
   return results.map((item) => {
-    const widthIn = item?.width_in ?? item?.width_inches ?? (item?.width_ft != null ? Number(item.width_ft) * 12 : null);
-    const heightIn = item?.height_in ?? item?.height_inches ?? (item?.height_ft != null ? Number(item.height_ft) * 12 : null);
+    const widthIn = item?.transport_width_in ?? item?.width_in ?? item?.width_inches ?? (item?.width_ft != null ? Number(item.width_ft) * 12 : null);
+    const heightIn = item?.transport_height_in ?? item?.height_in ?? item?.height_inches ?? (item?.height_ft != null ? Number(item.height_ft) * 12 : null);
 
     return {
       ...item,
       width_in: widthIn != null ? Number(widthIn) : null,
       height_in: heightIn != null ? Number(heightIn) : null,
+      transport_width_in: widthIn != null ? Number(widthIn) : null,
+      transport_height_in: heightIn != null ? Number(heightIn) : null,
       width_ft: widthIn != null ? Number((widthIn / 12).toFixed(1)) : null,
       height_ft: heightIn != null ? Number((heightIn / 12).toFixed(1)) : null,
-      verification_status: ['Verified', 'Corroborated', 'Unverified', 'Conflict'].includes(item?.verification_status)
-        ? item.verification_status
+      verification_status: item?.verification_status === 'Verified'
+        ? 'Verified'
         : 'Unverified',
     };
   });

@@ -15,6 +15,13 @@ vi.mock('../../src/lib/googleMaps.js', () => ({
 const { default: ClientQuoteForm } = await import('../../src/components/ClientQuoteForm.jsx');
 
 describe('ClientQuoteForm unverified equipment', () => {
+  test('does not show a permit warning before state-specific route evaluation', () => {
+    render(<ClientQuoteForm companyRates={{ client_portal: { osow_pricing: { enabled: true } } }} onCalculate={vi.fn()} isCalculating={false} />);
+
+    expect(screen.queryByText(/transport permit requirements detected/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/state-specific osow flags and pricing/i)).not.toBeInTheDocument();
+  });
+
   test('warns before filling unverified equipment specs', async () => {
     searchEquipmentSpecs.mockResolvedValue({
       results: [{

@@ -82,7 +82,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   // Recalculate permit flags whenever specs or locations change
   useEffect(() => {
     if (companyRates.client_portal?.osow_pricing?.enabled) {
-      setPermitInfo({ flags: ['State-specific OSOW flags and pricing are evaluated when the route is calculated.'], permitFee: 0 });
+      // State-specific requirements depend on the calculated route. Do not show a
+      // permit warning until that evaluation identifies an actual requirement.
+      setPermitInfo(null);
       return;
     }
     if (weight || width || height || pickupAddr || dropoffAddr) {
@@ -154,11 +156,11 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
 
   const handleSelectEquipment = (item) => {
     const status = item.verification_status || 'Unverified';
-    if (status === 'Unverified') {
+    if (status !== 'Verified') {
       setPendingUnverifiedEquipment(item);
       return;
     }
-    applyEquipmentSelection(item, ['Verified', 'Corroborated'].includes(status));
+    applyEquipmentSelection(item, true);
   };
 
   const handleSubmit = (e) => {
@@ -291,7 +293,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
                     )}
                   </div>
                   <span className="text-[11px] font-mono text-blue-400/70">
-                    {Number(item.operating_weight_lbs || 0).toLocaleString()} lbs | {item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : 0)}w x {item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : 0)}h in
+                    {Number(item.operating_weight_lbs || 0).toLocaleString()} lbs · {item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : 0)} in W × {item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : 0)} in H
                   </span>
                 </button>
               ))}
@@ -445,7 +447,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         </div>
 
         {/* Real-time Permit & Interstate Flags Banner */}
-        {permitInfo && permitInfo.flags.length > 0 && (
+        {permitInfo?.needsPermit && permitInfo.flags.length > 0 && (
           <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
             <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
               <ShieldAlert className="w-4 h-4" /> Transport Permit Requirements Detected
