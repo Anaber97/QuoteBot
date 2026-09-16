@@ -1,5 +1,5 @@
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
-import { operationalEvent, reportOperationalError } from './_monitoring.js';
+import { reportOperationalError } from './_monitoring.js';
 import { getServerEnv } from './_env.js';
 import { extractText, getDocumentProxy } from 'unpdf';
 
@@ -221,9 +221,7 @@ export async function enrichManufacturerPdfResults(payload, query, gatewayToken)
       Object.assign(item, extracted);
       Object.assign(source, extracted);
       changed = true;
-    } catch (error) {
-      operationalEvent('info', 'manufacturer_pdf_extraction_skipped', { route: '/api/searchEquipment', reason: text(error.message).slice(0, 120) });
-    }
+    } catch { /* An unreadable manufacturer document is simply not a usable source. */ }
   }
   return changed ? normalizeSourcedResults({ results: candidates }, query) : [];
 }
@@ -350,20 +348,6 @@ export default async function handler(req, res) {
     const gatewayPayload = await gatewayResponse.json();
     let results = normalizeSourcedResults(gatewayPayload, query);
     if (!results.length) results = await enrichManufacturerPdfResults(gatewayPayload, query, gatewayToken);
-    if (!results.length) {
-      const content = text(gatewayPayload?.choices?.[0]?.message?.content);
-      const parsed = parseJson(content);
-      operationalEvent('info', 'equipment_search_zero_results', {
-        route: '/api/searchEquipment',
-        model: text(gatewayPayload?.model) || getServerEnv('EQUIPMENT_SEARCH_MODEL') || 'perplexity/sonar-pro',
-        queryLength: query.length,
-        contentLength: content.length,
-        contentPreview: content,
-        citationCount: Array.isArray(gatewayPayload?.citations) ? gatewayPayload.citations.length : 0,
-        searchResultCount: Array.isArray(gatewayPayload?.search_results) ? gatewayPayload.search_results.length : 0,
-        parsedResultCount: Array.isArray(parsed?.results) ? parsed.results.length : 0,
-      });
-    }
     await persistSafeResults(results, admin, profile.company_id);
     const payload = { results, source: results.length ? 'web' : '', error: results.length ? '' : 'No sourced exact-model specifications found.' };
     if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
