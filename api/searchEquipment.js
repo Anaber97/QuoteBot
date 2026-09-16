@@ -10,6 +10,10 @@ const SOURCE_AGREEMENT_TOLERANCE = 0.025;
 const MAX_MANUFACTURER_PDF_BYTES = 8 * 1024 * 1024;
 const MAX_MANUFACTURER_PDF_PAGES = 12;
 const MAX_MANUFACTURER_TEXT_CHARS = 16_000;
+// Gemini 2.5 Flash is no longer available to this production API key. Keep
+// the current model configurable so a future provider retirement is an env
+// change rather than another client-facing outage.
+const GEMINI_MODEL = getServerEnv('EQUIPMENT_SEARCH_GEMINI_MODEL') || 'gemini-3.8-flash';
 const BRAND_ALIASES = new Map([
   ['cat', 'caterpillar'], ['caterpillar', 'caterpillar'],
   ['deere', 'john deere'], ['johndeere', 'john deere'],
@@ -110,7 +114,7 @@ function geminiSearchPayload(payload) {
 }
 
 async function callGemini(apiKey, { instruction, prompt, useGoogleSearch = false, timeout = 45_000 }) {
-  const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     signal: AbortSignal.timeout(timeout),
