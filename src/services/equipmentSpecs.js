@@ -45,7 +45,10 @@ export async function searchEquipmentSpecs(query) {
       headers: { Accept: 'application/json' },
     });
 
-    if (!response.ok) throw new Error('Search API unavailable');
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => null);
+      throw new Error(errorPayload?.error || 'Search API unavailable');
+    }
 
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {

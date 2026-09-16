@@ -79,6 +79,9 @@ export default function QuoteResultsCard({
   );
   const permitFee = Number(quoteData?.equipmentMeta?.permitFee || quoteData?.permitFee || 0);
   const osow = quoteData?.osow || quoteData?.equipmentMeta?.osow;
+  // Client estimates do not present OSOW screening. Dispatchers see it only
+  // when the regular equipment calculator identifies an actual permit need.
+  const shouldShowOsowEstimate = isDispatcherView && osow?.needsPermit === true;
   const escort = quoteData?.escort || quoteData?.equipmentMeta?.escort || { vehicleCount: 0, surcharge: 0 };
   const attachmentWeight = Number(quoteData?.equipmentMeta?.attachmentWeight || 0);
   const effectiveMinQuote = currentMinQuote + (osow ? 0 : permitFee);
@@ -208,7 +211,7 @@ export default function QuoteResultsCard({
             Permit surcharge included: +${permitFee.toFixed(2)}
           </div>
         )}
-        {osow && <div className="my-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+        {shouldShowOsowEstimate && <div className="my-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
           <strong>OSOW estimate{osow.reviewRequired ? ' — review required' : ''}</strong>
           <p>Flags cover the supplied width, height, GVW and escort thresholds. Confirm axle/length limits, bridge clearances, travel restrictions and special escorts separately.</p>
           <p>Route states: {osow.states.map((row) => row.state).join(', ') || 'Unresolved'}. Loaded height: {osow.loadedHeight} in. GVW: {Number(osow.grossWeight).toLocaleString()} lbs.</p>
@@ -338,7 +341,7 @@ export default function QuoteResultsCard({
                 <span>Weight Class Permit Cost</span>
                 <span className="font-semibold text-amber-300">+${permitFee.toFixed(2)}</span>
               </div>}
-              {osow && <div className="my-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+              {shouldShowOsowEstimate && <div className="my-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
           <strong>OSOW estimate{osow.reviewRequired ? ' — review required' : ''}</strong>
           <p>Route states: {osow.states.map((row) => row.state).join(', ') || 'Unresolved'}. Loaded height: {osow.loadedHeight} in. GVW: {Number(osow.grossWeight).toLocaleString()} lbs.</p>
           {[...osow.flags, ...osow.reviewReasons].map((flag, i) => <p key={i}>{flag}</p>)}
