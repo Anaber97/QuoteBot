@@ -11,6 +11,12 @@ const BRAND_ALIASES = new Map([
   ['deere', 'john deere'], ['johndeere', 'john deere'],
   ['caseih', 'case ih'], ['newholland', 'new holland'],
 ]);
+const MANUFACTURER_DOMAINS = new Map([
+  ['caterpillar', ['cat.com', 'caterpillar.com']], ['john deere', ['deere.com']],
+  ['yanmar', ['yanmarce.com', 'yanmar.com']], ['komatsu', ['komatsu.com']],
+  ['bobcat', ['bobcat.com']], ['kubota', ['kubotausa.com', 'kubota.com']],
+  ['volvo', ['volvoce.com']], ['case', ['casece.com', 'caseih.com']],
+]);
 
 const text = (value) => value == null ? '' : String(value).trim();
 const number = (value) => {
@@ -73,6 +79,18 @@ function cleanUrl(value) {
 function allowedSourceUrls(payload) {
   const values = [...(Array.isArray(payload?.citations) ? payload.citations : []), ...(Array.isArray(payload?.search_results) ? payload.search_results : [])];
   return new Set(values.map((entry) => cleanUrl(typeof entry === 'string' ? entry : entry?.url)).filter(Boolean));
+}
+
+function isManufacturerDomain(source) {
+  const publisher = normalizeSearchText(source?.publisher).replaceAll(' ', '');
+  const normalizedMake = deFuzzEquipmentQuery(source?.make);
+  const make = normalizedMake.replaceAll(' ', '');
+  try {
+    const hostname = new URL(source?.url).hostname.toLowerCase().replace(/^www\./, '');
+    const knownDomains = MANUFACTURER_DOMAINS.get(normalizedMake) || [];
+    return Boolean(hostname && (knownDomains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))
+      || make.length >= 3 && hostname.includes(make) || publisher.length >= 4 && hostname.includes(publisher)));
+  } catch { return false; }
 }
 
 function specsAgree(a, b) {
@@ -160,7 +178,12 @@ export function normalizeSourcedResults(payload, query = '') {
       operating_weight_lbs: specNumber(source, 'operating_weight_lbs') || itemSpecs.operating_weight_lbs,
       width_in: specNumber(source, 'width_in') || itemSpecs.width_in,
       height_in: specNumber(source, 'height_in') || itemSpecs.height_in,
-    })).filter((source) => source.url && allowedUrls.has(source.url));
+    })).filter((source) => source.url && (allowedUrls.size
+      ? allowedUrls.has(source.url)
+      // Vercel AI Gateway's Perplexity adapter can omit the separate citations
+      // collection for JSON-only responses. In that case retain only a direct
+      // manufacturer URL that agrees with the result's stated make/publisher.
+      : source.is_manufacturer && isManufacturerDomain({ ...source, make: item?.make })));
     // Some AI Gateway providers return canonical citations separately from the
     // JSON response, so their URLs do not byte-match the model's evidence URLs.
     // Use only those provider-returned citations; never admit a model-invented URL.
@@ -249,7 +272,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: getServerEnv('EQUIPMENT_SEARCH_MODEL') || 'perplexity/sonar-pro', stream: false,
         messages: [
-          { role: 'system', content: 'Search the live web for up to three likely exact heavy-equipment matches. Normalize common brand aliases, punctuation, spacing, partial model numbers, serial numbers, and model-year text. Never estimate, merge configurations, or combine values from separate sources. For every result, establish operating weight (lbs), transport height (in), and transport width (in) for one exact configuration. A manufacturer product page or manufacturer PDF is Verified. Otherwise, return a result only when two or more agreeing non-manufacturer sources corroborate all three values; those results are Unverified and require customer confirmation. Exclude conflicting, incomplete, and single-source non-manufacturer results. Every evidence URL must be a page actually returned by this search. Return only a JSON object—no Markdown and no prose—with this shape: {"results":[{"make":"","model":"","configuration":null,"serial_number":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0,"evidence":[{"url":"https://...","title":"","publisher":"","is_manufacturer":false,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0}]}]}. Use an empty results array if any required measurement cannot be sourced.' },
+          { role: 'system', content: 'Search the live web for up to three likely exact heavy-equipment matches. Normalize common brand aliases, punctuation, spacing, partial model numbers, serial numbers, and model-year text. Never estimate, merge configurations, or combine values from separate sources. For every result, establish operating weight (lbs), transport height (in), and transport width (in) for one exact configuration. Read manufacturer PDF dimension drawings as well as tables: use the stowed/overall machine height and overall machine width shown in the drawing, never boom/lift height, track width, or attachment reach. A manufacturer product page or manufacturer PDF is Verified. Otherwise, return a result only when two or more agreeing non-manufacturer sources corroborate all three values; those results are Unverified and require customer confirmation. Exclude conflicting, incomplete, and single-source non-manufacturer results. Every evidence URL must be a page actually returned by this search. Return only a JSON object—no Markdown and no prose—with this shape: {"results":[{"make":"","model":"","configuration":null,"serial_number":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0,"evidence":[{"url":"https://...","title":"","publisher":"","is_manufacturer":false,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0}]}]}. Use an empty results array if any required measurement cannot be sourced; never use 0 as a placeholder.' },
           { role: 'user', content: `Research "${query}". Search specifically for an exact-model manufacturer spec sheet/product page with operating weight, transport height, and transport width. Return up to three likely exact matches, or an empty results array when no reliable match is found.` },
         ],
       }),
