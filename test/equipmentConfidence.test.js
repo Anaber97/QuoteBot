@@ -41,6 +41,15 @@ test('accepts transport dimension fields from web results', () => {
   assert.equal(result.verification_status, 'Verified');
 });
 
+test('keeps URL-only manufacturer citations when the result includes complete specs', () => {
+  const result = normalizeSourcedResults({
+    citations: ['https://manufacturer.example/spec'],
+    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', operating_weight_lbs: 45000, transport_width_in: 102, transport_height_in: 138, evidence: [{ url: 'https://manufacturer.example/spec', is_manufacturer: true }] }] }) } }],
+  }, 'CAT 320D')[0];
+  assert.equal(result.verification_status, 'Verified');
+  assert.equal(result.operating_weight_lbs, 45000);
+});
+
 test('rejects evidence URLs not returned by web search citations', () => {
   const results = normalizeSourcedResults({
     citations: ['https://trusted.example/spec'],

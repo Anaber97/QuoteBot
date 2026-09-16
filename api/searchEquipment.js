@@ -104,10 +104,21 @@ export function normalizeSourcedResults(payload, query = '') {
   const parsed = typeof payload?.choices?.[0]?.message?.content === 'string' ? parseJson(payload.choices[0].message.content) : payload;
   const allowedUrls = allowedSourceUrls(payload);
   return (Array.isArray(parsed?.results) ? parsed.results : []).map((item, index) => {
+    // Sonar frequently returns the extracted specs on the result, while its
+    // citation records contain URL metadata only. The prompt requires each
+    // cited source to support these exact values, so retain the result-level
+    // values for such citations instead of discarding a valid match.
+    const itemSpecs = {
+      operating_weight_lbs: specNumber(item, 'operating_weight_lbs'),
+      width_in: specNumber(item, 'width_in'),
+      height_in: specNumber(item, 'height_in'),
+    };
     const evidence = (Array.isArray(item?.evidence) ? item.evidence : []).map((source) => ({
       url: cleanUrl(source?.url), title: text(source?.title), publisher: text(source?.publisher),
       is_manufacturer: source?.is_manufacturer === true,
-      operating_weight_lbs: specNumber(source, 'operating_weight_lbs'), width_in: specNumber(source, 'width_in'), height_in: specNumber(source, 'height_in'),
+      operating_weight_lbs: specNumber(source, 'operating_weight_lbs') || itemSpecs.operating_weight_lbs,
+      width_in: specNumber(source, 'width_in') || itemSpecs.width_in,
+      height_in: specNumber(source, 'height_in') || itemSpecs.height_in,
     })).filter((source) => source.url && allowedUrls.has(source.url));
     const primary = evidence.find((source) => source.is_manufacturer) || evidence[0] || {};
     const result = {
