@@ -288,7 +288,7 @@ export default async function handler(req, res) {
         model: text(gatewayPayload?.model) || getServerEnv('EQUIPMENT_SEARCH_MODEL') || 'perplexity/sonar-pro',
         queryLength: query.length,
         contentLength: content.length,
-        contentPreview: content.slice(0, 400),
+        contentPreview: content,
         citationCount: Array.isArray(gatewayPayload?.citations) ? gatewayPayload.citations.length : 0,
         searchResultCount: Array.isArray(gatewayPayload?.search_results) ? gatewayPayload.search_results.length : 0,
         parsedResultCount: Array.isArray(parsed?.results) ? parsed.results.length : 0,
