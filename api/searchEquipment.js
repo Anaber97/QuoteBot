@@ -248,9 +248,43 @@ export default async function handler(req, res) {
       signal: AbortSignal.timeout(45000),
       body: JSON.stringify({
         model: getServerEnv('EQUIPMENT_SEARCH_MODEL') || 'perplexity/sonar-pro', stream: false,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'equipment_search_results',
+            schema: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                results: {
+                  type: 'array', maxItems: 3,
+                  items: {
+                    type: 'object', additionalProperties: false,
+                    properties: {
+                      make: { type: 'string' }, model: { type: 'string' }, configuration: { type: ['string', 'null'] }, serial_number: { type: ['string', 'null'] },
+                      operating_weight_lbs: { type: 'number' }, transport_height_in: { type: 'number' }, transport_width_in: { type: 'number' },
+                      evidence: {
+                        type: 'array', minItems: 1,
+                        items: {
+                          type: 'object', additionalProperties: false,
+                          properties: {
+                            url: { type: 'string' }, title: { type: 'string' }, publisher: { type: 'string' }, is_manufacturer: { type: 'boolean' },
+                            operating_weight_lbs: { type: 'number' }, transport_height_in: { type: 'number' }, transport_width_in: { type: 'number' },
+                          },
+                          required: ['url', 'title', 'publisher', 'is_manufacturer', 'operating_weight_lbs', 'transport_height_in', 'transport_width_in'],
+                        },
+                      },
+                    },
+                    required: ['make', 'model', 'configuration', 'serial_number', 'operating_weight_lbs', 'transport_height_in', 'transport_width_in', 'evidence'],
+                  },
+                },
+              },
+              required: ['results'],
+            },
+          },
+        },
         messages: [
-          { role: 'system', content: 'Search the live web for up to three likely exact heavy-equipment matches. Normalize common brand aliases, punctuation, spacing, partial model numbers, serial numbers, and model-year text. Never estimate, merge configurations, or combine values from separate sources. For every result, establish operating weight (lbs), transport height (in), and transport width (in) for one exact configuration. A manufacturer product page or manufacturer PDF is Verified. Otherwise, return a result only when two or more agreeing non-manufacturer sources corroborate all three values; those results are Unverified and require customer confirmation. Exclude conflicting, incomplete, and single-source non-manufacturer results. Every evidence URL must be a page actually returned by this search.' },
-          { role: 'user', content: `Research "${query}". Return JSON only: {"results":[{"make":"","model":"","configuration":null,"serial_number":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0,"evidence":[{"url":"https://...","title":"","publisher":"","is_manufacturer":false,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0}]}]}. Return no more than three likely exact matches, or {"results":[]} when no reliable match is found.` },
+          { role: 'system', content: 'Search the live web for up to three likely exact heavy-equipment matches. Normalize common brand aliases, punctuation, spacing, partial model numbers, serial numbers, and model-year text. Never estimate, merge configurations, or combine values from separate sources. For every result, establish operating weight (lbs), transport height (in), and transport width (in) for one exact configuration. A manufacturer product page or manufacturer PDF is Verified. Otherwise, return a result only when two or more agreeing non-manufacturer sources corroborate all three values; those results are Unverified and require customer confirmation. Exclude conflicting, incomplete, and single-source non-manufacturer results. Every evidence URL must be a page actually returned by this search. Follow the supplied JSON Schema exactly.' },
+          { role: 'user', content: `Research "${query}". Return up to three likely exact matches, or an empty results array when no reliable match is found.` },
         ],
       }),
     });
