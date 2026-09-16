@@ -351,7 +351,9 @@ export default async function handler(req, res) {
       return res.status(200).json(payload);
     }
 
-    await enforceRateLimit(admin, `ai-gateway:${profile.id}`, { limit: 30, windowMs: 24 * 60 * 60 * 1000 });
+    // Keep a daily cost guardrail, but allow normal client use and QA. The
+    // hourly limiter above still blocks bursts before they reach the gateway.
+    await enforceRateLimit(admin, `ai-gateway:${profile.id}`, { limit: 120, windowMs: 24 * 60 * 60 * 1000 });
     const oidcHeader = typeof req.headers?.get === 'function' ? req.headers.get('x-vercel-oidc-token') : req.headers?.['x-vercel-oidc-token'];
     const gatewayToken = getServerEnv('AI_GATEWAY_API_KEY') || getServerEnv('VERCEL_OIDC_TOKEN') || text(Array.isArray(oidcHeader) ? oidcHeader[0] : oidcHeader);
     if (!gatewayToken) return res.status(200).json({ results: [], source: '', error: 'Equipment search authentication is unavailable.' });
