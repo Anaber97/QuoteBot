@@ -50,10 +50,11 @@ test('keeps URL-only manufacturer citations when the result includes complete sp
   assert.equal(result.operating_weight_lbs, 45000);
 });
 
-test('rejects evidence URLs not returned by web search citations', () => {
+test('uses provider-returned citations when the model evidence URL does not match', () => {
   const results = normalizeSourcedResults({
-    citations: ['https://trusted.example/spec'],
+    citations: ['https://trusted.example/spec', 'https://second.example/spec'],
     choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', operating_weight_lbs: 45000, width_in: 102, height_in: 138, evidence: [source()] }] }) } }],
   }, 'CAT 320D');
-  assert.deepEqual(results, []);
+  assert.equal(results[0].sources[0].url, 'https://trusted.example/spec');
+  assert.equal(results[0].verification_status, 'Unverified');
 });

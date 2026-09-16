@@ -113,13 +113,20 @@ export function normalizeSourcedResults(payload, query = '') {
       width_in: specNumber(item, 'width_in'),
       height_in: specNumber(item, 'height_in'),
     };
-    const evidence = (Array.isArray(item?.evidence) ? item.evidence : []).map((source) => ({
+    let evidence = (Array.isArray(item?.evidence) ? item.evidence : []).map((source) => ({
       url: cleanUrl(source?.url), title: text(source?.title), publisher: text(source?.publisher),
       is_manufacturer: source?.is_manufacturer === true,
       operating_weight_lbs: specNumber(source, 'operating_weight_lbs') || itemSpecs.operating_weight_lbs,
       width_in: specNumber(source, 'width_in') || itemSpecs.width_in,
       height_in: specNumber(source, 'height_in') || itemSpecs.height_in,
     })).filter((source) => source.url && allowedUrls.has(source.url));
+    // Some AI Gateway providers return canonical citations separately from the
+    // JSON response, so their URLs do not byte-match the model's evidence URLs.
+    // Use only those provider-returned citations; never admit a model-invented URL.
+    if (!evidence.some((source) => source.is_manufacturer) && evidence.length < 2 && hasCompleteSpecs(item)) {
+      const fallbackUrls = [...allowedUrls].filter((url) => !evidence.some((source) => source.url === url)).slice(0, 2 - evidence.length);
+      evidence = [...evidence, ...fallbackUrls.map((url) => ({ ...itemSpecs, url, title: '', publisher: '', is_manufacturer: false }))];
+    }
     const primary = evidence.find((source) => source.is_manufacturer) || evidence[0] || {};
     const result = {
       id: `web-${index}-${normalizeSearchText(`${item?.make}-${item?.model}`)}`,
