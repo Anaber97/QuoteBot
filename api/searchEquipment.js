@@ -5,6 +5,7 @@ import { getServerEnv } from './_env.js';
 const responseCache = new Map();
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const SAFE_STATUSES = new Set(['Verified']);
+const SOURCE_AGREEMENT_TOLERANCE = 0.025;
 const BRAND_ALIASES = new Map([
   ['cat', 'caterpillar'], ['caterpillar', 'caterpillar'],
   ['deere', 'john deere'], ['johndeere', 'john deere'],
@@ -78,7 +79,20 @@ function specsAgree(a, b) {
   const values = [specNumber(a, 'operating_weight_lbs'), specNumber(b, 'operating_weight_lbs'), specNumber(a, 'width_in'), specNumber(b, 'width_in'), specNumber(a, 'height_in'), specNumber(b, 'height_in')];
   if (!values.every(Boolean)) return false;
   const [weightA, weightB, widthA, widthB, heightA, heightB] = values;
-  return Math.abs(weightA - weightB) / Math.max(weightA, weightB) <= 0.02 && Math.abs(widthA - widthB) <= 1 && Math.abs(heightA - heightB) <= 1;
+  return [
+    [weightA, weightB], [widthA, widthB], [heightA, heightB],
+  ].every(([first, second]) => Math.abs(first - second) / Math.max(first, second) <= SOURCE_AGREEMENT_TOLERANCE);
+}
+
+function conservativeSpecs(evidence = []) {
+  const manufacturer = evidence.find((source) => source.is_manufacturer);
+  if (manufacturer) return manufacturer;
+  const complete = evidence.filter(hasCompleteSpecs);
+  return {
+    operating_weight_lbs: Math.max(...complete.map((source) => source.operating_weight_lbs)),
+    width_in: Math.max(...complete.map((source) => source.width_in)),
+    height_in: Math.max(...complete.map((source) => source.height_in)),
+  };
 }
 
 export function deriveVerificationStatus(evidence = []) {
@@ -127,7 +141,7 @@ export function normalizeSourcedResults(payload, query = '') {
       const fallbackUrls = [...allowedUrls].filter((url) => !evidence.some((source) => source.url === url)).slice(0, 2 - evidence.length);
       evidence = [...evidence, ...fallbackUrls.map((url) => ({ ...itemSpecs, url, title: '', publisher: '', is_manufacturer: false }))];
     }
-    const primary = evidence.find((source) => source.is_manufacturer) || evidence[0] || {};
+    const primary = conservativeSpecs(evidence);
     const result = {
       id: `web-${index}-${normalizeSearchText(`${item?.make}-${item?.model}`)}`,
       make: text(item?.make), model: text(item?.model), configuration: text(item?.configuration) || null,

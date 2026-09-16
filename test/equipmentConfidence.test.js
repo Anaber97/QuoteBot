@@ -14,6 +14,20 @@ test('two agreeing non-manufacturer sources are Unverified', () => {
   assert.equal(deriveVerificationStatus([source(), source({ url: 'https://other.example/spec', operating_weight_lbs: 45100 })]), 'Unverified');
 });
 
+test('uses higher close-source specs to keep unverified estimates permit-conservative', () => {
+  const result = normalizeSourcedResults({
+    citations: ['https://first.example/spec', 'https://second.example/spec'],
+    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', operating_weight_lbs: 45000, width_in: 102, height_in: 138, evidence: [
+      source({ url: 'https://first.example/spec' }),
+      source({ url: 'https://second.example/spec', operating_weight_lbs: 46100, width_in: 104, height_in: 140 }),
+    ] }] }) } }],
+  }, 'CAT 320D')[0];
+  assert.equal(result.verification_status, 'Unverified');
+  assert.equal(result.operating_weight_lbs, 46100);
+  assert.equal(result.width_in, 104);
+  assert.equal(result.height_in, 140);
+});
+
 test('disagreeing complete sources are Conflict', () => {
   assert.equal(deriveVerificationStatus([source(), source({ url: 'https://other.example/spec', operating_weight_lbs: 52000 })]), 'Conflict');
 });
