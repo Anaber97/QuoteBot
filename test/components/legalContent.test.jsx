@@ -25,24 +25,30 @@ describe('legal surfaces', () => {
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
   });
 
-  it('shows OSOW screening only to dispatchers when a permit is needed', () => {
+  it('shows the concise OSOW flag only to dispatchers when a permit is needed', () => {
     const osow = {
       needsPermit: true,
-      states: [{ state: 'TX' }],
-      loadedHeight: 158.8,
-      grossWeight: 112640,
-      flags: ['TX: Overwidth, Overweight'],
-      reviewReasons: [],
+      permitFee: 150,
+      states: [{ state: 'TX', reasons: ['Overwidth'], vehicleCount: 0 }],
     };
-    const state = { quoteData: { baseMinQuote: 100, baseMaxQuote: 120, osow }, activeOverrides: {} };
+    const state = {
+      quoteData: {
+        baseMinQuote: 100,
+        baseMaxQuote: 120,
+        osow,
+        legsDetails: [{ label: 'Pickup → Dropoff', minutes: 30 }],
+      },
+      activeOverrides: {},
+    };
     const { rerender } = render(<QuoteResultsCard state={state} />);
     expect(screen.queryByText(/OSOW estimate/i)).not.toBeInTheDocument();
 
-    rerender(<QuoteResultsCard isDispatcherView state={state} />);
-    expect(screen.getByText(/OSOW estimate/i)).toBeInTheDocument();
+    rerender(<QuoteResultsCard isDispatcherView state={{ ...state, showDetails: true }} />);
+    expect(screen.getByText('Permit flag')).toBeInTheDocument();
+    expect(screen.getByText('Overwidth · TX')).toBeInTheDocument();
 
-    rerender(<QuoteResultsCard isDispatcherView state={{ ...state, quoteData: { ...state.quoteData, osow: { ...osow, needsPermit: false } } }} />);
-    expect(screen.queryByText(/OSOW estimate/i)).not.toBeInTheDocument();
+    rerender(<QuoteResultsCard isDispatcherView state={{ ...state, showDetails: true, quoteData: { ...state.quoteData, osow: { ...osow, needsPermit: false } } }} />);
+    expect(screen.queryByText('Permit flag')).not.toBeInTheDocument();
   });
 
   it('shows a single dispatcher price and interactive surcharge controls', async () => {

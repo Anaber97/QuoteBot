@@ -12,6 +12,7 @@ import LoginCard from './components/LoginCard';
 import SurchargeToggles from './components/SurchargeToggles';
 import WaypointList from './components/WaypointList';
 import QuoteResultsCard from './components/QuoteResultsCard';
+import ClientQuoteForm from './components/ClientQuoteForm';
 import Settings from './components/Settings';
 import Toast from './components/Toast';
 import Footer from './components/Footer';
@@ -19,7 +20,6 @@ import LegalPage from './components/LegalPage';
 
 const QuoteLog = lazy(() => import('./components/QuoteLog'));
 const InviteRegister = lazy(() => import('./components/InviteRegister'));
-const ClientQuoteForm = lazy(() => import('./components/ClientQuoteForm'));
 const LoadingPanel = () => <div className="p-8 text-center text-sm text-slate-400" role="status">Loading…</div>;
 
 const getInitialBaseId = () => {
