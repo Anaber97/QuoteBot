@@ -1,6 +1,7 @@
 // src/components/QuoteResultsCard.jsx
 import React, { useState, useRef } from 'react';
 import { calculateFinalQuotes } from '../services/quoteCalculator';
+import { summarizeHighestOsowFlag } from '../lib/osow.js';
 import { estimateDisclaimer } from '../legal/legalContent';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -83,6 +84,10 @@ export default function QuoteResultsCard({
   // when the regular equipment calculator identifies an actual permit need.
   const shouldShowOsowEstimate = isDispatcherView && osow?.needsPermit === true;
   const escort = quoteData?.escort || quoteData?.equipmentMeta?.escort || { vehicleCount: 0, surcharge: 0 };
+  const permitSurcharge = osow
+    ? Number(osow.permitFee || 0) + Number(escort.surcharge || 0)
+    : permitFee;
+  const osowFlagSummary = shouldShowOsowEstimate ? summarizeHighestOsowFlag(osow?.states) : null;
   const attachmentWeight = Number(quoteData?.equipmentMeta?.attachmentWeight || 0);
   const effectiveMinQuote = currentMinQuote + (osow ? 0 : permitFee);
   const clientPrice = effectiveMinQuote;
@@ -206,18 +211,12 @@ export default function QuoteResultsCard({
             {quoteData.weightTierLabel || 'Equipment weight class'} · ${Number(quoteData.fixedRate ?? quoteData.fixedHourlyRate).toFixed(quoteData.pricingRateMode === 'mileage' ? 2 : 0)}/{quoteData.pricingRateMode === 'mileage' ? 'mi' : 'hr'}
           </div>
         )}
-        {isDispatcherView && permitFee > 0 && (
-          <div className="inline-block bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold text-xs px-2.5 py-0.5 rounded-full mt-1">
-            Permit surcharge included: +${permitFee.toFixed(2)}
+        {isDispatcherView && permitSurcharge > 0 && (
+          <div aria-label="Permit surcharge" title="Permit surcharge included" className="inline-block bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold text-xs px-2.5 py-0.5 rounded-full mt-1">
+            +${permitSurcharge.toFixed(2)}
           </div>
         )}
-        {shouldShowOsowEstimate && <div className="my-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
-          <strong>OSOW estimate{osow.reviewRequired ? ' — review required' : ''}</strong>
-          <p>Flags cover the supplied width, height, GVW and escort thresholds. Confirm axle/length limits, bridge clearances, travel restrictions and special escorts separately.</p>
-          <p>Route states: {osow.states.map((row) => row.state).join(', ') || 'Unresolved'}. Loaded height: {osow.loadedHeight} in. GVW: {Number(osow.grossWeight).toLocaleString()} lbs.</p>
-          {[...osow.flags, ...osow.reviewReasons].map((flag, i) => <p key={i}>{flag}</p>)}
-        </div>}
-        {Number(escort.vehicleCount) > 0 && <div className="inline-block rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-bold text-cyan-300">
+        {!osow && Number(escort.vehicleCount) > 0 && <div className="inline-block rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-bold text-cyan-300">
           {escort.vehicleCount} escort vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}: +${Number(escort.surcharge || 0).toFixed(2)}
         </div>}
         {attachmentWeight > 0 && (
@@ -337,16 +336,15 @@ export default function QuoteResultsCard({
                   ${quoteData.baseMinQuote}
                 </span>
               </div>
-              {permitFee > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>Weight Class Permit Cost</span>
-                <span className="font-semibold text-amber-300">+${permitFee.toFixed(2)}</span>
+              {permitSurcharge > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
+                <span>{osow ? 'Permit / Escort Surcharge' : 'Weight Class Permit Cost'}</span>
+                <span className="font-semibold text-amber-300">+${permitSurcharge.toFixed(2)}</span>
               </div>}
-              {shouldShowOsowEstimate && <div className="my-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
-          <strong>OSOW estimate{osow.reviewRequired ? ' — review required' : ''}</strong>
-          <p>Route states: {osow.states.map((row) => row.state).join(', ') || 'Unresolved'}. Loaded height: {osow.loadedHeight} in. GVW: {Number(osow.grossWeight).toLocaleString()} lbs.</p>
-          {[...osow.flags, ...osow.reviewReasons].map((flag, i) => <p key={i}>{flag}</p>)}
-        </div>}
-        {Number(escort.vehicleCount) > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
+              {osowFlagSummary && <div className="flex justify-between items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-100">
+                <span className="font-semibold">Permit flag</span>
+                <span className="text-right font-bold text-amber-300">{osowFlagSummary.label} · {osowFlagSummary.states.join(', ')}</span>
+              </div>}
+        {!osow && Number(escort.vehicleCount) > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                 <span>{escort.vehicleCount} Escort Vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}</span>
                 <span className="font-semibold text-cyan-300">+${Number(escort.surcharge || 0).toFixed(2)}</span>
               </div>}

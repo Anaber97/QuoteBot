@@ -1,6 +1,26 @@
 // Shared browser/server OSOW estimate. Null source thresholds remain unknown.
 const known = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
 const number = (value) => known(value) ? Number(value) : 0;
+
+const FLAG_PRIORITY = [
+  { label: '2 escorts', matches: (row) => Number(row.vehicleCount) >= 2 },
+  { label: '1 escort', matches: (row) => Number(row.vehicleCount) === 1 },
+  { label: 'Overheight', matches: (row) => row.reasons?.includes('Overheight') },
+  { label: 'Overwidth', matches: (row) => row.reasons?.includes('Overwidth') },
+  { label: 'Overweight', matches: (row) => row.reasons?.includes('Overweight') },
+];
+
+// Keep the customer-facing breakdown to one concise, highest-severity flag.
+// This deliberately relies only on structured thresholds, never workbook notes.
+export function summarizeHighestOsowFlag(states = []) {
+  const rows = Array.isArray(states) ? states : [];
+  for (const flag of FLAG_PRIORITY) {
+    const affectedStates = [...new Set(rows.filter(flag.matches).map((row) => row.state).filter(Boolean))];
+    if (affectedStates.length) return { label: flag.label, states: affectedStates };
+  }
+  return null;
+}
+
 export function evaluateOsow({ weight, width, height, tier = {}, states = [], limits = [], pricing = {}, routeKnown = true }) {
   const flags = [];
   const reviewReasons = [];
@@ -30,13 +50,12 @@ export function evaluateOsow({ weight, width, height, tier = {}, states = [], li
     if (state === 'IN' && grossWeight > 200000) vehicleCount = 2;
     const needsPermit = reasons.length > 0 || vehicleCount > 0;
     if (needsPermit) {
-      if (rule.notes) reviewReasons.push(`${state}: ${rule.notes}`);
       if (['one_escort_height_in','one_escort_width_in','two_escort_height_in','two_escort_width_in'].some((key) => !known(rule[key]))) {
         reviewReasons.push(`${state}: some escort thresholds are unspecified; confirm applicable requirements.`);
       }
       flags.push(`${state}: ${reasons.join(', ') || 'Escort threshold'}${vehicleCount ? `; ${vehicleCount} escort${vehicleCount === 1 ? '' : 's'}` : ''}`);
     }
-    return { state, needsPermit, vehicleCount, reasons, sourceUrl: rule.source_url, retrievedAt: rule.retrieved_at, notes: rule.notes };
+    return { state, needsPermit, vehicleCount, reasons, sourceUrl: rule.source_url, retrievedAt: rule.retrieved_at };
   });
   const permitStates = results.filter((row) => row.needsPermit);
   const vehicleCount = Math.max(0, ...results.map((row) => row.vehicleCount));

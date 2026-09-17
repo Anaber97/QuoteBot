@@ -75,7 +75,8 @@ export default async function handler(req, res) {
       ? await resolveGoogleLocalities(input.waypoints)
       : [];
     if (config.client_portal?.osow_pricing?.enabled && (profile.role === 'client' || input.quoteSource === 'equipment_calculator')) {
-      const { data, error } = await admin.from('state_transport_limits').select('*');
+      const { data, error } = await admin.from('state_transport_limits')
+        .select('state_code,legal_height_in,legal_width_in,legal_weight_lbs,one_escort_height_in,one_escort_width_in,two_escort_height_in,two_escort_width_in,source_url,retrieved_at');
       if (error) throw error;
       config.state_transport_limits = data;
     }

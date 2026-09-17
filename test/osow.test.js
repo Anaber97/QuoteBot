@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateOsow } from '../src/lib/osow.js';
+import { evaluateOsow, summarizeHighestOsowFlag } from '../src/lib/osow.js';
 import { resolveRouteStates } from '../src/lib/routeStates.js';
 import { normalizeConfig } from '../src/lib/configSchema.js';
 import { sanitizeConfig, validateConfigInput } from '../src/lib/configValidator.js';
@@ -27,10 +27,15 @@ test('unknown thresholds, missing measurements, missing prices and missing state
   assert.ok(result.reviewReasons.some((r)=>r.includes('unspecified')));
   assert.ok(result.reviewReasons.some((r)=>r.includes('price')));
 });
-test('explicit zero price stays zero and special notes remain visible', () => {
+test('explicit zero price stays zero and source notes never enter quote results', () => {
   const result=evaluateOsow({...base,width:170,pricing:{generalPermit:0,oneEscort:0,twoEscort:0},limits:[{...limit,notes:'Police escort required'}]});
   assert.equal(result.permitFee,0); assert.equal(result.escort.surcharge,0);
-  assert.ok(result.reviewReasons.includes('TX: Police escort required'));
+  assert.ok(!result.reviewReasons.some((reason) => reason.includes('Police escort required')));
+  assert.equal(result.states[0].notes, undefined);
+});
+test('breakdown summary keeps only the highest permit flag and its affected states', () => {
+  const result = evaluateOsow({...base, width:168, height:121, weight:40001, states:['TX', 'OK'], limits:[limit, {...limit, state_code:'OK'}]});
+  assert.deepEqual(summarizeHighestOsowFlag(result.states), { label: '2 escorts', states: ['TX', 'OK'] });
 });
 test('Indiana workbook GVW exception triggers above 200,000 pounds',()=>{
   assert.equal(evaluateOsow({...base,weight:160001,states:['IN'],limits:[{...limit,state_code:'IN'}]}).escort.vehicleCount,2);
