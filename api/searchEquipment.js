@@ -96,7 +96,7 @@ async function callGroq(apiKey, { system, input, timeout = 35_000 }) {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(timeout),
     body: JSON.stringify({
-      model: getServerEnv('GROQ_EQUIPMENT_MODEL') || 'meta-llama/llama-4-maverick-17b-128e-instruct',
+      model: getServerEnv('GROQ_EQUIPMENT_MODEL') || 'openai/gpt-oss-20b',
       temperature: 0.1,
       response_format: { type: 'json_object' },
       messages: [{ role: 'system', content: system }, { role: 'user', content: input }],
