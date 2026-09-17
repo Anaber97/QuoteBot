@@ -67,8 +67,14 @@ function hasCompleteSpecs(item) {
 }
 
 export function matchesEquipmentSearch(item, query = '') {
-  const queryTokens = deFuzzEquipmentQuery(query).split(' ').filter(Boolean);
-  const candidateTokens = deFuzzEquipmentQuery([item?.make, item?.model, item?.serial_number].filter(Boolean).join(' ')).split(' ').filter(Boolean);
+  const normalizedQuery = deFuzzEquipmentQuery(query);
+  const normalizedCandidate = deFuzzEquipmentQuery([item?.make, item?.model, item?.serial_number].filter(Boolean).join(' '));
+  // Makes such as LeeBoy are often presented as either "LeeBoy" or
+  // "Lee Boy" by different sources. Compare a whitespace-free form before
+  // falling back to the token-level partial-match behavior.
+  if (normalizedQuery && normalizedCandidate.replaceAll(' ', '').includes(normalizedQuery.replaceAll(' ', ''))) return true;
+  const queryTokens = normalizedQuery.split(' ').filter(Boolean);
+  const candidateTokens = normalizedCandidate.split(' ').filter(Boolean);
   return queryTokens.length > 0 && candidateTokens.length > 0 && queryTokens.every((queryToken) =>
     candidateTokens.some((candidateToken) => candidateToken === queryToken || (queryToken.length >= 3 && candidateToken.startsWith(queryToken)))
   );

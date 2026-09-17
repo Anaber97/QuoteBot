@@ -43,6 +43,7 @@ test('matches a combined make and model search', () => {
 test('de-fuzzes aliases, compact model text, and model years', () => {
   assert.equal(deFuzzEquipmentQuery('2021 CAT320'), 'caterpillar 320');
   assert.equal(matchesEquipmentSearch({ make: 'Caterpillar', model: '320D' }, '2021 CAT 320'), true);
+  assert.equal(matchesEquipmentSearch({ make: 'Lee Boy', model: 'G700B' }, 'Leeboy G700B'), true);
 });
 
 test('accepts transport dimension fields from web results', () => {
