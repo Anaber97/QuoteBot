@@ -81,7 +81,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
 
   // Recalculate permit flags whenever specs or locations change
   useEffect(() => {
-    if (companyRates.client_portal?.osow_pricing?.enabled) {
+    if (companyRates?.client_portal?.osow_pricing?.enabled) {
       // State-specific requirements depend on the calculated route. Do not show a
       // permit warning until that evaluation identifies an actual requirement.
       setPermitInfo(null);
