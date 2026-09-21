@@ -56,13 +56,26 @@ test('accepts transport dimension fields from web results', () => {
   assert.equal(result.verification_status, 'Verified');
 });
 
-test('keeps URL-only manufacturer citations when the result includes complete specs', () => {
+test('rejects URL-only manufacturer citations without field-level evidence', () => {
   const result = normalizeSourcedResults({
     citations: ['https://manufacturer.example/spec'],
     choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', operating_weight_lbs: 45000, transport_width_in: 102, transport_height_in: 138, evidence: [{ url: 'https://manufacturer.example/spec', is_manufacturer: true }] }] }) } }],
   }, 'CAT 320D')[0];
+  assert.equal(result, undefined);
+});
+
+test('combines manufacturer documents only when each contributes field-level evidence', () => {
+  const result = normalizeSourcedResults({
+    citations: ['https://manufacturer.example/brochure', 'https://manufacturer.example/manual'],
+    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', evidence: [
+      source({ url: 'https://manufacturer.example/brochure', is_manufacturer: true, operating_weight_lbs: 45000, width_in: null, height_in: null }),
+      source({ url: 'https://manufacturer.example/manual', is_manufacturer: true, operating_weight_lbs: null, width_in: 102, height_in: 138 }),
+    ] }] }) } }],
+  }, 'CAT 320D')[0];
   assert.equal(result.verification_status, 'Verified');
   assert.equal(result.operating_weight_lbs, 45000);
+  assert.equal(result.width_in, 102);
+  assert.equal(result.height_in, 138);
 });
 
 test('accepts a complete direct manufacturer PDF when the gateway omits citations', () => {
@@ -77,19 +90,18 @@ test('accepts a complete direct manufacturer PDF when the gateway omits citation
   assert.equal(result[0].transport_height_in, 84.5);
 });
 
-test('uses provider-returned citations when the model evidence URL does not match', () => {
+test('rejects model evidence URLs that were not returned by the search provider', () => {
   const results = normalizeSourcedResults({
     citations: ['https://trusted.example/spec', 'https://second.example/spec'],
     choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', operating_weight_lbs: 45000, width_in: 102, height_in: 138, evidence: [source()] }] }) } }],
   }, 'CAT 320D');
-  assert.equal(results[0].sources[0].url, 'https://trusted.example/spec');
-  assert.equal(results[0].verification_status, 'Unverified');
+  assert.equal(results.length, 0);
 });
 
 test('parses Sonar JSON followed by inline citation markers', () => {
   const result = normalizeSourcedResults({
     citations: ['https://manufacturer.example/spec'],
-    choices: [{ message: { content: '{"results":[{"make":"CAT","model":"320D","operating_weight_lbs":45000,"transport_width_in":102,"transport_height_in":138,"evidence":[{"url":"https://manufacturer.example/spec","is_manufacturer":true}]}]}\n[1]' } }],
+    choices: [{ message: { content: '{"results":[{"make":"CAT","model":"320D","evidence":[{"url":"https://manufacturer.example/spec","is_manufacturer":true,"operating_weight_lbs":45000,"transport_width_in":102,"transport_height_in":138}]}]}\n[1]' } }],
   }, 'CAT 320D')[0];
   assert.equal(result.verification_status, 'Verified');
   assert.equal(result.width_in, 102);
