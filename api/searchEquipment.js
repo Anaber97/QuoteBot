@@ -11,11 +11,11 @@ const MAX_MANUFACTURER_PDF_BYTES = 8 * 1024 * 1024;
 const MAX_MANUFACTURER_PDF_PAGES = 12;
 const MAX_MANUFACTURER_TEXT_CHARS = 16_000;
 // Groq's free-tier token-per-minute allowance is easy to exhaust when every
-// lookup includes a long excerpt from every search result. Four focused
-// excerpts are enough to corroborate a result without turning one client
-// search into a very large prompt.
-const MAX_EXA_RESULTS = 4;
-const MAX_EXA_SOURCE_CHARS = 1_500;
+// lookup includes a long excerpt from every search result. Preserve a modest
+// prompt budget, but keep enough independent sources for strict evidence
+// validation to find an exact machine instead of only returning DB matches.
+const MAX_EXA_RESULTS = 6;
+const MAX_EXA_SOURCE_CHARS = 1_000;
 const GROQ_RETRY_DELAY_MS = 1_500;
 const BRAND_ALIASES = new Map([
   ['cat', 'caterpillar'], ['caterpillar', 'caterpillar'],
