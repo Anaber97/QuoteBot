@@ -10,7 +10,13 @@ const SOURCE_AGREEMENT_TOLERANCE = 0.025;
 const MAX_MANUFACTURER_PDF_BYTES = 8 * 1024 * 1024;
 const MAX_MANUFACTURER_PDF_PAGES = 12;
 const MAX_MANUFACTURER_TEXT_CHARS = 16_000;
-const MAX_EXA_SOURCE_CHARS = 4_000;
+// Groq's free-tier token-per-minute allowance is easy to exhaust when every
+// lookup includes a long excerpt from every search result. Four focused
+// excerpts are enough to corroborate a result without turning one client
+// search into a very large prompt.
+const MAX_EXA_RESULTS = 4;
+const MAX_EXA_SOURCE_CHARS = 1_500;
+const GROQ_RETRY_DELAY_MS = 1_500;
 const BRAND_ALIASES = new Map([
   ['cat', 'caterpillar'], ['caterpillar', 'caterpillar'],
   ['deere', 'john deere'], ['johndeere', 'john deere'],
@@ -97,24 +103,29 @@ function groqOutputText(payload) {
 }
 
 async function callGroq(apiKey, { system, input, timeout = 35_000 }) {
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(timeout),
-    body: JSON.stringify({
-      model: getServerEnv('GROQ_EQUIPMENT_MODEL') || 'openai/gpt-oss-20b',
-      temperature: 0.1,
-      response_format: { type: 'json_object' },
-      messages: [{ role: 'system', content: system }, { role: 'user', content: input }],
-    }),
-  });
-  if (!response.ok) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(timeout),
+      body: JSON.stringify({
+        model: getServerEnv('GROQ_EQUIPMENT_MODEL') || 'openai/gpt-oss-20b',
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'system', content: system }, { role: 'user', content: input }],
+      }),
+    });
+    if (response.ok) return response.json();
+    if (response.status === 429 && attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, GROQ_RETRY_DELAY_MS));
+      continue;
+    }
     const error = new Error(response.status === 429 ? 'Equipment interpretation is temporarily rate-limited. Please retry in a minute.' : `Groq request failed (${response.status}).`);
     error.status = response.status === 429 ? 429 : 502;
     error.retryAfter = response.status === 429 ? Number(response.headers.get('retry-after')) || 60 : undefined;
     throw error;
   }
-  return response.json();
+  throw new Error('Equipment interpretation failed.');
 }
 
 async function searchExa(apiKey, query) {
@@ -124,7 +135,7 @@ async function searchExa(apiKey, query) {
     signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({
       query: `${query} equipment transport specifications operating weight transport height transport width`,
-      numResults: 8,
+      numResults: MAX_EXA_RESULTS,
       type: 'auto',
       contents: { highlights: true },
       systemPrompt: 'Prefer exact equipment model specifications, manufacturer product pages, and manufacturer PDFs. Avoid duplicate listings and generic category pages.',
@@ -140,7 +151,7 @@ async function searchExa(apiKey, query) {
 }
 
 function exaSources(payload) {
-  return (Array.isArray(payload?.results) ? payload.results : []).map((result) => ({
+  return (Array.isArray(payload?.results) ? payload.results : []).slice(0, MAX_EXA_RESULTS).map((result) => ({
     url: cleanUrl(result?.url),
     title: text(result?.title),
     publisher: text(result?.author || result?.publisher),
