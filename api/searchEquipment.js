@@ -475,27 +475,32 @@ export default async function handler(req, res) {
     const groqApiKey = getServerEnv('GROQ_API_KEY');
     if (!serpApiKey || !groqApiKey) return res.status(200).json({ results: [], source: '', error: 'Equipment web research is unavailable.' });
 
-    const googlePayload = await searchGoogle(serpApiKey, equipmentSearchQuery(query));
+    // Use the same alias/model-year normalization for web research as for the
+    // database lookup. A supplied year is useful client context, but should
+    // not become part of an exact-model document query unless a source itself
+    // identifies that year-specific configuration.
+    const webQuery = deFuzzEquipmentQuery(query) || query;
+    const googlePayload = await searchGoogle(serpApiKey, equipmentSearchQuery(webQuery));
     const generalSources = googleSources(googlePayload);
     let documentSources = [];
-    let sourcedPayload = await interpretWebSources(generalSources, query, groqApiKey);
-    let results = normalizeSourcedResults(sourcedPayload, query);
+    let sourcedPayload = await interpretWebSources(generalSources, webQuery, groqApiKey);
+    let results = normalizeSourcedResults(sourcedPayload, webQuery);
     // General result pages often rank above the actual brochure. When the
     // first pass cannot establish a safe match, use one narrowly-targeted
     // document search (manufacturer-only for known brands) before reporting
     // no result. This keeps ordinary successful lookups to one API request.
     if (!results.length) {
-      const documentPayload = await searchGoogle(serpApiKey, manufacturerSearchQuery(query));
+      const documentPayload = await searchGoogle(serpApiKey, manufacturerSearchQuery(webQuery));
       documentSources = googleSources(documentPayload);
       if (documentSources.length) {
-        sourcedPayload = await interpretWebSources(documentSources, query, groqApiKey);
-        results = normalizeSourcedResults(sourcedPayload, query);
+        sourcedPayload = await interpretWebSources(documentSources, webQuery, groqApiKey);
+        results = normalizeSourcedResults(sourcedPayload, webQuery);
       }
     }
     if (!results.length) results = await enrichManufacturerPdfResults({
       ...sourcedPayload,
       choices: [{ message: { content: JSON.stringify(sourcedPayload) } }],
-    }, query, groqApiKey);
+    }, webQuery, groqApiKey);
     await persistSafeResults(results, admin, profile.company_id);
     const payload = { results, source: results.length ? 'web' : '', error: results.length ? '' : 'No sourced exact-model specifications found.' };
     if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
