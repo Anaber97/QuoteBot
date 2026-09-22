@@ -65,10 +65,12 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
 
     setIsSearching(true);
     setSearchStatus('Searching...');
-    const { results, source, error } = await searchEquipmentSpecs(trimmedQuery);
+    const { results, source, error, deferred } = await searchEquipmentSpecs(trimmedQuery);
     setSearchResults(results);
     setSearchStatus(
-      error
+      deferred
+        ? 'No worries—enter operating weight, width, and height below to continue your quote.'
+        : error
         ? `Search issue: ${error}`
         : source
           ? `Loaded from ${source}`

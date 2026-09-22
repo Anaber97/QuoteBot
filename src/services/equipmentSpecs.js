@@ -40,7 +40,7 @@ export async function searchEquipmentSpecs(query) {
 
   const cleanQuery = query.trim();
 
-  try {
+  const lookup = async () => {
     const response = await authenticatedFetch(`/api/searchEquipment?query=${encodeURIComponent(cleanQuery)}`, {
       headers: { Accept: 'application/json' },
     });
@@ -62,6 +62,18 @@ export async function searchEquipmentSpecs(query) {
       source: payload?.source || (results.length > 0 ? 'ai-gateway' : ''),
       error: payload?.error || '',
     };
+  };
+
+  // Web research is useful, but it must never block a client from requesting
+  // a quote. Leave the request running so a verified result may be cached by
+  // the server, while returning control to the form almost immediately.
+  const manualFallback = new Promise((resolve) => setTimeout(() => resolve({
+    results: [], source: '', deferred: true,
+    error: 'Lookup is taking longer than expected.',
+  }), 3_000));
+
+  try {
+    return await Promise.race([lookup(), manualFallback]);
   } catch (error) {
     console.warn('Search API unavailable, falling back to an empty result set:', error);
     return { results: [], source: '', error: error.message || 'Equipment search is unavailable.' };
