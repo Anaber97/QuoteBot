@@ -155,14 +155,6 @@ function webSearchError(response) {
   return error;
 }
 
-function equipmentSearchQuery(query) {
-  // Never quote the entire normalized query: `G700B` intentionally becomes
-  // `g 700 b` for tolerant DB matching, but Google treats that quoted phrase
-  // as a different model and can return nothing. Exact-model validation still
-  // happens after retrieval against each source's evidence.
-  return `${query} equipment specifications operating weight overall width overall height`;
-}
-
 function manufacturerDomainForQuery(query) {
   const normalizedQuery = deFuzzEquipmentQuery(query);
   for (const [make, domains] of MANUFACTURER_DOMAINS) {
@@ -170,12 +162,6 @@ function manufacturerDomainForQuery(query) {
     if (makeTokens.every((token) => normalizedQuery.split(' ').includes(token))) return domains[0];
   }
   return '';
-}
-
-function manufacturerSearchQuery(query) {
-  const domain = manufacturerDomainForQuery(query);
-  const documentTerms = `${query} specifications`;
-  return domain ? `site:${domain} ${documentTerms}` : documentTerms;
 }
 
 async function searchSerpApi(apiKey, terms) {
