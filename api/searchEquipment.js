@@ -161,7 +161,7 @@ async function searchSerpApi(apiKey, query) {
   const params = new URLSearchParams({
     engine: 'google', q: equipmentSearchQuery(query), gl: 'us', hl: 'en', num: '10', api_key: apiKey,
   });
-  const response = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(20_000) });
+  const response = await fetch(`https://serpapi.com/search?${params}`, { signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw webSearchError(response);
   const payload = await response.json();
   if (payload?.error) {
