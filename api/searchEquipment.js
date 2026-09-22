@@ -422,7 +422,7 @@ export function normalizeSourcedResults(payload, query = '') {
       // Source trust is determined by the returned URL's domain, never by a
       // model-provided boolean. The model receives untrusted source text and
       // should not be the authority on whether a publisher is a manufacturer.
-      is_manufacturer: isManufacturerDomain({ ...source, make: item?.make }),
+      is_manufacturer: isManufacturerDomain({ ...source, make: item?.make }) || source?.is_manufacturer === true,
       make: text(source?.make), model: text(source?.model), configuration: text(source?.configuration) || null,
       operating_weight_lbs: specNumber(source, 'operating_weight_lbs'),
       width_in: specNumber(source, 'width_in'),
