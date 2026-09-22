@@ -1,5 +1,5 @@
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
-import { operationalEvent, reportOperationalError } from './_monitoring.js';
+import { reportOperationalError } from './_monitoring.js';
 import { getServerEnv } from './_env.js';
 import { extractText, getDocumentProxy } from 'unpdf';
 
@@ -180,7 +180,7 @@ async function searchSerpApi(apiKey, terms) {
   if (!response.ok) throw webSearchError(response);
   const payload = await response.json();
   if (payload?.error) {
-    const error = new Error('Equipment web search failed.');
+    const error = new Error(`SerpAPI: ${text(payload.error).replace(/[\r\n]+/g, ' ').slice(0, 300)}`);
     error.status = 502;
     throw error;
   }
@@ -216,13 +216,6 @@ function googleSources(payload) {
     publisher: text(result?.source),
     content: text(result?.snippet).slice(0, MAX_SERP_SOURCE_CHARS),
   })).filter((source) => source.url && source.content);
-}
-
-function sourceHosts(sources = []) {
-  return sources.map((source) => {
-    try { return new URL(source.url).hostname.replace(/^www\./, ''); }
-    catch { return ''; }
-  }).filter(Boolean).join(',').slice(0, 450);
 }
 
 async function interpretWebSources(sources, query, groqApiKey) {
@@ -503,12 +496,6 @@ export default async function handler(req, res) {
       ...sourcedPayload,
       choices: [{ message: { content: JSON.stringify(sourcedPayload) } }],
     }, query, groqApiKey);
-    if (!results.length) operationalEvent('info', 'equipment_no_sourced_match', {
-      route: '/api/searchEquipment', provider: 'serpapi-groq',
-      generalSourceCount: generalSources.length, documentSourceCount: documentSources.length,
-      interpretedCandidateCount: Array.isArray(sourcedPayload?.results) ? sourcedPayload.results.length : 0,
-      generalHosts: sourceHosts(generalSources), documentHosts: sourceHosts(documentSources),
-    });
     await persistSafeResults(results, admin, profile.company_id);
     const payload = { results, source: results.length ? 'web' : '', error: results.length ? '' : 'No sourced exact-model specifications found.' };
     if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
