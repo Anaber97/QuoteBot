@@ -180,7 +180,7 @@ function manufacturerSearchQuery(query) {
 
 async function searchSerpApi(apiKey, terms) {
   const params = new URLSearchParams({
-    engine: 'google', q: terms, gl: 'us', hl: 'en', num: '10', api_key: apiKey,
+    engine: 'google_ai_mode', q: terms, gl: 'us', hl: 'en', api_key: apiKey,
   });
   const response = await fetch(`https://serpapi.com/search?${params}`, { signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw webSearchError(response);
@@ -198,6 +198,18 @@ async function searchGoogle(apiKey, terms) {
 }
 
 function googleSources(payload) {
+  const aiReferences = Array.isArray(payload?.references) ? payload.references : [];
+  if (aiReferences.length) {
+    const synthesis = text(payload?.reconstructed_markdown).slice(0, 8_000);
+    return aiReferences.slice(0, MAX_SERP_RESULTS).map((reference) => ({
+      url: cleanUrl(reference?.link || reference?.url),
+      title: text(reference?.title),
+      publisher: text(reference?.source || reference?.domain),
+      // AI Mode supplies the same cited synthesis a human sees in Google;
+      // evidence URLs remain limited to those references.
+      content: `${text(reference?.snippet)}\n\nGoogle AI Mode synthesis:\n${synthesis}`.slice(0, 9_000),
+    })).filter((source) => source.url && source.content);
+  }
   const results = Array.isArray(payload?.organic) ? payload.organic : payload?.organic_results;
   return (Array.isArray(results) ? results : []).slice(0, MAX_SERP_RESULTS).map((result) => ({
     url: cleanUrl(result?.link),
@@ -513,21 +525,9 @@ export default async function handler(req, res) {
     // Preserve compact model identifiers for Google (e.g. `L90H`, not
     // `l 90 h`) while retaining the tolerant DB normalization above.
     const webQuery = webResearchQuery(query) || query;
-    const knownManufacturer = manufacturerDomainForQuery(webQuery);
-    // For a recognized make, retrieve both the manufacturer page and the
-    // ordinary result set concurrently, then validate the combined evidence
-    // once. The former serial fallback made two Groq calls per lookup and
-    // exhausted the small shared rate budget after only a few searches.
-    const manufacturerTerms = knownManufacturer ? manufacturerSearchQuery(webQuery) : '';
-    const [manufacturerPayload, broadPayload] = await Promise.all([
-      searchGoogle(serpApiKey, manufacturerTerms || equipmentSearchQuery(webQuery)),
-      knownManufacturer
-        ? searchGoogle(serpApiKey, equipmentSearchQuery(webQuery)).catch(() => null)
-        : Promise.resolve(null),
-    ]);
-    const sourceSet = knownManufacturer
-      ? [...googleSources(manufacturerPayload).slice(0, 3), ...googleSources(broadPayload).slice(0, 3)]
-      : googleSources(manufacturerPayload);
+    const aiModeQuery = `${webQuery} transport specifications. Return only exact-model operating weight in pounds, transport width in inches, and transport height in inches. Cite each value's source.`;
+    const aiModePayload = await searchGoogle(serpApiKey, aiModeQuery);
+    const sourceSet = googleSources(aiModePayload);
     const seenUrls = new Set();
     const generalSources = await hydrateManufacturerSources(sourceSet.filter((source) => {
       if (seenUrls.has(source.url)) return false;
