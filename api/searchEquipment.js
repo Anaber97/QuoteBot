@@ -419,7 +419,10 @@ export function normalizeSourcedResults(payload, query = '') {
   return (Array.isArray(parsed?.results) ? parsed.results : []).map((item, index) => {
     let evidence = (Array.isArray(item?.evidence) ? item.evidence : []).map((source) => ({
       url: cleanUrl(source?.url), title: text(source?.title), publisher: text(source?.publisher),
-      is_manufacturer: source?.is_manufacturer === true,
+      // Source trust is determined by the returned URL's domain, never by a
+      // model-provided boolean. The model receives untrusted source text and
+      // should not be the authority on whether a publisher is a manufacturer.
+      is_manufacturer: isManufacturerDomain({ ...source, make: item?.make }),
       make: text(source?.make), model: text(source?.model), configuration: text(source?.configuration) || null,
       operating_weight_lbs: specNumber(source, 'operating_weight_lbs'),
       width_in: specNumber(source, 'width_in'),
