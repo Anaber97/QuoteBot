@@ -141,13 +141,28 @@ function equipmentSearchQuery(query) {
   return `"${query}" equipment specifications operating weight overall width overall height`;
 }
 
-async function searchSerper(apiKey, query) {
+function manufacturerDomainForQuery(query) {
+  const normalizedQuery = deFuzzEquipmentQuery(query);
+  for (const [make, domains] of MANUFACTURER_DOMAINS) {
+    const makeTokens = make.split(' ');
+    if (makeTokens.every((token) => normalizedQuery.split(' ').includes(token))) return domains[0];
+  }
+  return '';
+}
+
+function manufacturerSearchQuery(query) {
+  const domain = manufacturerDomainForQuery(query);
+  const documentTerms = `"${query}" (brochure OR specifications OR manual)`;
+  return domain ? `site:${domain} ${documentTerms}` : documentTerms;
+}
+
+async function searchSerper(apiKey, terms) {
   const response = await fetch('https://google.serper.dev/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
     signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({
-      q: equipmentSearchQuery(query),
+      q: terms,
       gl: 'us',
       hl: 'en',
       num: 10,
@@ -157,9 +172,9 @@ async function searchSerper(apiKey, query) {
   return response.json();
 }
 
-async function searchSerpApi(apiKey, query) {
+async function searchSerpApi(apiKey, terms) {
   const params = new URLSearchParams({
-    engine: 'google', q: equipmentSearchQuery(query), gl: 'us', hl: 'en', num: '10', api_key: apiKey,
+    engine: 'google', q: terms, gl: 'us', hl: 'en', num: '10', api_key: apiKey,
   });
   const response = await fetch(`https://serpapi.com/search?${params}`, { signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw webSearchError(response);
@@ -172,16 +187,16 @@ async function searchSerpApi(apiKey, query) {
   return payload;
 }
 
-async function searchGoogle(apiKey, query) {
+async function searchGoogle(apiKey, terms) {
   try {
-    return await searchSerper(apiKey, query);
+    return await searchSerper(apiKey, terms);
   } catch (error) {
     // The generic SERP_API_KEY name has historically been used for both
     // Serper and SerpAPI. Only retry an auth rejection: retrying rate limits
     // would conceal the provider's backoff instructions and add needless cost.
     if (error?.providerStatus !== 401 && error?.providerStatus !== 403) throw error;
     try {
-      return await searchSerpApi(apiKey, query);
+      return await searchSerpApi(apiKey, terms);
     } catch (fallbackError) {
       if (fallbackError?.providerStatus === 401 || fallbackError?.providerStatus === 403) {
         const credentialError = new Error('Web search credential was rejected. Update SERP_API_KEY with an active Serper or SerpAPI key.');
@@ -460,9 +475,21 @@ export default async function handler(req, res) {
     const groqApiKey = getServerEnv('GROQ_API_KEY');
     if (!serpApiKey || !groqApiKey) return res.status(200).json({ results: [], source: '', error: 'Equipment web research is unavailable.' });
 
-    const googlePayload = await searchGoogle(serpApiKey, query);
-    const sourcedPayload = await interpretWebSources(googleSources(googlePayload), query, groqApiKey);
+    const googlePayload = await searchGoogle(serpApiKey, equipmentSearchQuery(query));
+    let sourcedPayload = await interpretWebSources(googleSources(googlePayload), query, groqApiKey);
     let results = normalizeSourcedResults(sourcedPayload, query);
+    // General result pages often rank above the actual brochure. When the
+    // first pass cannot establish a safe match, use one narrowly-targeted
+    // document search (manufacturer-only for known brands) before reporting
+    // no result. This keeps ordinary successful lookups to one API request.
+    if (!results.length) {
+      const documentPayload = await searchGoogle(serpApiKey, manufacturerSearchQuery(query));
+      const documentSources = googleSources(documentPayload);
+      if (documentSources.length) {
+        sourcedPayload = await interpretWebSources(documentSources, query, groqApiKey);
+        results = normalizeSourcedResults(sourcedPayload, query);
+      }
+    }
     if (!results.length) results = await enrichManufacturerPdfResults({
       ...sourcedPayload,
       choices: [{ message: { content: JSON.stringify(sourcedPayload) } }],
