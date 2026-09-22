@@ -51,6 +51,22 @@ export function deFuzzEquipmentQuery(value = '') {
   return normalized;
 }
 
+// Database matching benefits from splitting `L90H` into tolerant tokens. Web
+// search does not: search engines understand the compact model identifier and
+// rank manufacturer documents much more reliably when it stays intact.
+function webResearchQuery(value = '') {
+  const tokens = text(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ')
+    .split(' ').filter(Boolean).filter((token) => !/^(?:19|20)\d{2}$/.test(token));
+  let normalized = tokens.join(' ');
+  for (const [alias, canonical] of BRAND_ALIASES) {
+    if (normalized.startsWith(`${alias} `) || normalized === alias) {
+      normalized = `${canonical}${normalized.slice(alias.length)}`.trim();
+      break;
+    }
+  }
+  return normalized;
+}
+
 function searchTokenGroups(value = '') {
   return deFuzzEquipmentQuery(value).split(' ').filter(Boolean).slice(0, 6).map((token) => {
     const aliases = [...BRAND_ALIASES.entries()]
@@ -156,24 +172,8 @@ function manufacturerDomainForQuery(query) {
 
 function manufacturerSearchQuery(query) {
   const domain = manufacturerDomainForQuery(query);
-  const documentTerms = `${query} (brochure OR specifications OR manual)`;
+  const documentTerms = `${query} specifications`;
   return domain ? `site:${domain} ${documentTerms}` : documentTerms;
-}
-
-async function searchSerper(apiKey, terms) {
-  const response = await fetch('https://google.serper.dev/search', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
-    signal: AbortSignal.timeout(20_000),
-    body: JSON.stringify({
-      q: terms,
-      gl: 'us',
-      hl: 'en',
-      num: 10,
-    }),
-  });
-  if (!response.ok) throw webSearchError(response);
-  return response.json();
 }
 
 async function searchSerpApi(apiKey, terms) {
@@ -192,24 +192,7 @@ async function searchSerpApi(apiKey, terms) {
 }
 
 async function searchGoogle(apiKey, terms) {
-  try {
-    return await searchSerper(apiKey, terms);
-  } catch (error) {
-    // The generic SERP_API_KEY name has historically been used for both
-    // Serper and SerpAPI. Only retry an auth rejection: retrying rate limits
-    // would conceal the provider's backoff instructions and add needless cost.
-    if (error?.providerStatus !== 401 && error?.providerStatus !== 403) throw error;
-    try {
-      return await searchSerpApi(apiKey, terms);
-    } catch (fallbackError) {
-      if (fallbackError?.providerStatus === 401 || fallbackError?.providerStatus === 403) {
-        const credentialError = new Error('Web search credential was rejected. Update SERP_API_KEY with an active Serper or SerpAPI key.');
-        credentialError.status = 502;
-        throw credentialError;
-      }
-      throw fallbackError;
-    }
-  }
+  return searchSerpApi(apiKey, terms);
 }
 
 function googleSources(payload) {
@@ -479,26 +462,35 @@ export default async function handler(req, res) {
     const groqApiKey = getServerEnv('GROQ_API_KEY');
     if (!serpApiKey || !groqApiKey) return res.status(200).json({ results: [], source: '', error: 'Equipment web research is unavailable.' });
 
-    // Use the same alias/model-year normalization for web research as for the
-    // database lookup. A supplied year is useful client context, but should
-    // not become part of an exact-model document query unless a source itself
-    // identifies that year-specific configuration.
-    const webQuery = deFuzzEquipmentQuery(query) || query;
-    const googlePayload = await searchGoogle(serpApiKey, equipmentSearchQuery(webQuery));
+    // Preserve compact model identifiers for Google (e.g. `L90H`, not
+    // `l 90 h`) while retaining the tolerant DB normalization above.
+    const webQuery = webResearchQuery(query) || query;
+    const knownManufacturer = manufacturerDomainForQuery(webQuery);
+    // Manufacturer evidence is both the safest source and the fastest route:
+    // do this first for a recognized make instead of making the user wait for
+    // a broad result set plus a second, serial document search.
+    const googlePayload = await searchGoogle(serpApiKey, knownManufacturer
+      ? manufacturerSearchQuery(webQuery)
+      : equipmentSearchQuery(webQuery));
     const generalSources = googleSources(googlePayload);
     let documentSources = [];
     let sourcedPayload = await interpretWebSources(generalSources, webQuery, groqApiKey);
     let results = normalizeSourcedResults(sourcedPayload, webQuery);
-    // General result pages often rank above the actual brochure. When the
-    // first pass cannot establish a safe match, use one narrowly-targeted
-    // document search (manufacturer-only for known brands) before reporting
-    // no result. This keeps ordinary successful lookups to one API request.
+    // Only make a second request if the preferred source set cannot support a
+    // safe result. A fallback outage must not turn an otherwise valid first
+    // response into a generic 500 error.
     if (!results.length) {
-      const documentPayload = await searchGoogle(serpApiKey, manufacturerSearchQuery(webQuery));
-      documentSources = googleSources(documentPayload);
-      if (documentSources.length) {
-        sourcedPayload = await interpretWebSources(documentSources, webQuery, groqApiKey);
-        results = normalizeSourcedResults(sourcedPayload, webQuery);
+      try {
+        const documentPayload = await searchGoogle(serpApiKey, knownManufacturer
+          ? equipmentSearchQuery(webQuery)
+          : manufacturerSearchQuery(webQuery));
+        documentSources = googleSources(documentPayload);
+        if (documentSources.length) {
+          sourcedPayload = await interpretWebSources(documentSources, webQuery, groqApiKey);
+          results = normalizeSourcedResults(sourcedPayload, webQuery);
+        }
+      } catch (fallbackError) {
+        void reportOperationalError(fallbackError, { event: 'equipment_search_fallback_failed', route: '/api/searchEquipment', provider: 'serpapi' });
       }
     }
     if (!results.length) results = await enrichManufacturerPdfResults({
@@ -510,7 +502,7 @@ export default async function handler(req, res) {
     if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
     return res.status(200).json(payload);
   } catch (error) {
-    void reportOperationalError(error, { event: 'provider_failure', route: '/api/searchEquipment', provider: 'serper-groq' });
-    return sendApiError(res, error, 'Equipment search failed.', { route: '/api/searchEquipment', provider: 'serper-groq' });
+    void reportOperationalError(error, { event: 'provider_failure', route: '/api/searchEquipment', provider: 'serpapi-groq' });
+    return sendApiError(res, error, 'Equipment search failed.', { route: '/api/searchEquipment', provider: 'serpapi-groq' });
   }
 }
