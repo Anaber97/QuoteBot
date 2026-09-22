@@ -168,7 +168,10 @@ async function searchSerpApi(apiKey, terms) {
   const params = new URLSearchParams({
     engine: 'google_ai_mode', q: terms, gl: 'us', hl: 'en', api_key: apiKey,
   });
-  const response = await fetch(`https://serpapi.com/search?${params}`, { signal: AbortSignal.timeout(20_000) });
+  // Google AI Mode synthesizes and cites several live sources; it routinely
+  // takes longer than a plain SERP. Do not abort its response at the old
+  // ordinary-search budget.
+  const response = await fetch(`https://serpapi.com/search?${params}`, { signal: AbortSignal.timeout(55_000) });
   if (!response.ok) throw webSearchError(response);
   const payload = await response.json();
   if (payload?.error) {
