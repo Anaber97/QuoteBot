@@ -180,7 +180,16 @@ async function searchGoogle(apiKey, query) {
     // Serper and SerpAPI. Only retry an auth rejection: retrying rate limits
     // would conceal the provider's backoff instructions and add needless cost.
     if (error?.providerStatus !== 401 && error?.providerStatus !== 403) throw error;
-    return searchSerpApi(apiKey, query);
+    try {
+      return await searchSerpApi(apiKey, query);
+    } catch (fallbackError) {
+      if (fallbackError?.providerStatus === 401 || fallbackError?.providerStatus === 403) {
+        const credentialError = new Error('Web search credential was rejected. Update SERP_API_KEY with an active Serper or SerpAPI key.');
+        credentialError.status = 502;
+        throw credentialError;
+      }
+      throw fallbackError;
+    }
   }
 }
 
