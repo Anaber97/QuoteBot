@@ -511,33 +511,28 @@ export default async function handler(req, res) {
     // `l 90 h`) while retaining the tolerant DB normalization above.
     const webQuery = webResearchQuery(query) || query;
     const knownManufacturer = manufacturerDomainForQuery(webQuery);
-    // Manufacturer evidence is both the safest source and the fastest route:
-    // do this first for a recognized make instead of making the user wait for
-    // a broad result set plus a second, serial document search.
-    const googlePayload = await searchGoogle(serpApiKey, knownManufacturer
-      ? manufacturerSearchQuery(webQuery)
-      : equipmentSearchQuery(webQuery));
-    const generalSources = await hydrateManufacturerSources(googleSources(googlePayload), webQuery);
-    let documentSources = [];
+    // For a recognized make, retrieve both the manufacturer page and the
+    // ordinary result set concurrently, then validate the combined evidence
+    // once. The former serial fallback made two Groq calls per lookup and
+    // exhausted the small shared rate budget after only a few searches.
+    const manufacturerTerms = knownManufacturer ? manufacturerSearchQuery(webQuery) : '';
+    const [manufacturerPayload, broadPayload] = await Promise.all([
+      searchGoogle(serpApiKey, manufacturerTerms || equipmentSearchQuery(webQuery)),
+      knownManufacturer
+        ? searchGoogle(serpApiKey, equipmentSearchQuery(webQuery)).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    const sourceSet = knownManufacturer
+      ? [...googleSources(manufacturerPayload).slice(0, 3), ...googleSources(broadPayload).slice(0, 3)]
+      : googleSources(manufacturerPayload);
+    const seenUrls = new Set();
+    const generalSources = await hydrateManufacturerSources(sourceSet.filter((source) => {
+      if (seenUrls.has(source.url)) return false;
+      seenUrls.add(source.url);
+      return true;
+    }), webQuery);
     let sourcedPayload = await interpretWebSources(generalSources, webQuery, groqApiKey);
     let results = normalizeSourcedResults(sourcedPayload, webQuery);
-    // Only make a second request if the preferred source set cannot support a
-    // safe result. A fallback outage must not turn an otherwise valid first
-    // response into a generic 500 error.
-    if (!results.length) {
-      try {
-        const documentPayload = await searchGoogle(serpApiKey, knownManufacturer
-          ? equipmentSearchQuery(webQuery)
-          : manufacturerSearchQuery(webQuery));
-        documentSources = await hydrateManufacturerSources(googleSources(documentPayload), webQuery);
-        if (documentSources.length) {
-          sourcedPayload = await interpretWebSources(documentSources, webQuery, groqApiKey);
-          results = normalizeSourcedResults(sourcedPayload, webQuery);
-        }
-      } catch (fallbackError) {
-        void reportOperationalError(fallbackError, { event: 'equipment_search_fallback_failed', route: '/api/searchEquipment', provider: 'serpapi' });
-      }
-    }
     if (!results.length) results = await enrichManufacturerPdfResults({
       ...sourcedPayload,
       choices: [{ message: { content: JSON.stringify(sourcedPayload) } }],
