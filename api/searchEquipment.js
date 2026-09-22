@@ -138,7 +138,11 @@ function webSearchError(response) {
 }
 
 function equipmentSearchQuery(query) {
-  return `"${query}" equipment specifications operating weight overall width overall height`;
+  // Never quote the entire normalized query: `G700B` intentionally becomes
+  // `g 700 b` for tolerant DB matching, but Google treats that quoted phrase
+  // as a different model and can return nothing. Exact-model validation still
+  // happens after retrieval against each source's evidence.
+  return `${query} equipment specifications operating weight overall width overall height`;
 }
 
 function manufacturerDomainForQuery(query) {
@@ -152,7 +156,7 @@ function manufacturerDomainForQuery(query) {
 
 function manufacturerSearchQuery(query) {
   const domain = manufacturerDomainForQuery(query);
-  const documentTerms = `"${query}" (brochure OR specifications OR manual)`;
+  const documentTerms = `${query} (brochure OR specifications OR manual)`;
   return domain ? `site:${domain} ${documentTerms}` : documentTerms;
 }
 
