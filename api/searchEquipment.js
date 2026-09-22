@@ -16,6 +16,8 @@ const MAX_MANUFACTURER_TEXT_CHARS = 16_000;
 // validation to find an exact machine instead of only returning DB matches.
 const MAX_SERP_RESULTS = 6;
 const MAX_SERP_SOURCE_CHARS = 1_000;
+const MAX_MANUFACTURER_PAGE_CHARS = 6_000;
+const MAX_MANUFACTURER_PAGES = 2;
 const GROQ_RETRY_DELAY_MS = 1_500;
 const BRAND_ALIASES = new Map([
   ['cat', 'caterpillar'], ['caterpillar', 'caterpillar'],
@@ -203,6 +205,49 @@ function googleSources(payload) {
     publisher: text(result?.source),
     content: text(result?.snippet).slice(0, MAX_SERP_SOURCE_CHARS),
   })).filter((source) => source.url && source.content);
+}
+
+function isSourceOnManufacturerDomain(source, query) {
+  const domain = manufacturerDomainForQuery(query);
+  if (!domain) return false;
+  try {
+    const hostname = new URL(source?.url).hostname.toLowerCase().replace(/^www\./, '');
+    return hostname === domain || hostname.endsWith(`.${domain}`);
+  } catch { return false; }
+}
+
+function pageText(html) {
+  return text(html)
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ').trim().slice(0, MAX_MANUFACTURER_PAGE_CHARS);
+}
+
+async function readManufacturerPage(url) {
+  if (/\.pdf(?:$|[?#])/i.test(url)) return extractPdfText(url);
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(12_000),
+    headers: { Accept: 'text/html,application/xhtml+xml;q=0.9' },
+  });
+  if (!response.ok) throw new Error(`Manufacturer page fetch failed (${response.status}).`);
+  const contentType = text(response.headers.get('content-type')).toLowerCase();
+  if (!contentType.includes('html')) return '';
+  return pageText(await response.text());
+}
+
+async function hydrateManufacturerSources(sources, query) {
+  let remaining = MAX_MANUFACTURER_PAGES;
+  const hydrated = await Promise.all(sources.map(async (source) => {
+    if (!isSourceOnManufacturerDomain(source, query) || remaining-- <= 0) return source;
+    try {
+      const content = await readManufacturerPage(source.url);
+      return content ? { ...source, content: `${source.content}\n\nManufacturer page text:\n${content}` } : source;
+    } catch { return source; }
+  }));
+  return hydrated;
 }
 
 async function interpretWebSources(sources, query, groqApiKey) {
@@ -472,7 +517,7 @@ export default async function handler(req, res) {
     const googlePayload = await searchGoogle(serpApiKey, knownManufacturer
       ? manufacturerSearchQuery(webQuery)
       : equipmentSearchQuery(webQuery));
-    const generalSources = googleSources(googlePayload);
+    const generalSources = await hydrateManufacturerSources(googleSources(googlePayload), webQuery);
     let documentSources = [];
     let sourcedPayload = await interpretWebSources(generalSources, webQuery, groqApiKey);
     let results = normalizeSourcedResults(sourcedPayload, webQuery);
@@ -484,7 +529,7 @@ export default async function handler(req, res) {
         const documentPayload = await searchGoogle(serpApiKey, knownManufacturer
           ? equipmentSearchQuery(webQuery)
           : manufacturerSearchQuery(webQuery));
-        documentSources = googleSources(documentPayload);
+        documentSources = await hydrateManufacturerSources(googleSources(documentPayload), webQuery);
         if (documentSources.length) {
           sourcedPayload = await interpretWebSources(documentSources, webQuery, groqApiKey);
           results = normalizeSourcedResults(sourcedPayload, webQuery);
