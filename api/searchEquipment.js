@@ -104,8 +104,8 @@ function allowedSourceUrls(payload) {
   return new Set(values.map((entry) => cleanUrl(typeof entry === 'string' ? entry : entry?.url)).filter(Boolean));
 }
 
-function webSearchError(response) {
-  const error = new Error(response.status === 429 ? 'Equipment web research is temporarily rate-limited. Please retry in a minute.' : `Equipment web search failed (${response.status}).`);
+function webSearchError(response, detail = '') {
+  const error = new Error(response.status === 429 ? 'Equipment web research is temporarily rate-limited. Please retry in a minute.' : `Equipment web search failed (${response.status})${detail ? `: ${detail}` : '.'}`);
   error.status = response.status === 429 ? 429 : 502;
   error.retryAfter = response.status === 429 ? Number(response.headers.get('retry-after')) || 60 : undefined;
   error.providerStatus = response.status;
@@ -113,7 +113,10 @@ function webSearchError(response) {
 }
 
 async function searchGemini(apiKey, prompt) {
-  const model = getServerEnv('GEMINI_EQUIPMENT_MODEL') || 'gemini-2.5-flash';
+  // Gemini 2.5 models can return 404 for newly-created AI Studio projects.
+  // Flash-Lite is the current low-cost model available to new projects and
+  // supports both Google Search grounding and structured JSON output.
+  const model = 'gemini-3.5-flash-lite';
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -124,7 +127,10 @@ async function searchGemini(apiKey, prompt) {
       generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
     }),
   });
-  if (!response.ok) throw webSearchError(response);
+  if (!response.ok) {
+    const detail = text((await response.json().catch(() => ({})))?.error?.message).replace(/[\r\n]+/g, ' ').slice(0, 300);
+    throw webSearchError(response, detail);
+  }
   const payload = await response.json();
   if (payload?.error) {
     const error = new Error(`Gemini: ${text(payload.error?.message || payload.error).replace(/[\r\n]+/g, ' ').slice(0, 300)}`);
