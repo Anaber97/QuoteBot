@@ -35,6 +35,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const [waypoints, setWaypoints] = useState([]);
   const pickupInputRef = useRef(null);
   const dropoffInputRef = useRef(null);
+  const activeSearchRef = useRef(0);
 
   // Real-time permit evaluation result
   const [permitInfo, setPermitInfo] = useState(null);
@@ -63,20 +64,27 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
       return;
     }
 
+    const requestId = ++activeSearchRef.current;
     setIsSearching(true);
     setSearchStatus('Searching...');
-    const { results, source, error, deferred } = await searchEquipmentSpecs(trimmedQuery);
+    const slowLookupNotice = setTimeout(() => {
+      if (activeSearchRef.current === requestId) {
+        setSearchStatus('We’re finding verified specs. You can enter route details while we finish.');
+        setIsSearching(false);
+      }
+    }, 3_000);
+    const { results, source, error } = await searchEquipmentSpecs(trimmedQuery);
+    clearTimeout(slowLookupNotice);
+    if (activeSearchRef.current !== requestId) return;
     setSearchResults(results);
     setSearchStatus(
-      deferred
-        ? 'No worries—enter operating weight, width, and height below to continue your quote.'
-        : error
-        ? `Search issue: ${error}`
+      error
+        ? 'We couldn’t verify a match yet. You can enter operating weight, width, and height below to continue.'
         : source
           ? `Loaded from ${source}`
           : results.length > 0
             ? ''
-            : 'No matches found. Try a different term or add a manual spec.'
+            : 'We couldn’t verify a match. You can enter operating weight, width, and height below to continue.'
     );
     setIsSearching(false);
   };
