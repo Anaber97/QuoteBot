@@ -56,6 +56,14 @@ test('accepts transport dimension fields from web results', () => {
   assert.equal(result.verification_status, 'Verified');
 });
 
+test('accepts a clean citation for the same grounded URL with tracking parameters', () => {
+  const result = normalizeSourcedResults({
+    citations: ['https://manufacturer.example/spec?utm_source=google'],
+    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', evidence: [source({ url: 'https://manufacturer.example/spec', is_manufacturer: true })] }] }) } }],
+  }, 'CAT 320D')[0];
+  assert.equal(result.verification_status, 'Verified');
+});
+
 test('rejects URL-only manufacturer citations without field-level evidence', () => {
   const result = normalizeSourcedResults({
     citations: ['https://manufacturer.example/spec'],

@@ -99,9 +99,23 @@ function cleanUrl(value) {
   } catch { return ''; }
 }
 
+function canonicalSourceUrl(value) {
+  const clean = cleanUrl(value);
+  if (!clean) return '';
+  const url = new URL(clean);
+  // Google grounding can return a tracked URL while Gemini cites that same
+  // page without its query string. Compare the stable destination only, but
+  // keep the model's original HTTPS URL in the returned evidence.
+  url.hash = '';
+  url.search = '';
+  url.hostname = url.hostname.toLowerCase();
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+  return url.href;
+}
+
 function allowedSourceUrls(payload) {
   const values = [...(Array.isArray(payload?.citations) ? payload.citations : []), ...(Array.isArray(payload?.search_results) ? payload.search_results : [])];
-  return new Set(values.map((entry) => cleanUrl(typeof entry === 'string' ? entry : entry?.url)).filter(Boolean));
+  return new Set(values.map((entry) => canonicalSourceUrl(typeof entry === 'string' ? entry : entry?.url)).filter(Boolean));
 }
 
 function webSearchError(response, detail = '') {
@@ -262,7 +276,7 @@ export function normalizeSourcedResults(payload, query = '') {
       width_in: specNumber(source, 'width_in'),
       height_in: specNumber(source, 'height_in'),
     })).filter((source) => source.url && (allowedUrls.size
-      ? allowedUrls.has(source.url)
+      ? allowedUrls.has(canonicalSourceUrl(source.url))
       // Vercel AI Gateway's Perplexity adapter can omit the separate citations
       // collection for JSON-only responses. In that case retain only a direct
       // manufacturer URL that agrees with the result's stated make/publisher.
