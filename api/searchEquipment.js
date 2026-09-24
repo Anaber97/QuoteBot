@@ -164,29 +164,50 @@ function manufacturerDomainForQuery(query) {
   return '';
 }
 
-async function searchSerpApi(apiKey, terms) {
-  const params = new URLSearchParams({
-    engine: 'google_ai_mode', q: terms, gl: 'us', hl: 'en', api_key: apiKey,
+async function searchGemini(apiKey, prompt) {
+  const model = getServerEnv('GEMINI_EQUIPMENT_MODEL') || 'gemini-2.5-flash';
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    signal: AbortSignal.timeout(30_000),
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: { temperature: 0.1 },
+    }),
   });
-  // Google AI Mode synthesizes and cites several live sources; it routinely
-  // takes longer than a plain SERP. Do not abort its response at the old
-  // ordinary-search budget.
-  const response = await fetch(`https://serpapi.com/search?${params}`, { signal: AbortSignal.timeout(55_000) });
   if (!response.ok) throw webSearchError(response);
   const payload = await response.json();
   if (payload?.error) {
-    const error = new Error(`SerpAPI: ${text(payload.error).replace(/[\r\n]+/g, ' ').slice(0, 300)}`);
+    const error = new Error(`Gemini: ${text(payload.error?.message || payload.error).replace(/[\r\n]+/g, ' ').slice(0, 300)}`);
     error.status = 502;
     throw error;
   }
   return payload;
 }
 
-async function searchGoogle(apiKey, terms) {
-  return searchSerpApi(apiKey, terms);
-}
-
 function googleSources(payload) {
+  const candidate = payload?.candidates?.[0];
+  const answer = (candidate?.content?.parts || []).map((part) => text(part?.text)).filter(Boolean).join('\n');
+  const chunks = candidate?.groundingMetadata?.groundingChunks || candidate?.grounding_metadata?.grounding_chunks || [];
+  const supports = candidate?.groundingMetadata?.groundingSupports || candidate?.grounding_metadata?.grounding_supports || [];
+  if (answer && chunks.length) {
+    const attributedText = new Map();
+    for (const support of supports) {
+      const segment = support?.segment || {};
+      const snippet = answer.slice(Number(segment.startIndex ?? segment.start_index) || 0, Number(segment.endIndex ?? segment.end_index) || answer.length);
+      for (const index of support?.groundingChunkIndices || support?.grounding_chunk_indices || []) {
+        attributedText.set(index, `${attributedText.get(index) || ''}\n${snippet}`.trim());
+      }
+    }
+    return chunks.slice(0, MAX_SERP_RESULTS).map((chunk, index) => {
+      const web = chunk?.web || {};
+      return {
+        url: cleanUrl(web?.uri || web?.url), title: text(web?.title), publisher: text(web?.domain),
+        content: (attributedText.get(index) || answer).slice(0, 9_000),
+      };
+    }).filter((source) => source.url && source.content);
+  }
   const aiReferences = Array.isArray(payload?.references) ? payload.references : [];
   if (aiReferences.length) {
     const synthesis = text(payload?.reconstructed_markdown).slice(0, 8_000);
@@ -507,15 +528,15 @@ export default async function handler(req, res) {
     // Keep a daily cost guardrail, but allow normal client use and QA. The
     // hourly limiter above still blocks bursts before they reach web search.
     await enforceRateLimit(admin, `equipment-web-research:${profile.id}`, { limit: 120, windowMs: 24 * 60 * 60 * 1000 });
-    const serpApiKey = getServerEnv('SERP_API_KEY');
+    const geminiApiKey = getServerEnv('GOOGLE_GEMINI_API_KEY');
     const groqApiKey = getServerEnv('GROQ_API_KEY');
-    if (!serpApiKey || !groqApiKey) return res.status(200).json({ results: [], source: '', error: 'Equipment web research is unavailable.' });
+    if (!geminiApiKey || !groqApiKey) return res.status(200).json({ results: [], source: '', error: 'Equipment web research is unavailable.' });
 
     // Preserve compact model identifiers for Google (e.g. `L90H`, not
     // `l 90 h`) while retaining the tolerant DB normalization above.
     const webQuery = webResearchQuery(query) || query;
     const aiModeQuery = `${webQuery} transport specifications. Return only exact-model operating weight in pounds, transport width in inches, and transport height in inches. Cite each value's source.`;
-    const aiModePayload = await searchGoogle(serpApiKey, aiModeQuery);
+    const aiModePayload = await searchGemini(geminiApiKey, aiModeQuery);
     const sourceSet = googleSources(aiModePayload);
     const seenUrls = new Set();
     const generalSources = await hydrateManufacturerSources(sourceSet.filter((source) => {
@@ -534,7 +555,7 @@ export default async function handler(req, res) {
     if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
     return res.status(200).json(payload);
   } catch (error) {
-    void reportOperationalError(error, { event: 'provider_failure', route: '/api/searchEquipment', provider: 'serpapi-groq' });
-    return sendApiError(res, error, 'Equipment search failed.', { route: '/api/searchEquipment', provider: 'serpapi-groq' });
+    void reportOperationalError(error, { event: 'provider_failure', route: '/api/searchEquipment', provider: 'gemini-groq' });
+    return sendApiError(res, error, 'Equipment search failed.', { route: '/api/searchEquipment', provider: 'gemini-groq' });
   }
 }
