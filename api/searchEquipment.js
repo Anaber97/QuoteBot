@@ -2,6 +2,8 @@ import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
 import { reportOperationalError } from './_monitoring.js';
 import { getServerEnv } from './_env.js';
 
+export const config = { maxDuration: 60 };
+
 const responseCache = new Map();
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const SAFE_STATUSES = new Set(['Verified']);
@@ -134,7 +136,7 @@ async function searchGemini(apiKey, prompt) {
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(55_000),
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       tools: [{ google_search: {} }],
@@ -367,16 +369,9 @@ Rules: return no more than three exact-model matches, ordered by match quality. 
     const geminiPayload = await searchGemini(geminiApiKey, aiModeQuery);
     const geminiText = geminiOutputText(geminiPayload);
     const groundedUrls = geminiGroundingUrls(geminiPayload);
-    const parsedGemini = parseJson(geminiText);
-    const results = normalizeSourcedResults({ ...parsedGemini, citations: groundedUrls }, webQuery);
-    if (!results.length) {
-      console.info(JSON.stringify({
-        event: 'equipment_lookup_no_match', query: webQuery,
-        candidateCount: Array.isArray(parsedGemini?.results) ? parsedGemini.results.length : 0,
-        groundedUrlCount: groundedUrls.length,
-        responsePreview: geminiText.slice(0, 2_000),
-      }));
-    }
+    const results = normalizeSourcedResults({
+      ...parseJson(geminiText), citations: groundedUrls,
+    }, webQuery);
     await persistSafeResults(results, admin, profile.company_id);
     const payload = { results, source: results.length ? 'web' : '', error: results.length ? '' : 'No sourced exact-model specifications found.' };
     if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
