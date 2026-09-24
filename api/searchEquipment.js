@@ -365,10 +365,18 @@ export default async function handler(req, res) {
 
 Rules: return no more than three exact-model matches, ordered by match quality. Each evidence URL must be a URL returned by Google Search grounding in this response. Never estimate, use memory, merge similar models, mix configurations, or substitute a related model. Include a result only if its operating weight (lbs), transport/stowed height (in), and transport/stowed width (in) are established. Every evidence entry must contain only values that its own cited page supports; use null for unsupported fields. Prefer a manufacturer product page or manufacturer PDF. If no manufacturer source establishes all fields, include an Unverified-ready result only when two independent non-manufacturer sources each establish all three values for the same exact configuration. Do not include sources that conflict by more than 2.5% on any field.`;
     const geminiPayload = await searchGemini(geminiApiKey, aiModeQuery);
-    const results = normalizeSourcedResults({
-      ...parseJson(geminiOutputText(geminiPayload)),
-      citations: geminiGroundingUrls(geminiPayload),
-    }, webQuery);
+    const geminiText = geminiOutputText(geminiPayload);
+    const groundedUrls = geminiGroundingUrls(geminiPayload);
+    const parsedGemini = parseJson(geminiText);
+    const results = normalizeSourcedResults({ ...parsedGemini, citations: groundedUrls }, webQuery);
+    if (!results.length) {
+      console.info(JSON.stringify({
+        event: 'equipment_lookup_no_match', query: webQuery,
+        candidateCount: Array.isArray(parsedGemini?.results) ? parsedGemini.results.length : 0,
+        groundedUrlCount: groundedUrls.length,
+        responsePreview: geminiText.slice(0, 2_000),
+      }));
+    }
     await persistSafeResults(results, admin, profile.company_id);
     const payload = { results, source: results.length ? 'web' : '', error: results.length ? '' : 'No sourced exact-model specifications found.' };
     if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
