@@ -128,7 +128,7 @@ function webSearchError(response, detail = '') {
   return error;
 }
 
-async function searchGemini(apiKey, prompt, { groundWithGoogle = true, timeoutMs = 55_000 } = {}) {
+async function searchGemini(apiKey, prompt, { timeoutMs = 55_000 } = {}) {
   // Gemini 2.5 models can return 404 for newly-created AI Studio projects.
   // Flash-Lite is the current low-cost model available to new projects and
   // supports both Google Search grounding and structured JSON output.
@@ -139,7 +139,7 @@ async function searchGemini(apiKey, prompt, { groundWithGoogle = true, timeoutMs
     signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      ...(groundWithGoogle ? { tools: [{ google_search: {} }] } : {}),
+      tools: [{ google_search: {} }],
       generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
     }),
   });
@@ -154,20 +154,6 @@ async function searchGemini(apiKey, prompt, { groundWithGoogle = true, timeoutMs
     throw error;
   }
   return payload;
-}
-
-async function searchSerpApi(apiKey, query) {
-  const url = new URL('https://serpapi.com/search');
-  url.searchParams.set('engine', 'google');
-  url.searchParams.set('q', `${query} transport specifications operating weight width height`);
-  url.searchParams.set('api_key', apiKey);
-  const response = await fetch(url, { signal: AbortSignal.timeout(12_000) });
-  if (!response.ok) throw webSearchError(response);
-  const payload = await response.json();
-  return (Array.isArray(payload?.organic_results) ? payload.organic_results : []).slice(0, 6).map((item) => ({
-    url: cleanUrl(item?.link), title: text(item?.title), publisher: text(item?.source),
-    snippet: text(item?.snippet).slice(0, 2_500),
-  })).filter((item) => item.url && item.snippet);
 }
 
 function geminiOutputText(payload) {
@@ -371,7 +357,6 @@ export default async function handler(req, res) {
     // hourly limiter above still blocks bursts before they reach web search.
     await enforceRateLimit(admin, `equipment-web-research:${profile.id}`, { limit: 120, windowMs: 24 * 60 * 60 * 1000 });
     const geminiApiKey = getServerEnv('GOOGLE_GEMINI_API_KEY');
-    const serpApiKey = getServerEnv('SERP_API_KEY');
     if (!geminiApiKey) return res.status(200).json({ results: [], source: '', error: 'Equipment web research is unavailable.' });
 
     // Preserve compact model identifiers for Google (e.g. `L90H`, not
@@ -381,34 +366,12 @@ export default async function handler(req, res) {
 {"results":[{"make":"","model":"","configuration":null,"serial_number":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0,"evidence":[{"url":"https://...","title":"","publisher":"","is_manufacturer":false,"make":"","model":"","configuration":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0}]}]}
 
 Rules: return at most three likely exact matches, ordered by match quality. Each evidence URL must be a URL returned by Google Search grounding in this response. Do not estimate, use memory, combine similar models, or substitute a related model. Return an exact base-model result when no conflicting configuration is named. Treat an exact-model manufacturer's overall machine width or overall machine height as the transport width or transport height. Include a result only when operating weight (lbs), width (in), and height (in) are established. Prefer one manufacturer product page or manufacturer PDF; otherwise use two independent non-manufacturer sources that agree within 2.5%. Each evidence entry must contain only values supported by that cited page; use null for unsupported fields.`;
-    let results = [];
-    try {
-      // Grounding is useful when it responds promptly.  It must not hold up
-      // the source-first fallback when the provider is slow or unavailable.
-      const geminiPayload = await searchGemini(geminiApiKey, aiModeQuery, { timeoutMs: 15_000 });
-      const geminiText = geminiOutputText(geminiPayload);
-      const groundedUrls = geminiGroundingUrls(geminiPayload);
-      results = normalizeSourcedResults({
-        ...parseJson(geminiText), citations: groundedUrls,
-      }, webQuery);
-    } catch (error) {
-      if (!serpApiKey) throw error;
-    }
-    if (!results.length && serpApiKey) {
-      const sources = await searchSerpApi(serpApiKey, webQuery);
-      if (sources.length) {
-        const sourcePrompt = `Extract exact transport specifications for "${webQuery}" from these Google search results. Return only JSON in this shape:
-{"results":[{"make":"","model":"","configuration":null,"serial_number":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0,"evidence":[{"url":"https://...","title":"","publisher":"","is_manufacturer":false,"make":"","model":"","configuration":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0}]}]}
-
-Use only the supplied sources. Do not estimate, combine related models, or invent URLs. An exact manufacturer's overall width and height may be used as transport dimensions. Return one manufacturer-backed exact base-model match when all three fields are supported, or an Unverified-ready match only when two independent non-manufacturer sources agree within 2.5%.
-
-Sources: ${JSON.stringify(sources)}`;
-        const sourcePayload = await searchGemini(geminiApiKey, sourcePrompt, { groundWithGoogle: false, timeoutMs: 25_000 });
-        results = normalizeSourcedResults({
-          ...parseJson(geminiOutputText(sourcePayload)), citations: sources.map((source) => source.url),
-        }, webQuery);
-      }
-    }
+    const geminiPayload = await searchGemini(geminiApiKey, aiModeQuery);
+    const geminiText = geminiOutputText(geminiPayload);
+    const groundedUrls = geminiGroundingUrls(geminiPayload);
+    const results = normalizeSourcedResults({
+      ...parseJson(geminiText), citations: groundedUrls,
+    }, webQuery);
     await persistSafeResults(results, admin, profile.company_id);
     const payload = { results, source: results.length ? 'web' : '', error: results.length ? '' : 'No sourced exact-model specifications found.' };
     if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
