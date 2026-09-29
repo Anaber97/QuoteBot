@@ -227,41 +227,6 @@ export default function QuoteResultsCard({
         )}
       </div>
 
-      {isDispatcherView && (
-        <div className="space-y-2 border-y border-slate-800/60 py-3 text-xs">
-          {[
-            { label: isMileageQuote ? 'Mileage Rate' : 'Hourly Rate', value: effectiveRate, input: state?.customRateInput, action: 'SET_CUSTOM_RATE', prefix: '$', suffix: isMileageQuote ? '/mi' : '/hr', min: 0.01, max: 100000, step: '0.01' },
-            ...(!isMileageQuote ? [
-              { label: 'Drive Time Buffer', value: timeMetrics.driveTimeBufferPercent, input: state?.customDriveTimeBufferPercent, action: 'SET_CUSTOM_DRIVE_BUFFER', suffix: '%', min: 0, max: 1000, step: '0.1' },
-              { label: 'Load / Unload Time', value: timeMetrics.loadUnloadMinutes, input: state?.customLoadUnloadMins, action: 'SET_CUSTOM_LOAD_UNLOAD', suffix: 'mins', min: 0, max: 10080, step: '1' },
-            ] : []),
-          ].map((field) => (
-            <label key={field.action} className="flex items-center justify-between gap-3 text-slate-400">
-              <span>{field.label}</span>
-              <span className="flex items-center gap-1 rounded-md border border-slate-700/60 bg-slate-900/30 px-2 py-1 text-slate-200 focus-within:border-blue-400/70">
-                {field.prefix}
-                <input
-                  aria-label={field.label}
-                  title="Edit for this quote only; clear to use the default"
-                  type="number" min={field.min} max={field.max} step={field.step}
-                  value={field.input === '' ? '' : field.input ?? field.value}
-                  placeholder={String(field.value)}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (value === '' || (Number(value) >= field.min && Number(value) <= field.max)) {
-                      dispatch?.({ type: field.action, payload: value });
-                    }
-                  }}
-                  className="w-20 bg-transparent text-right font-semibold text-white placeholder:text-slate-200 focus:outline-none"
-                />
-                <span className="text-slate-500">{field.suffix}</span>
-              </span>
-            </label>
-          ))}
-          <p className="text-[10px] text-slate-500">Edit values for this quote only.</p>
-        </div>
-      )}
-
       {!isDispatcherView && (
         <p role="note" className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-[11px] leading-5 text-slate-300">
           <span className="font-semibold text-blue-300">Estimate notice: </span>
@@ -307,6 +272,7 @@ export default function QuoteResultsCard({
           <div className="text-center">
             <button
               type="button"
+              aria-expanded={showDetails}
               onClick={() => dispatch?.({ type: 'TOGGLE_DETAILS' })}
               className="mt-3 text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-4 cursor-pointer transition"
             >
@@ -314,11 +280,43 @@ export default function QuoteResultsCard({
             </button>
           </div>
 
-          {showDetails && routeLegs.length > 0 && (
+          {showDetails && (
             <div className="bg-[#080c14] border border-slate-800 rounded-xl p-4 space-y-2.5 text-xs mb-5 shadow-inner text-left">
               <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
                 Route & {isMileageQuote ? 'Mileage' : 'Time'} Breakdown
               </h3>
+              <div className="space-y-2 border-b border-slate-800/60 pb-3 mb-3 text-xs">
+                {[
+                  { label: isMileageQuote ? 'Mileage Rate' : 'Hourly Rate', value: effectiveRate, input: state?.customRateInput, action: 'SET_CUSTOM_RATE', prefix: '$', suffix: isMileageQuote ? '/mi' : '/hr', min: 0.01, max: 100000, step: '0.01' },
+                  ...(!isMileageQuote ? [
+                    { label: 'Drive Time Buffer', value: timeMetrics.driveTimeBufferPercent, input: state?.customDriveTimeBufferPercent, action: 'SET_CUSTOM_DRIVE_BUFFER', suffix: '%', min: 0, max: 1000, step: '0.1' },
+                    { label: 'Load / Unload Time', value: timeMetrics.loadUnloadMinutes, input: state?.customLoadUnloadMins, action: 'SET_CUSTOM_LOAD_UNLOAD', suffix: 'mins', min: 0, max: 10080, step: '1' },
+                  ] : []),
+                ].map((field) => (
+                  <label key={field.action} className="flex items-center justify-between gap-3 text-slate-400">
+                    <span>{field.label}</span>
+                    <span className="flex h-8 w-32 shrink-0 items-center gap-1.5 rounded-lg border border-slate-700/40 bg-white/[0.025] px-2.5 text-slate-200 transition-colors hover:border-slate-600/70 focus-within:border-blue-400/60 focus-within:bg-blue-400/5">
+                      <span className="w-2 shrink-0 text-slate-500">{field.prefix}</span>
+                      <input
+                        aria-label={field.label}
+                        title="Edit for this quote only; clear to use the default"
+                        type="number" min={field.min} max={field.max} step={field.step}
+                        value={field.input === '' ? '' : field.input ?? field.value}
+                        placeholder={String(field.value)}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          if (value === '' || (Number(value) >= field.min && Number(value) <= field.max)) {
+                            dispatch?.({ type: field.action, payload: value });
+                          }
+                        }}
+                        className="min-w-0 w-full appearance-none bg-transparent text-right font-medium tabular-nums text-slate-200 placeholder:text-slate-200 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
+                      <span className="w-7 shrink-0 text-right text-[10px] text-slate-500">{field.suffix}</span>
+                    </span>
+                  </label>
+                ))}
+                <p className="text-[10px] text-slate-500">Edit values for this quote only.</p>
+              </div>
               {routeLegs.map((leg, index) => (
                 <div
                   key={`${leg.label}-${index}`}

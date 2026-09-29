@@ -10,21 +10,21 @@ it('updates the headline for each quote override and restores defaults when clea
     const [overrides, setOverrides] = useState({});
     const keys = { SET_CUSTOM_RATE: 'customRateInput', SET_CUSTOM_DRIVE_BUFFER: 'customDriveTimeBufferPercent', SET_CUSTOM_LOAD_UNLOAD: 'customLoadUnloadMins' };
     return <QuoteResultsCard isDispatcherView companyRates={rates}
-      state={{ quoteData, activeOverrides: {}, customerName: '', customerPhone: '', ...overrides }}
+      state={{ quoteData, showDetails: true, activeOverrides: {}, customerName: '', customerPhone: '', ...overrides }}
       dispatch={({ type, payload }) => setOverrides((current) => ({ ...current, [keys[type]]: payload }))} />;
   }
   render(<Harness />);
-  expect(screen.getByText('$160')).toBeInTheDocument();
+  expect(screen.getAllByText('$160').length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Hourly Rate'), { target: { value: '200' } });
-  expect(screen.getByText('$320')).toBeInTheDocument();
+  expect(screen.getAllByText('$320').length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Drive Time Buffer'), { target: { value: '50' } });
-  expect(screen.getByText('$400')).toBeInTheDocument();
+  expect(screen.getAllByText('$400').length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Load / Unload Time'), { target: { value: '60' } });
-  expect(screen.getByText('$500')).toBeInTheDocument();
+  expect(screen.getAllByText('$500').length).toBeGreaterThan(0);
   for (const label of ['Hourly Rate', 'Drive Time Buffer', 'Load / Unload Time']) {
     fireEvent.change(screen.getByLabelText(label), { target: { value: '' } });
   }
-  expect(screen.getByText('$160')).toBeInTheDocument();
+  expect(screen.getAllByText('$160').length).toBeGreaterThan(0);
   expect(rates.pricing.hourly_min).toBe(100);
   expect(quoteData.loadUnloadTime).toBe(30);
   expect(screen.queryByPlaceholderText(/Override hourly rate/)).not.toBeInTheDocument();
