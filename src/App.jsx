@@ -48,6 +48,7 @@ const initialState = {
   quoteNotes: '',
   customRateInput: '',
   customLoadUnloadMins: '',
+  customDriveTimeBufferPercent: '',
 };
 
 function appReducer(state, action) {
@@ -94,6 +95,11 @@ function appReducer(state, action) {
       return { ...state, ...action.payload };
     case 'SET_CUSTOM_RATE':
       return { ...state, customRateInput: action.payload };
+    case 'RESET_QUOTE_OVERRIDES':
+      if (state.restoreQuoteOverrides) return { ...state, restoreQuoteOverrides: false };
+      return { ...state, customRateInput: '', customLoadUnloadMins: '', customDriveTimeBufferPercent: '' };
+    case 'SET_CUSTOM_DRIVE_BUFFER':
+      return { ...state, customDriveTimeBufferPercent: action.payload };
     case 'SET_CUSTOM_LOAD_UNLOAD':
       return { ...state, customLoadUnloadMins: action.payload };
     case 'SET_PENDING_CUSTOM_SURCHARGES':
@@ -102,6 +108,10 @@ function appReducer(state, action) {
       return {
         ...state,
         activeTab: 'calculator',
+        restoreQuoteOverrides: true,
+        customRateInput: action.payload.quote_details?.pricingOverrides?.customRate ?? '',
+        customLoadUnloadMins: action.payload.quote_details?.pricingOverrides?.customLoadUnloadMins ?? '',
+        customDriveTimeBufferPercent: action.payload.quote_details?.pricingOverrides?.customDriveTimeBufferPercent ?? '',
         selectedBaseId: action.payload.base_yard_id || '',
         selectedTruckClassId: action.payload.truck_class || '',
         waypoints: Array.isArray(action.payload.all_waypoints) && action.payload.all_waypoints.length >= 2
@@ -337,6 +347,7 @@ export default function App() {
         companyRates,
       });
 
+      dispatch({ type: 'RESET_QUOTE_OVERRIDES' });
       setQuoteData({ ...data, appliedCustomSurcharges: state.pendingCustomSurcharges });
       dispatch({ type: 'SET_OVERRIDE', payload: { key: 'customSurcharges', value: { ...state.pendingCustomSurcharges } } });
 
@@ -401,6 +412,7 @@ export default function App() {
 
       const permitFee = Number(data.osow?.permitFee ?? permitInfo?.permitFee ?? 0);
 
+      dispatch({ type: 'RESET_QUOTE_OVERRIDES' });
       setQuoteData({
         ...data,
         permitFee,
@@ -451,6 +463,7 @@ export default function App() {
           activeOverrides: state.activeOverrides,
           customRate: state.customRateInput,
           customLoadUnloadMins: state.customLoadUnloadMins,
+          customDriveTimeBufferPercent: state.customDriveTimeBufferPercent,
           customerName: state.customerName,
           customerPhone: state.customerPhone,
           notes: state.quoteNotes,

@@ -3,6 +3,7 @@ import { selectHighestPriorityZones } from '../src/utils/geofencePriority.js';
 import {
   resolveBaseRates,
   calculateTimeMetrics,
+  applyQuoteTimeOverrides,
   calculateSurcharges,
   getFlatOverride,
   getMaxOverride,
@@ -175,7 +176,6 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const flatOverride = getFlatOverride(customMatches);
   const maxOverride = getMaxOverride(customMatches);
   const interval = toFinite(useWeightTierPricing ? tier?.rounding_interval ?? clientPricing.rounding_interval : pricing.rounding_interval, 25);
-  const pricingQuantity = standardPricingMode === 'mileage' ? totalMiles : rawTotalHours;
 
   // Calculate permit fee
   let permit = calculatePermitPure({
@@ -205,11 +205,12 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   }
 
   // Use shared final quote calculation
-  let effectivePricingQuantity = pricingQuantity;
-  if (role !== 'client' && input.customLoadUnloadMins != null) {
-    const customHours = Math.max(0, rawTotalHours + (toFinite(input.customLoadUnloadMins) - loadUnloadMinutes) / 60);
-    effectivePricingQuantity = standardPricingMode === 'mileage' ? totalMiles : customHours;
-  }
+  const timeMetrics = applyQuoteTimeOverrides({
+    rawTotalHours, loadUnloadMinutes, driveTimeBufferPercent,
+    customLoadUnloadMins: role !== 'client' ? input.customLoadUnloadMins : null,
+    customDriveTimeBufferPercent: role !== 'client' ? input.customDriveTimeBufferPercent : null,
+  });
+  const effectivePricingQuantity = standardPricingMode === 'mileage' ? totalMiles : timeMetrics.rawTotalHours;
 
   const quoteResult = calculateFinalQuotesPure({
     pricingQuantity: effectivePricingQuantity,
@@ -227,8 +228,8 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
 
   return {
     totalMiles,
-    totalHours: Number(rawTotalHours.toFixed(2)),
-    driveTimeBufferPercent,
+    totalHours: Number(timeMetrics.rawTotalHours.toFixed(2)),
+    driveTimeBufferPercent: timeMetrics.driveTimeBufferPercent,
     pricingMode: useWeightTierPricing ? 'equipment-weight-tier' : standardPricingMode,
     minQuote: quoteResult.minQuote,
     maxQuote: quoteResult.maxQuote,
@@ -240,6 +241,6 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
     appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(role !== 'client' && metroMatches.length && overrides.metro !== false), hazard: Boolean(role !== 'client' && hazardMatches.length && overrides.hazard !== false), customZone: Boolean(customMatches.length) },
     routeLegs: route.legs,
-    quoteDetails: { ...(input.equipment || {}), osow, driveTimeBufferPercent, permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
+    quoteDetails: { ...(input.equipment || {}), osow, driveTimeBufferPercent: timeMetrics.driveTimeBufferPercent, loadUnloadMinutes: timeMetrics.loadUnloadMinutes, permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
   };
 }

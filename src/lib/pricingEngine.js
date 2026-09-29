@@ -179,6 +179,17 @@ export function getMaxOverride(customMatches = []) {
  * @param {Object} options
  * @returns {Object} { minQuote, maxQuote, customQuote }
  */
+export function applyQuoteTimeOverrides({ rawTotalHours = 0, loadUnloadMinutes = 0, driveTimeBufferPercent = 0, customLoadUnloadMins, customDriveTimeBufferPercent }) {
+  const override = (value, fallback, maximum) => value == null || value === '' || !Number.isFinite(Number(value))
+    ? fallback : Math.min(maximum, Math.max(0, Number(value)));
+  const buffer = override(customDriveTimeBufferPercent, driveTimeBufferPercent, 1000);
+  const load = override(customLoadUnloadMins, loadUnloadMinutes, 10080);
+  const originalDrive = Math.max(0, rawTotalHours * 60 - loadUnloadMinutes);
+  const adjustedDriveMinutes = buffer === driveTimeBufferPercent ? originalDrive
+    : originalDrive / (1 + driveTimeBufferPercent / 100 || 1) * (1 + buffer / 100);
+  return { rawTotalHours: (adjustedDriveMinutes + load) / 60, adjustedDriveMinutes, loadUnloadMinutes: load, driveTimeBufferPercent: buffer };
+}
+
 export function calculateFinalQuotes({
   pricingQuantity = 0, // hours or miles
   minRate = 125,

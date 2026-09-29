@@ -7,6 +7,7 @@ import {
   roundToNearest,
   resolveBaseRates,
   calculateTimeMetrics,
+  applyQuoteTimeOverrides,
   calculateSurcharges,
   getFlatOverride,
   getMaxOverride,
@@ -292,7 +293,7 @@ export async function calculateQuoteData({
  * Calculates effective multiplier and final min/max/custom pricing.
  * Uses shared pricingEngine to ensure parity with server calculations.
  */
-export function calculateFinalQuotes(quoteData, activeOverrides, customRate, companyRates = {}, customLoadUnloadMins = null, allowEquipmentRouteSurcharges = false) {
+export function calculateFinalQuotes(quoteData, activeOverrides, customRate, companyRates = {}, customLoadUnloadMins = null, allowEquipmentRouteSurcharges = false, customDriveTimeBufferPercent = null) {
   if (!quoteData) {
     return { currentMinQuote: 0, currentMaxQuote: 0, customCalculatedQuote: null, effectiveMultiplier: 1.0 };
   }
@@ -327,16 +328,14 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
   const flatOverride = getFlatOverride(quoteData.customMatches || []);
   const maxOverride = getMaxOverride(quoteData.customMatches || []);
 
-  // Determine pricing quantity
-  const pricingQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : quoteData.rawTotalHours;
-
-  // A dispatcher-entered load/unload time replaces the configured on-site time
-  // for hourly pricing. Mileage pricing remains based on routed miles.
-  let effectivePricingQuantity = pricingQuantity;
-  if (customLoadUnloadMins !== null && customLoadUnloadMins !== '') {
-    const customHours = Math.max(0, quoteData.rawTotalHours + (Number(customLoadUnloadMins) - Number(quoteData.loadUnloadTime || 0)) / 60);
-    effectivePricingQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : customHours;
-  }
+  const timeMetrics = applyQuoteTimeOverrides({
+    rawTotalHours: quoteData.rawTotalHours,
+    loadUnloadMinutes: Number(quoteData.loadUnloadTime || 0),
+    driveTimeBufferPercent: Number(quoteData.driveTimeBufferPercent ?? pricing.drive_time_buffer ?? 10),
+    customLoadUnloadMins,
+    customDriveTimeBufferPercent,
+  });
+  const effectivePricingQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : timeMetrics.rawTotalHours;
 
   // Use shared final quote calculation
   const result = calculateFinalQuotesPure({
@@ -358,5 +357,8 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     currentMaxQuote: result.maxQuote,
     customCalculatedQuote: result.customQuote,
     effectiveMultiplier: multiplier,
+    timeMetrics,
+    effectiveRate: Number(customRate) > 0 ? Number(customRate) : minRate,
+    effectiveBaseQuote: Math.round(effectivePricingQuantity * (Number(customRate) > 0 ? Number(customRate) : minRate)),
   };
 }

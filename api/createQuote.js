@@ -24,6 +24,7 @@ export function normalizeQuoteInput(body, profile) {
     activeOverrides: client ? {} : (body.activeOverrides && typeof body.activeOverrides === 'object' ? body.activeOverrides : {}),
     customRate: client ? null : number(body.customRate, 100000),
     customLoadUnloadMins: client ? null : (body.customLoadUnloadMins == null || body.customLoadUnloadMins === '' ? null : number(body.customLoadUnloadMins, 10080)),
+    customDriveTimeBufferPercent: client ? null : (body.customDriveTimeBufferPercent == null || body.customDriveTimeBufferPercent === '' ? null : number(body.customDriveTimeBufferPercent, 1000)),
     customerName: text(body.customerName, 160),
     customerPhone: text(body.customerPhone, 60),
     notes: text(body.notes, 2000),
@@ -91,7 +92,7 @@ export default async function handler(req, res) {
       status: calculated.approvalRequired ? 'approval_required' : 'submitted',
       notes: input.notes,
       applied_surcharges: calculated.appliedSurcharges,
-      quote_details: { ...calculated.quoteDetails, approvalRequired: calculated.approvalRequired, metroCodes: calculated.metroCodes, routeLegs: calculated.routeLegs },
+      quote_details: { ...calculated.quoteDetails, pricingOverrides: { customRate: input.customRate > 0 ? input.customRate : null, customLoadUnloadMins: input.customLoadUnloadMins, customDriveTimeBufferPercent: input.customDriveTimeBufferPercent }, approvalRequired: calculated.approvalRequired, metroCodes: calculated.metroCodes, routeLegs: calculated.routeLegs },
     };
     const { data: quote, error: insertError } = await admin.from('quote_logs').insert(payload).select('*').single();
     if (insertError) throw insertError;

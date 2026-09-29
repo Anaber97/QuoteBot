@@ -87,7 +87,7 @@ test('sign in -> calculate & save -> reopen -> change status (end-to-end)', asyn
   const { default: createQuoteHandler } = await freshImport('../api/createQuote.js');
   const { req: createReq, res: createRes } = createMockReqRes({
     method: 'POST',
-    body: { baseId: 'base-1', waypoints: ['100 Main St, Springfield', '200 Oak Ave, Springfield'], selectedTruckClassId: 'light' },
+    body: { baseId: 'base-1', waypoints: ['100 Main St, Springfield', '200 Oak Ave, Springfield'], selectedTruckClassId: 'light', customRate: 200, customLoadUnloadMins: 60, customDriveTimeBufferPercent: 50 },
   });
   await createQuoteHandler(createReq, createRes);
   assert.equal(createRes.statusCode, 201, JSON.stringify(createRes.body));
@@ -102,6 +102,11 @@ test('sign in -> calculate & save -> reopen -> change status (end-to-end)', asyn
   assert.equal(reopenError, null);
   assert.equal(reopened.id, savedQuote.id);
   assert.equal(reopened.status, 'submitted');
+  assert.deepEqual(reopened.quote_details.pricingOverrides, {
+    customRate: 200, customLoadUnloadMins: 60, customDriveTimeBufferPercent: 50,
+  });
+  assert.ok(Math.abs(reopened.total_hours - 2.125) <= 0.006);
+  assert.equal(reopened.custom_quote, 425);
 
   // ----- Step 4: change status (submitted -> approved is a legal transition) -----
   const { default: updateStatusHandler } = await freshImport('../api/updateQuoteStatus.js');

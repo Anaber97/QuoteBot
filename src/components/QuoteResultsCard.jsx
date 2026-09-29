@@ -70,13 +70,14 @@ export default function QuoteResultsCard({
 
   if (!quoteData) return null;
 
-  const { currentMinQuote, customCalculatedQuote } = calculateFinalQuotes(
+  const { currentMinQuote, customCalculatedQuote, timeMetrics, effectiveRate, effectiveBaseQuote } = calculateFinalQuotes(
     quoteData,
     activeOverrides,
     state?.customRateInput ?? state?.customRate ?? 0,
     companyRates,
     state?.customLoadUnloadMins ?? null,
-    isDispatcherView
+    isDispatcherView,
+    state?.customDriveTimeBufferPercent ?? null
   );
   const permitFee = Number(quoteData?.equipmentMeta?.permitFee || quoteData?.permitFee || 0);
   const osow = quoteData?.osow || quoteData?.equipmentMeta?.osow;
@@ -89,7 +90,7 @@ export default function QuoteResultsCard({
     : permitFee;
   const osowFlagSummary = shouldShowOsowEstimate ? summarizeHighestOsowFlag(osow?.states) : null;
   const attachmentWeight = Number(quoteData?.equipmentMeta?.attachmentWeight || 0);
-  const effectiveMinQuote = currentMinQuote + (osow ? 0 : permitFee);
+  const effectiveMinQuote = (isDispatcherView ? customCalculatedQuote ?? currentMinQuote : currentMinQuote) + (osow ? 0 : permitFee);
   const clientPrice = effectiveMinQuote;
   const isFixedEquipmentQuote = quoteData?.pricingMode === 'equipment-weight-tier';
   const isMileageQuote = (quoteData?.pricingRateMode || quoteData?.pricingMode) === 'mileage';
@@ -208,7 +209,7 @@ export default function QuoteResultsCard({
         <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>
         {isDispatcherView && isFixedEquipmentQuote && (
           <div className="text-[11px] text-slate-400">
-            {quoteData.weightTierLabel || 'Equipment weight class'} · ${Number(quoteData.fixedRate ?? quoteData.fixedHourlyRate).toFixed(quoteData.pricingRateMode === 'mileage' ? 2 : 0)}/{quoteData.pricingRateMode === 'mileage' ? 'mi' : 'hr'}
+            {quoteData.weightTierLabel || 'Equipment weight class'} · ${Number(effectiveRate).toFixed(quoteData.pricingRateMode === 'mileage' ? 2 : 0)}/{quoteData.pricingRateMode === 'mileage' ? 'mi' : 'hr'}
           </div>
         )}
         {isDispatcherView && permitSurcharge > 0 && (
@@ -225,6 +226,41 @@ export default function QuoteResultsCard({
           </div>
         )}
       </div>
+
+      {isDispatcherView && (
+        <div className="space-y-2 border-y border-slate-800/60 py-3 text-xs">
+          {[
+            { label: isMileageQuote ? 'Mileage Rate' : 'Hourly Rate', value: effectiveRate, input: state?.customRateInput, action: 'SET_CUSTOM_RATE', prefix: '$', suffix: isMileageQuote ? '/mi' : '/hr', min: 0.01, max: 100000, step: '0.01' },
+            ...(!isMileageQuote ? [
+              { label: 'Drive Time Buffer', value: timeMetrics.driveTimeBufferPercent, input: state?.customDriveTimeBufferPercent, action: 'SET_CUSTOM_DRIVE_BUFFER', suffix: '%', min: 0, max: 1000, step: '0.1' },
+              { label: 'Load / Unload Time', value: timeMetrics.loadUnloadMinutes, input: state?.customLoadUnloadMins, action: 'SET_CUSTOM_LOAD_UNLOAD', suffix: 'mins', min: 0, max: 10080, step: '1' },
+            ] : []),
+          ].map((field) => (
+            <label key={field.action} className="flex items-center justify-between gap-3 text-slate-400">
+              <span>{field.label}</span>
+              <span className="flex items-center gap-1 rounded-md border border-slate-700/60 bg-slate-900/30 px-2 py-1 text-slate-200 focus-within:border-blue-400/70">
+                {field.prefix}
+                <input
+                  aria-label={field.label}
+                  title="Edit for this quote only; clear to use the default"
+                  type="number" min={field.min} max={field.max} step={field.step}
+                  value={field.input === '' ? '' : field.input ?? field.value}
+                  placeholder={String(field.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === '' || (Number(value) >= field.min && Number(value) <= field.max)) {
+                      dispatch?.({ type: field.action, payload: value });
+                    }
+                  }}
+                  className="w-20 bg-transparent text-right font-semibold text-white placeholder:text-slate-200 focus:outline-none"
+                />
+                <span className="text-slate-500">{field.suffix}</span>
+              </span>
+            </label>
+          ))}
+          <p className="text-[10px] text-slate-500">Edit values for this quote only.</p>
+        </div>
+      )}
 
       {!isDispatcherView && (
         <p role="note" className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-[11px] leading-5 text-slate-300">
@@ -294,13 +330,13 @@ export default function QuoteResultsCard({
               ))}
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                 <span>
-                  Adjusted Drive Time (+{Number(quoteData.driveTimeBufferPercent ?? companyRates?.pricing?.drive_time_buffer ?? 10)}%)
+                  Adjusted Drive Time (+{timeMetrics.driveTimeBufferPercent}%)
                 </span>
-                <span className="font-semibold text-slate-200">{Math.round(Number(quoteData?.adjustedDriveMin || 0))} mins</span>
+                <span className="font-semibold text-slate-200">{Math.round(timeMetrics.adjustedDriveMinutes)} mins</span>
               </div>
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                 <span>Load / Unload Time</span>
-                <span className="font-semibold text-slate-200">{Math.round(Number(quoteData?.loadUnloadTime || 0))} mins</span>
+                <span className="font-semibold text-slate-200">{Math.round(timeMetrics.loadUnloadMinutes)} mins</span>
               </div>
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                 <span>Municipality Code(s)</span>
@@ -333,7 +369,7 @@ export default function QuoteResultsCard({
               <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                 <span>{isFixedEquipmentQuote ? 'Base Equipment Price' : 'Base Price (No Surcharges)'}</span>
                 <span className="font-semibold text-emerald-400">
-                  ${quoteData.baseMinQuote}
+                  ${effectiveBaseQuote}
                 </span>
               </div>
               {permitSurcharge > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
@@ -350,7 +386,7 @@ export default function QuoteResultsCard({
               </div>}
               <div className="flex justify-between items-center pt-1 text-sm font-bold text-white">
                 <span>{isMileageQuote ? 'Total Billable Miles' : 'Total Billable Hours'}</span>
-                <span className="text-blue-400">{isMileageQuote ? `${Number(quoteData.totalMiles || 0).toFixed(1)} mi` : `${quoteData.totalHours} hrs`}</span>
+                <span className="text-blue-400">{isMileageQuote ? `${Number(quoteData.totalMiles || 0).toFixed(1)} mi` : `${Number(timeMetrics.rawTotalHours.toFixed(2))} hrs`}</span>
               </div>
             </div>
           )}
@@ -369,33 +405,6 @@ export default function QuoteResultsCard({
             allowFullScreen
             src={mapEmbedUrl}
           />
-        </div>
-      )}
-
-      {/* 3. Dispatcher-only controls */}
-      {isDispatcherView && (
-        <div className="space-y-2">
-          <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              Custom {isMileageQuote ? 'Mileage' : 'Hourly'} Rate ({isMileageQuote ? '$/mi' : '$/hr'})
-            </label>
-            <input
-              type="number"
-              placeholder={`Override ${isMileageQuote ? 'mileage' : 'hourly'} rate...`}
-              value={state?.customRateInput ?? ''}
-              onChange={(e) => dispatch?.({ type: 'SET_CUSTOM_RATE', payload: e.target.value })}
-              className="w-full rounded-xl border border-slate-800 bg-[#080c14] px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-          {!isMileageQuote && <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">Custom Load / Unload Time (mins)</label>
-            <input type="number" placeholder="Use class default" value={state?.customLoadUnloadMins ?? ''} onChange={(e) => dispatch?.({ type: 'SET_CUSTOM_LOAD_UNLOAD', payload: e.target.value })} className="w-full rounded-xl border border-slate-800 bg-[#080c14] px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          </div>}
-          {customCalculatedQuote !== null && customCalculatedQuote !== undefined && (
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold text-emerald-300">
-              Custom rate estimate: ${customCalculatedQuote}
-            </div>
-          )}
         </div>
       )}
 

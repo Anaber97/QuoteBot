@@ -108,7 +108,7 @@ describe('legal surfaces', () => {
       }}
     />);
 
-    expect(screen.getByText('Custom rate estimate: $300')).toBeInTheDocument();
+    expect(screen.getByText('$300')).toBeInTheDocument();
   });
 
   it('applies custom load and unload time to the displayed hourly quote', () => {
