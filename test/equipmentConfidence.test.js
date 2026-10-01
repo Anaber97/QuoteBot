@@ -38,11 +38,13 @@ test('can combine partial manufacturer evidence for the same configuration', () 
  const [r]=normalize([source({width_in:null,height_in:null}),source({url:'https://cat.com/manual',operating_weight_lbs:null})]);
  assert.equal(r.confidence,'HIGH');assert.equal(r.width_in,102);
 });
-test('database legacy Verified status alone is LOW; sources are re-evaluated', () => {
+test('existing shared database records are trusted HIGH; available sources are re-evaluated', () => {
  const base={make:'CAT',model:'320D',operating_weight_lbs:45000,width_in:102,height_in:138,verification_status:'Verified'};
- assert.equal(normalizeStoredResults([base],'CAT 320D')[0].confidence,'LOW');
+ assert.equal(normalizeStoredResults([base],'CAT 320D')[0].confidence,'HIGH');
+ assert.equal(normalizeStoredResults([base],'CAT 320D')[0].requires_confirmation,false);
  assert.equal(normalizeStoredResults([{...base,sources:[source()]}],'CAT 320D')[0].confidence,'HIGH');
- assert.equal(normalizeStoredResults([{...base,sources:[source({model:'330D'})]}],'CAT 320D')[0].confidence,'LOW');
+ assert.equal(normalizeStoredResults([{...base,sources:[source({model:'330D'})]}],'CAT 320D')[0].confidence,'HIGH');
+ assert.equal(normalizeStoredResults([{...base,sources:[source({url:'https://dealer.com/spec'})]}],'CAT 320D')[0].confidence,'LOW');
 });
 test('normalizes aliases and compact model identifiers', () => {
  assert.equal(deFuzzEquipmentQuery('2021 CAT320'),'caterpillar 320');

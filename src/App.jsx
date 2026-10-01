@@ -408,7 +408,7 @@ export default function App() {
                     )}
 
                     {showEquipmentCalculator ? (
-                      <Suspense fallback={<LoadingPanel />}><ClientQuoteForm companyRates={companyRates} onCalculate={handleClientCalculateQuote} isCalculating={loading} title="Equipment Calculator" onReset={resetCalculatorState} initialQuote={openedLoggedQuote} /></Suspense>
+                      <Suspense fallback={<LoadingPanel />}><ClientQuoteForm companyRates={companyRates} onCalculate={handleClientCalculateQuote} isCalculating={loading} title="Equipment Calculator" isDispatcherView onReset={resetCalculatorState} initialQuote={openedLoggedQuote} /></Suspense>
                     ) : <form onSubmit={handleCalculate} className="space-y-5">
                       {/* Base Shop Selector */}
                       <div>

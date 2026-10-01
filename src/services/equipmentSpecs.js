@@ -1,6 +1,21 @@
 // src/services/equipmentSpecs.js
 import { authenticatedFetch } from '../lib/api';
 
+export function googleSpecsUrl(make, model, query = '') {
+  const identity = [make, model].filter((value) => value?.trim()).join(' ').trim() || query.trim();
+  return identity ? `https://www.google.com/search?q=${encodeURIComponent(`${identity} operating weight lbs transport width and height in inches`)}` : '';
+}
+
+export async function saveEquipmentSpecs(equipment) {
+  const response = await authenticatedFetch('/api/saveEquipment', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(equipment), signal: AbortSignal.timeout(15000),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'Could not save equipment. Please try again.');
+  return payload;
+}
+
 // Standard legal limits for non-permitted flatbed/stepdeck transport
 export const LEGAL_LIMITS = {
   MAX_WEIGHT_LBS: 45000,

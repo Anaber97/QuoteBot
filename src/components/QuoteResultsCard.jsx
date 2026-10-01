@@ -161,10 +161,10 @@ export default function QuoteResultsCard({
             +${permitSurcharge.toFixed(2)}
           </div>
         )}
-        {!osow && Number(escort.vehicleCount) > 0 && <div className="inline-block rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-bold text-cyan-300">
+        {isDispatcherView && !osow && Number(escort.vehicleCount) > 0 && <div className="inline-block rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-bold text-cyan-300">
           {escort.vehicleCount} escort vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}: +${Number(escort.surcharge || 0).toFixed(2)}
         </div>}
-        {attachmentWeight > 0 && (
+        {isDispatcherView && attachmentWeight > 0 && (
           <div className="inline-block bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-bold text-xs px-2.5 py-0.5 rounded-full mt-1">
             Attachment weight included: {attachmentWeight.toLocaleString()} lbs
           </div>

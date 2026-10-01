@@ -1,12 +1,12 @@
 // src/components/ClientQuoteForm.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, ShieldAlert, Truck, MapPin } from 'lucide-react';
-import { searchEquipmentSpecs, calculatePermitRequirements } from '../services/equipmentSpecs';
+import { searchEquipmentSpecs, saveEquipmentSpecs, googleSpecsUrl, calculatePermitRequirements } from '../services/equipmentSpecs';
 import { loadGoogleMaps } from '../lib/googleMaps';
 import CoBranding from './CoBranding';
 import Dialog from './Dialog';
 
-export default function ClientQuoteForm({ companyRates, onCalculate, isCalculating, title = 'Client Self-Service Quote Portal', onReset, initialQuote = null, client = null }) {
+export default function ClientQuoteForm({ companyRates, onCalculate, isCalculating, title = 'Client Self-Service Quote Portal', onReset, initialQuote = null, client = null, isDispatcherView = false }) {
   const verificationStyles = {
     HIGH: 'bg-emerald-500',
     MEDIUM: 'bg-blue-400',
@@ -19,6 +19,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const [searchStatus, setSearchStatus] = useState('');
   const [selectedEquipmentName, setSelectedEquipmentName] = useState('');
   const [selectedEquipment, setSelectedEquipment] = useState(null);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [isSavingEquipment, setIsSavingEquipment] = useState(false);
+  const [equipmentSaveStatus, setEquipmentSaveStatus] = useState('');
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
@@ -65,6 +68,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     }
 
     const requestId = ++activeSearchRef.current;
+    setSearchFailed(false);
     setSearchResults([]);
     setIsSearching(true);
     setSearchStatus('Searching...');
@@ -77,6 +81,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     clearTimeout(slowLookupNotice);
     if (activeSearchRef.current !== requestId) return;
     setSearchResults(results);
+    setSearchFailed(Boolean(error) || results.length === 0);
     setSearchStatus(
       error
         ? `Search issue: ${error} You can enter operating weight, width, and height below to continue.`
@@ -158,7 +163,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     setSearchQuery(fullName);
     setMake(item.make || '');
     setModel(item.model || '');
-    setSerialNumber('');
+    setSerialNumber(item.source === 'my equipment' ? item.serial_number || '' : '');
     setWeight(useSpecs ? item.operating_weight_lbs || '' : '');
     setWidth(useSpecs ? item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : '') || '' : '');
     setHeight(useSpecs ? item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : '') || '' : '');
@@ -172,6 +177,19 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     }
     applyEquipmentSelection(item, true);
   };
+
+  const handleSaveEquipment = async () => {
+    setIsSavingEquipment(true); setEquipmentSaveStatus('');
+    try {
+      const result = await saveEquipmentSpecs({ make, model, serial_number: serialNumber,
+        operating_weight_lbs: Number(weight), width_in: Number(width), height_in: Number(height) });
+      setEquipmentSaveStatus(`Saved to your ${result.scope === 'client' ? 'client account' : 'company'} equipment. Search by make, model, or serial number to reuse it.`);
+    } catch (error) {
+      setEquipmentSaveStatus(error.message || 'Could not save equipment. Please try again.');
+    } finally { setIsSavingEquipment(false); }
+  };
+  const googleLookupUrl = googleSpecsUrl(make, model, searchQuery);
+  const canSaveEquipment = Boolean(make.trim() && model.trim() && [weight, width, height].every((value) => Number.isFinite(Number(value)) && Number(value) > 0));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -205,6 +223,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     setIsSearching(false); setSearchStatus('');
     setSearchQuery(''); setSearchResults([]); setSelectedEquipmentName(''); setMake(''); setModel(''); setSerialNumber('');
     setSelectedEquipment(null);
+    setSearchFailed(false); setEquipmentSaveStatus('');
     setWeight(''); setWidth(''); setHeight(''); setPickupAddr(''); setDropoffAddr(''); setWaypoints([]); setAttachmentType(''); setAttachmentWeight(''); setPermitInfo(null);
     setPendingUnverifiedEquipment(null);
     onReset?.();
@@ -264,6 +283,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
                 setSearchQuery(e.target.value);
                 setSelectedEquipmentName('');
                 setSelectedEquipment(null);
+                setSearchFailed(false); setEquipmentSaveStatus('');
                 setMake('');
                 setModel('');
                 setSerialNumber('');
@@ -322,6 +342,10 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               {searchStatus}
             </p>
           )}
+          {searchFailed && googleLookupUrl && <a href={googleLookupUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex mt-2 rounded-lg border border-slate-600 px-3 py-2 text-xs text-blue-300 hover:bg-blue-600/20">
+            Look up specs on Google ↗
+          </a>}
           {(searchResults[0]?.search_suggestions || selectedEquipment?.search_suggestions) && (
             <iframe title="Google Search suggestions" sandbox="allow-popups allow-popups-to-escape-sandbox" className="mt-2 w-full h-24 border-0" srcDoc={searchResults[0]?.search_suggestions || selectedEquipment?.search_suggestions} />
           )}
@@ -410,6 +434,15 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         </div>
 
         {/* Attachments */}
+        <div className="space-y-2">
+          <button type="button" onClick={handleSaveEquipment} disabled={!canSaveEquipment || isSavingEquipment}
+            className="rounded-lg border border-blue-500/30 bg-blue-600/20 px-3 py-2 text-xs font-semibold text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed">
+            {isSavingEquipment ? 'Saving equipment…' : 'Save to my equipment'}
+          </button>
+          <p className="text-[11px] text-slate-400">Saves these specs privately to your client account or company. Manually entered specs remain LOW confidence.</p>
+          {equipmentSaveStatus && <p role="status" className="text-xs text-slate-300">{equipmentSaveStatus}</p>}
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] text-slate-400 mb-1">Attachment Type</label>
@@ -474,7 +507,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         </div>
 
         {/* Real-time Permit & Interstate Flags Banner */}
-        {permitInfo?.needsPermit && permitInfo.flags.length > 0 && (
+        {isDispatcherView && permitInfo?.needsPermit && permitInfo.flags.length > 0 && (
           <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
             <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
               <ShieldAlert className="w-4 h-4" /> Transport Permit Requirements Detected

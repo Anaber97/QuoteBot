@@ -1,6 +1,7 @@
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
 import { reportOperationalError } from './_monitoring.js';
 import { getServerEnv } from './_env.js';
+import { equipmentScope, scopeEquipmentQuery, normalizeSavedEquipment, SAVED_EQUIPMENT_COLUMNS } from './_savedEquipment.js';
 
 export const config = { maxDuration: 60 };
 
@@ -441,12 +442,19 @@ export default async function handler(req, res) {
     if (rawQuery.length < 2 || rawQuery.length > 80) return res.status(400).json({ error: 'Search must be 2 to 80 characters.' });
     const query = rawQuery.replace(/[,%()]/g, ' ').replace(/\s+/g, ' ').trim();
     const { admin, profile } = await requireUser(req);
-    if (!profile.company_id) return res.status(403).json({ error: 'A company profile is required.' });
+    const scope = equipmentScope(profile);
     await enforceRateLimit(admin, `equipment-search:${profile.id}`, { limit: 120, windowMs: 60 * 60 * 1000 });
-    const cacheKey = `${profile.company_id}:${query.toLowerCase()}`;
+    const cacheKey = `${profile.company_id}:${scope.client_id || 'company'}:${query.toLowerCase()}`;
     const cached = responseCache.get(cacheKey);
 
     // 1) Supabase first. Cache hits and DB hits never touch the web-research quotas below.
+    let privateQuery = scopeEquipmentQuery(admin.from('saved_equipment').select(SAVED_EQUIPMENT_COLUMNS), scope);
+    for (const group of searchTokenGroups(query)) {
+      privateQuery = privateQuery.or(group.flatMap((token) => [`make.ilike.%${token}%`, `model.ilike.%${token}%`, `serial_number.ilike.%${token}%`]).join(','));
+    }
+    const { data: personal, error: personalError } = await privateQuery.limit(25);
+    if (personalError) void reportOperationalError(personalError, { event: 'saved_equipment_lookup_failure', route: '/api/searchEquipment' });
+    const personalResults = !personalError ? (personal || []).filter((item) => hasCompleteSpecs(item) && matchesEquipmentSearch(item, query)).map(normalizeSavedEquipment).slice(0, 5) : [];
     let dbQuery = admin.from('equipment_specs').select('*').or(`company_id.is.null,company_id.eq.${profile.company_id}`);
     for (const group of searchTokenGroups(query)) {
       const predicates = group.flatMap((token) => [`make.ilike.%${token}%`, `model.ilike.%${token}%`, `serial_number.ilike.%${token}%`]);
@@ -455,9 +463,8 @@ export default async function handler(req, res) {
     const { data: stored, error: storedError } = await dbQuery.limit(25);
     if (storedError) void reportOperationalError(storedError, { event: 'db_failure', route: '/api/searchEquipment' });
     const storedResults = !storedError ? normalizeStoredResults(stored, query) : [];
-    if (storedResults.length) {
-      const payload = { results: storedResults, source: 'database', error: '' };
-      cacheResponse(cacheKey, payload);
+    if (storedResults.length || personalResults.length) {
+      const payload = { results: [...personalResults, ...storedResults], source: personalResults.length ? 'my equipment' : 'database', error: '' };
       return res.status(200).json(payload);
     }
     if (cached?.expiresAt > Date.now()) return res.status(200).json(cached.payload);
