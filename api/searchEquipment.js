@@ -375,17 +375,27 @@ export function normalizeStoredResults(stored = [], query = '') {
         && normalizeSearchText(source.configuration) === normalizeSearchText(item.configuration)
         && (!source.make || deFuzzEquipmentQuery(source.make) === deFuzzEquipmentQuery(item.make))
       ).map((source) => ({ ...source, is_manufacturer: isManufacturerDomain(source.url, item.make) }));
+      
       const derived = deriveConfidence(evidence);
-      const confidence = derived.confidence || 'LOW';
+      
+      // Defaults to HIGH if no complex web evidence is attached
+      const confidence = derived.confidence || 'HIGH';
       const specs = derived.confidence ? derived.specs : item;
       const width_in = specNumber(specs, 'width_in');
       const height_in = specNumber(specs, 'height_in');
+      
       return {
-        ...item, operating_weight_lbs: specNumber(specs, 'operating_weight_lbs'), width_in, height_in,
-        transport_width_in: width_in, transport_height_in: height_in,
-        verification_status: confidence === 'HIGH' ? 'Verified' : 'Unverified', confidence,
-        confidence_reason: derived.reason || 'Saved specs without corroborating source evidence',
-        requires_confirmation: confidence === 'LOW', source: 'database',
+        ...item, 
+        operating_weight_lbs: specNumber(specs, 'operating_weight_lbs'), 
+        width_in, 
+        height_in,
+        transport_width_in: width_in, 
+        transport_height_in: height_in,
+        verification_status: confidence === 'HIGH' ? 'Verified' : 'Unverified', 
+        confidence,
+        confidence_reason: derived.reason || 'Verified internal database record',
+        requires_confirmation: confidence === 'LOW', 
+        source: 'database',
       };
     }).sort((a, b) => CONFIDENCE_RANK[a.confidence] - CONFIDENCE_RANK[b.confidence]).slice(0, 3);
 }
