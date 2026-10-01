@@ -74,9 +74,9 @@ test('inviteUser succeeds for a manager inviting a dispatcher in their own compa
   assert.equal(res.body.success, true);
 });
 
-// ===== getAppConfig.js: tenant isolation =====
+// ===== appConfig.js GET: tenant isolation =====
 
-test('getAppConfig rejects fetching another company\'s configuration', async (t) => {
+test('appConfig GET rejects fetching another company\'s configuration', async (t) => {
   t.mock.module('../api/_security.js', mockSecurityModule({
     requireUser: async () => {
       const error = new Error('You do not have access to this company.');
@@ -84,13 +84,13 @@ test('getAppConfig rejects fetching another company\'s configuration', async (t)
       throw error;
     },
   }));
-  const { default: handler } = await freshImport('../api/getAppConfig.js');
+  const { default: handler } = await freshImport('../api/appConfig.js');
   const { req, res } = createMockReqRes({ method: 'GET', query: { company_id: 'company-b' } });
   await handler(req, res);
   assert.equal(res.statusCode, 403);
 });
 
-test('getAppConfig returns merged config for an authorized caller', async (t) => {
+test('appConfig GET returns merged config for an authorized caller', async (t) => {
   t.mock.module('../api/_security.js', mockSecurityModule({
     requireUser: async () => ({
       admin: createFakeAdmin({
@@ -101,7 +101,7 @@ test('getAppConfig returns merged config for an authorized caller', async (t) =>
       profile: { id: 'u1', role: 'manager', company_id: 'company-a' },
     }),
   }));
-  const { default: handler } = await freshImport('../api/getAppConfig.js');
+  const { default: handler } = await freshImport('../api/appConfig.js');
   const { req, res } = createMockReqRes({ method: 'GET', query: { company_id: 'company-a' } });
   await handler(req, res);
   assert.equal(res.statusCode, 200);
@@ -109,9 +109,9 @@ test('getAppConfig returns merged config for an authorized caller', async (t) =>
   assert.equal(res.body.config.pricing.hourly_max, 150);
 });
 
-// ===== saveAppConfig.js: manager-only enforcement at the handler level =====
+// ===== appConfig.js POST: manager-only enforcement at the handler level =====
 
-test('saveAppConfig rejects a non-manager even with a perfectly valid config body', async (t) => {
+test('appConfig POST rejects a non-manager even with a perfectly valid config body', async (t) => {
   t.mock.module('../api/_security.js', mockSecurityModule({
     requireUser: async () => {
       const error = new Error('Manager access required.');
@@ -119,7 +119,7 @@ test('saveAppConfig rejects a non-manager even with a perfectly valid config bod
       throw error;
     },
   }));
-  const { default: handler } = await freshImport('../api/saveAppConfig.js');
+  const { default: handler } = await freshImport('../api/appConfig.js');
   const { req, res } = createMockReqRes({
     method: 'POST',
     body: { company_id: 'company-a', config: { pricing: { hourly_min: 100, hourly_max: 150 } } },

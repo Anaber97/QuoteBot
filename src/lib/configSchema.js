@@ -8,7 +8,7 @@ import { readStoredConfig } from '../../shared/config/storage.js';
  * This eliminates duplication and prevents configuration drift across:
  * - Settings.jsx (browser settings UI)
  * - App.jsx (state management)
- * - saveAppConfig.js (server persistence)
+ * - appConfig.js (server persistence)
  * - quoteCalculator.js (browser pricing)
  * - _quoteEngine.js (server pricing)
  */

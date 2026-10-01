@@ -40,7 +40,7 @@ Done when: a disposable database can be built from the repository, expected sche
 
 ### 2. Decide exactly what client accounts may read — high review priority
 
-Live `profiles_select_company` and `app_config_select_company` policies allow reads by company membership, without a client-specific restriction. `api/getAppConfig.js` also returns the full company configuration to any company member. These paths permit client users to read company-wide profile/configuration information, beyond merely hiding controls in the interface.
+Live `profiles_select_company` and `app_config_select_company` policies allow reads by company membership, without a client-specific restriction. `api/appConfig.js` also returns the full company configuration to any company member. These paths permit client users to read company-wide profile/configuration information, beyond merely hiding controls in the interface.
 
 This is a confirmed access scope, not proof of cross-company exposure. Whether it violates the product's intended privacy model requires a product decision.
 
@@ -84,7 +84,7 @@ Done when: a matching quote older than the first 1,000 records is returned corre
 
 ### 7. Give configuration one canonical representation — medium
 
-`api/saveAppConfig.js` writes legacy flat columns, structured JSON columns, and a whole-config JSON copy. `api/getAppConfig.js` and `api/createQuote.js` contain separate merging logic; a database pricing synchronization trigger adds another layer.
+`api/appConfig.js` writes legacy flat columns, structured JSON columns, and a whole-config JSON copy. `api/appConfig.js` and `api/createQuote.js` contain separate merging logic; a database pricing synchronization trigger adds another layer.
 
 Action: choose one schema-versioned canonical configuration. Isolate compatibility conversion in one adapter and retire duplicate representations only after migration and parity checks. Preserve quote-time pricing snapshots so historical quotes remain explainable.
 

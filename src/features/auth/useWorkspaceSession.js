@@ -30,7 +30,7 @@ export function useWorkspaceSession(onIdentityChange) {
         let config = null;
         try {
           const params = new URLSearchParams({ company_id: nextProfile.company_id });
-          const response = await authenticatedFetch(`/api/getAppConfig?${params}`);
+          const response = await authenticatedFetch(`/api/appConfig?${params}`);
           const body = await response.json();
           if (response.ok) config = body.config;
         } catch { /* Staff can recover from a temporary API outage using RLS-protected reads. */ }

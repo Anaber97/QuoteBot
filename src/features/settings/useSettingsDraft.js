@@ -44,7 +44,7 @@ export function useSettingsDraft({ config, onSaveConfig, profile }) {
     try {
       const normalizedConfig = buildSettingsPayload(configToSave, companyId);
 
-      const response = await authenticatedFetch('/api/saveAppConfig', {
+      const response = await authenticatedFetch('/api/appConfig', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

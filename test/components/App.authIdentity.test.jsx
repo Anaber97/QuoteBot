@@ -68,7 +68,7 @@ vi.mock('../../src/lib/supabase.js', () => ({
 }));
 
 vi.mock('../../src/lib/api.js', () => ({
-  // Force the getAppConfig fetch path to fail so App falls back to the
+  // Force the appConfig fetch path to fail so App falls back to the
   // direct Supabase app_config query above (keeps this test focused).
   authenticatedFetch: vi.fn(async () => { throw new Error('network unavailable'); }),
 }));

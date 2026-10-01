@@ -1,14 +1,49 @@
+import { readStoredConfig } from '../shared/config/storage.js';
+import { clientPortalConfig } from '../shared/config/clientPortal.js';
 import { requireUser, sendApiError } from './_security.js';
 import { normalizeConfig } from '../src/lib/configSchema.js';
 import { validateConfigInput, sanitizeConfig, checkRequestSize } from '../src/lib/configValidator.js';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method === 'GET') return handleGet(req, res);
+  if (req.method === 'POST') return handlePost(req, res);
+  return res.status(405).json({ error: 'Method not allowed' });
+}
 
+async function handleGet(req, res) {
   try {
-    // Check request size first to prevent DoS
+    const companyId = String(req.query?.company_id || '').trim();
+    if (!companyId) {
+      return res.status(400).json({ error: 'company_id is required.' });
+    }
+    const { admin, profile } = await requireUser(req, { companyId });
+
+    const { data: configData, error: configError } = await admin
+      .from('app_config')
+      .select('*')
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (configError) {
+      throw configError;
+    }
+
+    if (!configData) {
+      return res.status(200).json({ success: true, config: null });
+    }
+
+    const mergedConfig = readStoredConfig(configData);
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.status(200).json({ success: true, config: profile?.role === 'client' ? clientPortalConfig(mergedConfig) : mergedConfig });
+  } catch (error) {
+    console.error('Unexpected appConfig GET error:', error);
+    return sendApiError(res, error, 'Unable to load company configuration.');
+  }
+}
+
+async function handlePost(req, res) {
+  try {
     const sizeCheck = checkRequestSize(req);
     if (!sizeCheck.valid) {
       return res.status(413).json({ error: sizeCheck.error });
@@ -22,7 +57,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'company_id and config are required.' });
     }
 
-    // Validate incoming config before processing
     const validation = validateConfigInput(incoming);
     if (!validation.valid) {
       return res.status(400).json({
@@ -32,19 +66,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // Sanitize to remove unknown fields
     const sanitized = sanitizeConfig(incoming);
-
     const { admin } = await requireUser(req, { companyId, manager: true });
-
-    // Use shared configSchema normalization
     const normalizedConfig = normalizeConfig(sanitized);
     const { pricing, surcharges, geofences, bases, users, client_portal } = normalizedConfig;
 
     const row = {
       company_id: companyId,
-
-      // Legacy flat columns for backward compatibility
       pricing_mode: pricing.pricing_mode,
       hourly_rate: pricing.hourly_rate,
       mileage_rate: pricing.mileage_rate,
@@ -58,18 +86,13 @@ export default async function handler(req, res) {
       road_club_multiplier: pricing.road_club_multiplier,
       metro_multiplier: pricing.metro_multiplier,
       hazard_multiplier: pricing.hazard_multiplier,
-
-      // Current structured columns
       pricing,
       surcharges,
       geofences,
       bases,
       users,
       client_portal,
-
-      // Legacy whole-config column for older builds
       config: normalizedConfig,
-
       updated_at: new Date().toISOString(),
     };
 
@@ -81,9 +104,6 @@ export default async function handler(req, res) {
 
     if (saveError) throw saveError;
 
-    // Adopt and verify the row Supabase actually returned, not the optimistic
-    // request object. This makes deleted tiers disappear immediately and
-    // prevents a stale in-memory calculator from surviving a partial save.
     const persistedConfig = normalizeConfig(savedRow);
     const requestedTiers = normalizedConfig.client_portal.weight_tiers;
     const persistedTiers = persistedConfig.client_portal.weight_tiers;
@@ -101,7 +121,7 @@ export default async function handler(req, res) {
       row: savedRow,
     });
   } catch (error) {
-    console.error('Unexpected saveAppConfig error:', error);
+    console.error('Unexpected appConfig POST error:', error);
     return sendApiError(res, error, 'Unable to save company configuration.');
   }
 }

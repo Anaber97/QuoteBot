@@ -21,7 +21,7 @@ describe('authenticatedFetch', () => {
   it('adds the current access token to protected requests', async () => {
     getSession.mockResolvedValue({ data: { session: { access_token: 'current-token' } }, error: null });
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
-    await authenticatedFetch('/api/saveAppConfig', { method: 'POST', body: '{}' });
+    await authenticatedFetch('/api/appConfig', { method: 'POST', body: '{}' });
     expect(fetchMock.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer current-token');
   });
 
@@ -31,7 +31,7 @@ describe('authenticatedFetch', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response('{"error":"Authentication required."}', { status: 401 }))
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const response = await authenticatedFetch('/api/saveAppConfig', { method: 'POST', body: '{}' });
+    const response = await authenticatedFetch('/api/appConfig', { method: 'POST', body: '{}' });
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][1].headers.get('Authorization')).toBe('Bearer fresh-token');

@@ -58,7 +58,7 @@ describe('Settings unsaved-change behavior', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
 
-    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledWith('/api/saveAppConfig', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledWith('/api/appConfig', expect.objectContaining({ method: 'POST' })));
     await waitFor(() => expect(screen.queryByText(/Unsaved changes/i)).not.toBeInTheDocument());
     expect(await screen.findByText(/saved successfully/i)).toBeInTheDocument();
   });
