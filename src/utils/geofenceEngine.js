@@ -1,3 +1,4 @@
+import { resolveZoneCharge } from '../../shared/pricing/zoneCharge.js';
 // src/utils/geofenceEngine.js
 // @ts-check
 import { GEOFENCES, HAZARD_ZONES } from "../config/geofences.js";
@@ -21,34 +22,6 @@ function isPointInPolygon(point, polygon) {
 function getActiveZones(baseZones, companyRates = {}) {
   const disabledZoneIds = new Set((companyRates?.geofences?.disabledZones || []).map((id) => String(id)));
   return Object.values(baseZones).filter((zone) => !disabledZoneIds.has(String(zone.id)));
-}
-
-function getZoneCharge(zoneConfig, companyRates = {}) {
-  const override = companyRates?.geofences?.customZoneRates?.[zoneConfig.id] || {};
-  const defaultFeeType = zoneConfig.feeType || 'percent';
-  const defaultValue = defaultFeeType === 'flat'
-    ? Number(zoneConfig.price ?? zoneConfig.value ?? 0) || 0
-    : Number.isFinite(Number(zoneConfig.multiplier))
-      ? Math.max(0, (Number(zoneConfig.multiplier) - 1) * 100)
-      : 0;
-
-  if (override.feeType === 'flat') {
-    return { feeType: 'flat', value: Number(override.value ?? override.price ?? 0) || 0 };
-  }
-
-  if (override.feeType === 'percent') {
-    return { feeType: 'percent', value: Number(override.value ?? override.multiplier ?? 0) || 0 };
-  }
-
-  if (override.multiplier != null) {
-    return { feeType: 'percent', value: Number(override.multiplier) || defaultValue };
-  }
-
-  if (override.value != null) {
-    return { feeType: defaultFeeType, value: Number(override.value) || defaultValue };
-  }
-
-  return { feeType: defaultFeeType, value: defaultValue };
 }
 
 export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList = [], routePoints = []) {
@@ -77,7 +50,7 @@ export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList =
   return routePoints.some((point) => point && isPointInBox(point.lat, point.lng));
 }
 
-async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, companyRates = {}, routePoints = []) {
+async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, companyRates = {}, routePoints = [], field) {
   const activeZones = getActiveZones(baseZones, companyRates);
   const results = await Promise.all(
     activeZones.map(async (zone) => {
@@ -88,22 +61,22 @@ async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, compan
       if (!matched && customShape?.length >= 3) {
         const hit = coordsList.some((point) => point && isPointInPolygon(point, customShape));
         if (hit) {
-          return { ...zone, charge: getZoneCharge(zone, companyRates), customZone };
+          return { ...zone, charge: resolveZoneCharge(zone, companyRates, field), customZone };
         }
       }
 
-      return matched ? { ...zone, charge: getZoneCharge(zone, companyRates), customZone } : null;
+      return matched ? { ...zone, charge: resolveZoneCharge(zone, companyRates, field), customZone } : null;
     })
   );
   return results.filter(Boolean);
 }
 
 export async function evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates = {}, routePoints = []) {
-  return evaluateZoneMatches(GEOFENCES, cleanWaypoints, coordsList, companyRates, routePoints);
+  return evaluateZoneMatches(GEOFENCES, cleanWaypoints, coordsList, companyRates, routePoints, 'metro_multiplier');
 }
 
 export async function evaluateHazardGeofences(cleanWaypoints, coordsList, companyRates = {}, routePoints = []) {
-  return evaluateZoneMatches(HAZARD_ZONES, cleanWaypoints, coordsList, companyRates, routePoints);
+  return evaluateZoneMatches(HAZARD_ZONES, cleanWaypoints, coordsList, companyRates, routePoints, 'hazard_multiplier');
 }
 
 export async function evaluateCustomGeofences(_cleanWaypoints, coordsList, companyRates = {}, _resolvedLocations = []) {

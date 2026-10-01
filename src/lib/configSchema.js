@@ -1,3 +1,4 @@
+import { readStoredConfig } from '../../shared/config/storage.js';
 // src/lib/configSchema.js
 /**
  * CANONICAL CONFIG SCHEMA
@@ -207,11 +208,7 @@ export const normalizeCustomTruckClass = (truckClass = {}, index = 0) => {
  * @returns {Object} - Normalized, canonical config object
  */
 export function normalizeConfig(rawConfig = {}) {
-  // Handle legacy "config" column format
-  const baseConfig = {
-    ...(rawConfig.config && typeof rawConfig.config === 'object' ? rawConfig.config : {}),
-    ...rawConfig,
-  };
+  const baseConfig = readStoredConfig(rawConfig);
 
   // Extract custom surcharges from either location
   const customSurcharges = baseConfig.pricing?.custom_surcharges ?? baseConfig.surcharges?.custom_surcharges;

@@ -1,116 +1,57 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deFuzzEquipmentQuery, deriveVerificationStatus, matchesEquipmentSearch, normalizeSourcedResults } from '../api/searchEquipment.js';
-
-const source = (overrides = {}) => ({
-  url: 'https://example.com/spec', operating_weight_lbs: 45000, width_in: 102, height_in: 138, ...overrides,
+import { deriveConfidence, normalizeSourcedResults, normalizeStoredResults, matchesEquipmentSearch, deFuzzEquipmentQuery, geminiGroundedUrls } from '../api/searchEquipment.js';
+const source = (overrides = {}) => ({ url: 'https://cat.com/spec', make: 'CAT', model: '320D', operating_weight_lbs: 45000, width_in: 102, height_in: 138, ...overrides });
+const normalize = (evidence, overrides = {}) => normalizeSourcedResults({ grounded_urls: evidence.map(s => s.url), results: [{ make: 'CAT', model: '320D', evidence }], ...overrides }, 'CAT 320D');
+test('manufacturer evidence produces HIGH and autofills', () => {
+ const [result] = normalize([source()]); assert.equal(result.confidence, 'HIGH'); assert.equal(result.requires_confirmation, false);
 });
-
-test('manufacturer evidence is Verified', () => {
-  assert.equal(deriveVerificationStatus([source({ is_manufacturer: true })]), 'Verified');
+test('two independent sources within five percent use the higher value for each field', () => {
+ const [result] = normalize([source({url:'https://first.com/spec'}),source({url:'https://second.com/spec', operating_weight_lbs:47000,width_in:100,height_in:140})]);
+ assert.equal(result.confidence,'MEDIUM'); assert.equal(result.requires_confirmation,false); assert.equal(result.operating_weight_lbs,47000); assert.equal(result.width_in,102); assert.equal(result.height_in,140);
 });
-
-test('two agreeing non-manufacturer sources are Unverified', () => {
-  assert.equal(deriveVerificationStatus([source(), source({ url: 'https://other.example/spec', operating_weight_lbs: 45100 })]), 'Unverified');
+test('five percent boundary is inclusive, beyond it is LOW', () => {
+ const a=source({url:'https://one.com',operating_weight_lbs:9500});
+ assert.equal(deriveConfidence([a,source({url:'https://two.com',operating_weight_lbs:10000})]).confidence,'MEDIUM');
+ assert.equal(deriveConfidence([a,source({url:'https://two.com',operating_weight_lbs:10001})]).confidence,'LOW');
 });
-
-test('uses higher close-source specs to keep unverified estimates permit-conservative', () => {
-  const result = normalizeSourcedResults({
-    citations: ['https://first.example/spec', 'https://second.example/spec'],
-    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', operating_weight_lbs: 45000, width_in: 102, height_in: 138, evidence: [
-      source({ url: 'https://first.example/spec' }),
-      source({ url: 'https://second.example/spec', operating_weight_lbs: 46100, width_in: 104, height_in: 140 }),
-    ] }] }) } }],
-  }, 'CAT 320D')[0];
-  assert.equal(result.verification_status, 'Unverified');
-  assert.equal(result.operating_weight_lbs, 46100);
-  assert.equal(result.width_in, 104);
-  assert.equal(result.height_in, 140);
+test('a single source and disagreeing sources return LOW with confirmation', () => {
+ for(const evidence of [[source({url:'https://one.com'})],[source({url:'https://one.com'}),source({url:'https://two.com',width_in:150})]]){
+ const [r]=normalize(evidence); assert.equal(r.confidence,'LOW');assert.equal(r.requires_confirmation,true);
+ }
 });
-
-test('disagreeing complete sources are Conflict', () => {
-  assert.equal(deriveVerificationStatus([source(), source({ url: 'https://other.example/spec', operating_weight_lbs: 52000 })]), 'Conflict');
+test('subdomains are not independent corroboration', () => {
+ assert.equal(normalize([source({url:'https://www.dealer.com/spec'}),source({url:'https://used.dealer.com/spec'})])[0].confidence,'LOW');
 });
-
-test('one non-manufacturer source is Unverified', () => {
-  assert.equal(deriveVerificationStatus([source()]), 'Unverified');
+test('model supplied manufacturer flags and lookalike domains cannot confer HIGH', () => {
+ for(const url of ['https://cat.used-parts.com/spec','https://cat.com.evil.com/spec','https://caterpillar-used-parts.com/spec']) assert.equal(normalize([source({url,is_manufacturer:true})])[0].confidence,'LOW');
 });
-
-test('matches a combined make and model search', () => {
-  assert.equal(matchesEquipmentSearch({ make: 'Hyundai', model: '50D-9' }, 'Hyundai 50D-9'), true);
+test('requires exact grounded page, not just matching domain or a guessed citation', () => {
+ assert.equal(normalize([source()],{grounded_urls:['https://cat.com/other-model']}).length,0);
+ assert.equal(normalize([source()],{grounded_urls:[]}).length,0);
+ assert.equal(normalize([source()],{grounded_urls:['https://www.cat.com/spec?utm_source=google']})[0].confidence,'HIGH');
 });
-
-test('de-fuzzes aliases, compact model text, and model years', () => {
-  assert.equal(deFuzzEquipmentQuery('2021 CAT320'), 'caterpillar 320');
-  assert.equal(matchesEquipmentSearch({ make: 'Caterpillar', model: '320D' }, '2021 CAT 320'), true);
-  assert.equal(matchesEquipmentSearch({ make: 'Lee Boy', model: 'G700B' }, 'Leeboy G700B'), true);
+test('rejects unrelated model evidence, missing model, mixed configurations and incomplete fields', () => {
+ for(const change of [{model:'330D'},{model:''},{configuration:'wide tracks'},{width_in:null}]) assert.equal(normalize([source(change)]).length,0);
 });
-
-test('accepts transport dimension fields from web results', () => {
-  const result = normalizeSourcedResults({
-    citations: ['https://manufacturer.example/spec'],
-    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', operating_weight_lbs: 45000, transport_width_in: 102, transport_height_in: 138, evidence: [source({ url: 'https://manufacturer.example/spec', is_manufacturer: true, transport_width_in: 102, transport_height_in: 138 })] }] }) } }],
-  }, 'CAT 320D')[0];
-  assert.equal(result.transport_width_in, 102);
-  assert.equal(result.transport_height_in, 138);
-  assert.equal(result.verification_status, 'Verified');
+test('can combine partial manufacturer evidence for the same configuration', () => {
+ const [r]=normalize([source({width_in:null,height_in:null}),source({url:'https://cat.com/manual',operating_weight_lbs:null})]);
+ assert.equal(r.confidence,'HIGH');assert.equal(r.width_in,102);
 });
-
-test('accepts a clean citation for the same grounded URL with tracking parameters', () => {
-  const result = normalizeSourcedResults({
-    citations: ['https://manufacturer.example/spec?utm_source=google'],
-    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', evidence: [source({ url: 'https://manufacturer.example/spec', is_manufacturer: true })] }] }) } }],
-  }, 'CAT 320D')[0];
-  assert.equal(result.verification_status, 'Verified');
+test('database legacy Verified status alone is LOW; sources are re-evaluated', () => {
+ const base={make:'CAT',model:'320D',operating_weight_lbs:45000,width_in:102,height_in:138,verification_status:'Verified'};
+ assert.equal(normalizeStoredResults([base],'CAT 320D')[0].confidence,'LOW');
+ assert.equal(normalizeStoredResults([{...base,sources:[source()]}],'CAT 320D')[0].confidence,'HIGH');
+ assert.equal(normalizeStoredResults([{...base,sources:[source({model:'330D'})]}],'CAT 320D')[0].confidence,'LOW');
 });
-
-test('rejects URL-only manufacturer citations without field-level evidence', () => {
-  const result = normalizeSourcedResults({
-    citations: ['https://manufacturer.example/spec'],
-    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', operating_weight_lbs: 45000, transport_width_in: 102, transport_height_in: 138, evidence: [{ url: 'https://manufacturer.example/spec', is_manufacturer: true }] }] }) } }],
-  }, 'CAT 320D')[0];
-  assert.equal(result, undefined);
+test('normalizes aliases and compact model identifiers', () => {
+ assert.equal(deFuzzEquipmentQuery('2021 CAT320'),'caterpillar 320');
+ assert.equal(matchesEquipmentSearch({make:'Volvo',model:'L90H'},'volvo l90h'),true);
+ assert.equal(matchesEquipmentSearch({make:'Lee Boy',model:'G700B'},'Leeboy G700B'),true);
+ assert.equal(matchesEquipmentSearch({make:'CAT',model:'330D'},'CAT 320D'),false);
 });
-
-test('combines manufacturer documents only when each contributes field-level evidence', () => {
-  const result = normalizeSourcedResults({
-    citations: ['https://manufacturer.example/brochure', 'https://manufacturer.example/manual'],
-    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', evidence: [
-      source({ url: 'https://manufacturer.example/brochure', is_manufacturer: true, operating_weight_lbs: 45000, width_in: null, height_in: null }),
-      source({ url: 'https://manufacturer.example/manual', is_manufacturer: true, operating_weight_lbs: null, width_in: 102, height_in: 138 }),
-    ] }] }) } }],
-  }, 'CAT 320D')[0];
-  assert.equal(result.verification_status, 'Verified');
-  assert.equal(result.operating_weight_lbs, 45000);
-  assert.equal(result.width_in, 102);
-  assert.equal(result.height_in, 138);
-});
-
-test('accepts a complete direct manufacturer PDF when the gateway omits citations', () => {
-  const result = normalizeSourcedResults({ results: [{
-    make: 'Yanmar', model: 'TL100VS', operating_weight_lbs: 10555, transport_width_in: 78, transport_height_in: 84.5,
-    evidence: [source({
-      url: 'https://yanmarce.com/specs/tl100vs.pdf', publisher: 'Yanmar Compact Equipment', is_manufacturer: true,
-      operating_weight_lbs: 10555, transport_width_in: 78, transport_height_in: 84.5,
-    })],
-  }] }, 'Yanmar TL100');
-  assert.equal(result[0].verification_status, 'Verified');
-  assert.equal(result[0].transport_height_in, 84.5);
-});
-
-test('rejects model evidence URLs that were not returned by the search provider', () => {
-  const results = normalizeSourcedResults({
-    citations: ['https://trusted.example/spec', 'https://second.example/spec'],
-    choices: [{ message: { content: JSON.stringify({ results: [{ make: 'CAT', model: '320D', operating_weight_lbs: 45000, width_in: 102, height_in: 138, evidence: [source()] }] }) } }],
-  }, 'CAT 320D');
-  assert.equal(results.length, 0);
-});
-
-test('parses Sonar JSON followed by inline citation markers', () => {
-  const result = normalizeSourcedResults({
-    citations: ['https://manufacturer.example/spec'],
-    choices: [{ message: { content: '{"results":[{"make":"CAT","model":"320D","evidence":[{"url":"https://manufacturer.example/spec","is_manufacturer":true,"operating_weight_lbs":45000,"transport_width_in":102,"transport_height_in":138}]}]}\n[1]' } }],
-  }, 'CAT 320D')[0];
-  assert.equal(result.verification_status, 'Verified');
-  assert.equal(result.width_in, 102);
+test('Google redirect resolves without fetching the destination', async(t) => {
+ const calls=[];t.mock.method(globalThis,'fetch',async(url)=>{calls.push(url);return new Response(null,{status:302,headers:{location:'https://cat.com/spec'}})});
+ const urls=await geminiGroundedUrls({candidates:[{groundingMetadata:{groundingChunks:[{web:{uri:'https://vertexaisearch.cloud.google.com/grounding-api-redirect/test'}}]}}]});
+ assert.equal(urls[0].url,'https://cat.com/spec');assert.equal(calls.length,1);
 });

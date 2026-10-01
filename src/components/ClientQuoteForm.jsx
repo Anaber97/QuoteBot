@@ -8,10 +8,9 @@ import Dialog from './Dialog';
 
 export default function ClientQuoteForm({ companyRates, onCalculate, isCalculating, title = 'Client Self-Service Quote Portal', onReset, initialQuote = null, client = null }) {
   const verificationStyles = {
-    Verified: 'bg-emerald-500',
-    Corroborated: 'bg-blue-400',
-    Unverified: 'bg-amber-400',
-    Conflict: 'bg-red-500',
+    HIGH: 'bg-emerald-500',
+    MEDIUM: 'bg-blue-400',
+    LOW: 'bg-amber-400',
   };
   // Equipment selection state
   const [searchQuery, setSearchQuery] = useState('');
@@ -19,6 +18,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const [isSearching, setIsSearching] = useState(false);
   const [searchStatus, setSearchStatus] = useState('');
   const [selectedEquipmentName, setSelectedEquipmentName] = useState('');
+  const [selectedEquipment, setSelectedEquipment] = useState(null);
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
@@ -65,12 +65,12 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     }
 
     const requestId = ++activeSearchRef.current;
+    setSearchResults([]);
     setIsSearching(true);
     setSearchStatus('Searching...');
     const slowLookupNotice = setTimeout(() => {
       if (activeSearchRef.current === requestId) {
-        setSearchStatus('We’re finding verified specs. You can enter route details while we finish.');
-        setIsSearching(false);
+        setSearchStatus('Finding equipment specs. You can enter route details while we finish.');
       }
     }, 3_000);
     const { results, source, error } = await searchEquipmentSpecs(trimmedQuery);
@@ -79,7 +79,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     setSearchResults(results);
     setSearchStatus(
       error
-        ? 'We couldn’t verify a match yet. You can enter operating weight, width, and height below to continue.'
+        ? `Search issue: ${error} You can enter operating weight, width, and height below to continue.`
         : source
           ? `Loaded from ${source}`
           : results.length > 0
@@ -154,6 +154,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const applyEquipmentSelection = (item, useSpecs) => {
     const fullName = `${item.make} ${item.model}`.trim();
     setSelectedEquipmentName(fullName);
+    setSelectedEquipment(item);
     setSearchQuery(fullName);
     setMake(item.make || '');
     setModel(item.model || '');
@@ -165,8 +166,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   };
 
   const handleSelectEquipment = (item) => {
-    const status = item.verification_status || 'Unverified';
-    if (status !== 'Verified') {
+    if (!['HIGH', 'MEDIUM'].includes(item.confidence) || item.requires_confirmation) {
       setPendingUnverifiedEquipment(item);
       return;
     }
@@ -201,7 +201,10 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   };
 
   const handleReset = () => {
+    activeSearchRef.current += 1;
+    setIsSearching(false); setSearchStatus('');
     setSearchQuery(''); setSearchResults([]); setSelectedEquipmentName(''); setMake(''); setModel(''); setSerialNumber('');
+    setSelectedEquipment(null);
     setWeight(''); setWidth(''); setHeight(''); setPickupAddr(''); setDropoffAddr(''); setWaypoints([]); setAttachmentType(''); setAttachmentWeight(''); setPermitInfo(null);
     setPendingUnverifiedEquipment(null);
     onReset?.();
@@ -256,8 +259,11 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={searchQuery}
               onKeyDown={handleKeyDown}
               onChange={(e) => {
+                activeSearchRef.current += 1;
+                setIsSearching(false); setSearchResults([]); setSearchStatus('');
                 setSearchQuery(e.target.value);
                 setSelectedEquipmentName('');
+                setSelectedEquipment(null);
                 setMake('');
                 setModel('');
                 setSerialNumber('');
@@ -268,6 +274,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             <button
               type="button"
               onClick={() => runEquipmentSearch(searchQuery)}
+              disabled={isSearching}
               className="absolute right-2 top-2 rounded-lg bg-blue-600/20 border border-blue-500/30 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-600/30"
             >
               Search
@@ -294,10 +301,11 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
                     <p className="text-xs font-semibold text-slate-300 flex items-center gap-2">
                       {item.make} {item.model}
                       <span className="inline-flex items-center gap-1 text-[9px] uppercase tracking-wide text-slate-400">
-                        <span className={`h-2 w-2 rounded-full ${verificationStyles[item.verification_status] || verificationStyles.Unverified}`} />
-                        {item.verification_status || 'Unverified'}
+                        <span className={`h-2 w-2 rounded-full ${verificationStyles[item.confidence] || verificationStyles.LOW}`} />
+                        {item.confidence || 'LOW'}
                       </span>
                     </p>
+                    <p className="text-[10px] text-slate-400">{item.confidence_reason}</p>
                     {item.serial_number && (
                       <p className="text-[10px] text-slate-500">SN: {item.serial_number}</p>
                     )}
@@ -314,6 +322,15 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               {searchStatus}
             </p>
           )}
+          {(searchResults[0]?.search_suggestions || selectedEquipment?.search_suggestions) && (
+            <iframe title="Google Search suggestions" sandbox="allow-popups allow-popups-to-escape-sandbox" className="mt-2 w-full h-24 border-0" srcDoc={searchResults[0]?.search_suggestions || selectedEquipment?.search_suggestions} />
+          )}
+          {selectedEquipment && <div className="mt-2 text-xs text-slate-400">
+            <p>{selectedEquipment.confidence || 'LOW'} confidence · {selectedEquipment.confidence_reason}</p>
+            {(selectedEquipment.sources || []).map((source, index) => /^https?:\/\//i.test(source.url || '') && (
+              <a key={index} href={source.url} target="_blank" rel="noopener noreferrer" className="inline-block mr-3 underline">{source.title || source.publisher || 'View source'}</a>
+            ))}
+          </div>}
         </div>
 
         {/* Equipment Identity Inputs */}
@@ -491,7 +508,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
       </form>
       <Dialog
         open={Boolean(pendingUnverifiedEquipment)}
-        title="Use unverified equipment specs?"
+        title="LOW confidence: use these specs?"
         confirmLabel="Use these specs"
         onClose={() => setPendingUnverifiedEquipment(null)}
         onConfirm={() => {
@@ -503,8 +520,13 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
           <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" aria-hidden="true" />
           <div className="space-y-2">
             <p>
-              These specs have not been verified against a manufacturer source or corroborated by multiple independent sources.
+              {pendingUnverifiedEquipment?.confidence_reason || 'These specs have not been corroborated.'} Review them before autofilling.
             </p>
+            <ul className="text-xs space-y-1">
+              {(pendingUnverifiedEquipment?.sources || []).map((source, index) => (
+                /^https?:\/\//i.test(source.url || '') && <li key={index}><a href={source.url} target="_blank" rel="noopener noreferrer" className="underline">{source.title || source.publisher || 'View source'}</a></li>
+              ))}
+            </ul>
             <p className="font-semibold text-amber-300">
               Inaccurate weight or dimensions may result in an incorrect quote, permit requirement, or escort charge.
             </p>

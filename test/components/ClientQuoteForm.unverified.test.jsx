@@ -43,7 +43,7 @@ describe('ClientQuoteForm unverified equipment', () => {
     await user.click(screen.getByRole('button', { name: /^search$/i }));
     await user.click(await screen.findByRole('button', { name: /caterpillar 320/i }));
 
-    expect(screen.getByRole('dialog', { name: /use unverified equipment specs/i })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /LOW confidence: use these specs/i })).toBeInTheDocument();
     expect(screen.getByText(/may result in an incorrect quote/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/operating weight/i)).toHaveValue(null);
 
@@ -56,3 +56,13 @@ describe('ClientQuoteForm unverified equipment', () => {
     expect(screen.getByLabelText(/serial number/i)).toHaveValue('');
   });
 });
+
+for (const confidence of ['HIGH', 'MEDIUM']) {
+ test(confidence+' fills specifications without a LOW warning',async()=>{
+  searchEquipmentSpecs.mockResolvedValue({results:[{id:'result',make:'CAT',model:'320',confidence,operating_weight_lbs:45000,width_in:102,height_in:138}],source:'web'});
+  const user=userEvent.setup();render(<ClientQuoteForm companyRates={{}} onCalculate={vi.fn()}/>);
+  await user.type(screen.getByLabelText(/equipment search/i),'CAT 320');await user.click(screen.getByRole('button',{name:/^search$/i}));
+  await user.click(await screen.findByRole('button',{name:/CAT 320/i}));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();expect(screen.getByLabelText(/operating weight/i)).toHaveValue(45000);
+ });
+}

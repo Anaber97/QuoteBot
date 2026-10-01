@@ -1,3 +1,4 @@
+import { resolveZoneCharge } from '../shared/pricing/zoneCharge.js';
 import { GEOFENCES, HAZARD_ZONES, METRO_CODE_BY_ZONE_ID } from '../src/config/geofences.js';
 import { selectHighestPriorityZones } from '../src/utils/geofencePriority.js';
 import {
@@ -65,23 +66,13 @@ const pointInPolygon = (point, polygon) => {
 };
 
 const normalizeText = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-const zoneCharge = (zone, config) => {
-  const override = config?.geofences?.customZoneRates?.[zone.id] || {};
-  const feeType = override.feeType || zone.feeType || 'percent';
-  const fallback = zone.feeType === 'flat'
-    ? toFinite(zone.price ?? zone.value)
-    : Math.max(0, (toFinite(zone.multiplier, 1) - 1) * 100);
-  const value = toFinite(override.value ?? override.price ?? (override.multiplier != null ? toFinite(override.multiplier) : fallback), fallback);
-  return { feeType, value };
-};
-
-function findConfiguredZones(zones, addresses, routePoints, config) {
+function findConfiguredZones(zones, addresses, routePoints, config, field) {
   const disabled = new Set((config?.geofences?.disabledZones || []).map(String));
   return Object.values(zones).filter((zone) => {
     if (disabled.has(String(zone.id))) return false;
     const keywordHit = addresses.some((address) => (zone.cities || []).some((city) => normalizeText(address).includes(normalizeText(city))));
     return keywordHit || routePoints.some((point) => pointInBox(point, zone.box));
-  }).map((zone) => ({ ...zone, charge: zoneCharge(zone, config) }));
+  }).map((zone) => ({ ...zone, charge: resolveZoneCharge(zone, config, field) }));
 }
 
 function findCustomZones(_localities, routePoints, config) {
@@ -122,8 +113,8 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const clientPricing = clientConfig?.pricing?.use_custom_pricing ? clientConfig.pricing : {};
   const addresses = input.waypoints;
   const customerRoutePoints = route.customerRoutePoints || [];
-  const metroMatches = findConfiguredZones(GEOFENCES, addresses, customerRoutePoints, config);
-  const hazardMatches = findConfiguredZones(HAZARD_ZONES, addresses, customerRoutePoints, config);
+  const metroMatches = findConfiguredZones(GEOFENCES, addresses, customerRoutePoints, config, 'metro_multiplier');
+  const hazardMatches = findConfiguredZones(HAZARD_ZONES, addresses, customerRoutePoints, config, 'hazard_multiplier');
   const customMatches = findCustomZones(route.localities || [], customerRoutePoints, config);
   const selectedClass = (pricing.custom_truck_classes || []).find((item) => String(item.id) === String(input.selectedTruckClassId));
   const totalWeight = toFinite(input.equipment?.weight) + toFinite(input.equipment?.attachmentWeight);

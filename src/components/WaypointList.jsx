@@ -91,6 +91,7 @@ const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRe
       </label>
       <div className="flex items-center gap-2 w-full">
         <input
+          aria-label={label}
           ref={setRef}
           type="text"
           placeholder={isPickUp ? 'Business, address, city, or municipality...' : isDropOff ? 'Business, address, city, or municipality...' : `Enter ${label.toLowerCase()}...`}

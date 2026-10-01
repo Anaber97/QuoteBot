@@ -79,12 +79,7 @@ export default async function handler(req, res) {
       .select('*')
       .single();
 
-    if (saveError) {
-      console.error('App config save failed:', saveError);
-      return res.status(500).json({
-        error: saveError.message || 'Failed to save app configuration.',
-      });
-    }
+    if (saveError) throw saveError;
 
     // Adopt and verify the row Supabase actually returned, not the optimistic
     // request object. This makes deleted tiers disappear immediately and

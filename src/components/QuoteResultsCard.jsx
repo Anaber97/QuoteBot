@@ -1,5 +1,8 @@
+import { resolveZoneCharge, formatZoneCharge } from '../../shared/pricing/zoneCharge.js';
+import QuoteTripBreakdown from '../features/quotes/QuoteTripBreakdown';
 // src/components/QuoteResultsCard.jsx
-import React, { useState, useRef } from 'react';
+import React from 'react';
+import QuoteSaveForm from '../features/quotes/QuoteSaveForm';
 import { calculateFinalQuotes } from '../services/quoteCalculator';
 import { summarizeHighestOsowFlag } from '../lib/osow.js';
 import { estimateDisclaimer } from '../legal/legalContent';
@@ -34,15 +37,6 @@ const BADGE_STYLES = {
   },
 };
 
-const formatChargeLabel = (label, feeType, value, defaultSuffix = '%') => {
-  const numericValue = Number(value);
-  if (!Number.isFinite(numericValue)) return label;
-  if (feeType === 'flat') return `${label} (+$${numericValue.toFixed(0)})`;
-  const suffix = defaultSuffix || '%';
-  const formatted = Number.isInteger(numericValue) ? numericValue.toFixed(0) : numericValue.toFixed(2);
-  return `${label} (+${formatted}${suffix})`;
-};
-
 // Distinct surcharge badge styling
 export default function QuoteResultsCard({
   state,
@@ -57,15 +51,7 @@ export default function QuoteResultsCard({
   const {
     quoteData,
     activeOverrides,
-    customerName,
-    customerPhone,
-    isSaving,
-    saveStatus,
   } = state || {};
-  const [showAttachmentPrompt, setShowAttachmentPrompt] = useState(false);
-  const [selectedAttachment, setSelectedAttachment] = useState(null);
-  const [attachmentError, setAttachmentError] = useState('');
-  const fileInputRef = useRef(null);
   const showDetails = Boolean(state?.showDetails);
 
   if (!quoteData) return null;
@@ -90,7 +76,9 @@ export default function QuoteResultsCard({
     : permitFee;
   const osowFlagSummary = shouldShowOsowEstimate ? summarizeHighestOsowFlag(osow?.states) : null;
   const attachmentWeight = Number(quoteData?.equipmentMeta?.attachmentWeight || 0);
-  const effectiveMinQuote = (isDispatcherView ? customCalculatedQuote ?? currentMinQuote : currentMinQuote) + (osow ? 0 : permitFee);
+  const effectiveMinQuote = !isDispatcherView && Number.isFinite(quoteData.authoritativeTotal)
+    ? quoteData.authoritativeTotal
+    : (isDispatcherView ? customCalculatedQuote ?? currentMinQuote : currentMinQuote) + (osow ? 0 : permitFee);
   const clientPrice = effectiveMinQuote;
   const isFixedEquipmentQuote = quoteData?.pricingMode === 'equipment-weight-tier';
   const isMileageQuote = (quoteData?.pricingRateMode || quoteData?.pricingMode) === 'mileage';
@@ -108,9 +96,8 @@ export default function QuoteResultsCard({
   const hasAppliedSurcharges = dispatcherSurcharges.some((item) => item.active === true)
     || availableCustomSurcharges.some((item) => activeOverrides?.customSurcharges?.[item.id] === true);
   const metroCodes = Array.isArray(quoteData?.metroCodes) && quoteData.metroCodes.length > 0 ? quoteData.metroCodes : [];
-  const metroFeeMode = companyRates?.pricing?.surchargeModes?.metro_multiplier || companyRates?.surcharges?.surchargeModes?.metro_multiplier || 'percent';
-  const metroFeeValue = companyRates?.pricing?.metro_multiplier ?? companyRates?.surcharges?.metro_multiplier ?? 28.57;
-  const metroBadgeLabel = formatChargeLabel('Metro Zone', metroFeeMode, metroFeeValue);
+  const metroCharge = quoteData.metroMatches?.[0]?.charge ?? resolveZoneCharge({ multiplier: 1.2857 }, companyRates, 'metro_multiplier');
+  const metroBadgeLabel = 'Metro Zone (' + formatZoneCharge(metroCharge) + ')';
   const routeLegs = Array.isArray(quoteData?.legsDetails) ? quoteData.legsDetails : [];
 
   // Dispatcher map should show the full base-to-base route; client map should show pickup-to-dropoff.
@@ -135,49 +122,6 @@ export default function QuoteResultsCard({
           intermediateWaypoints ? `&waypoints=${intermediateWaypoints}` : ''
         }&mode=driving`
       : null;
-
-  const handleAttachmentChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      setSelectedAttachment(null);
-      return;
-    }
-
-    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(file.type) && !file.name.toLowerCase().endsWith('.pdf')) {
-      setAttachmentError('Please choose a PDF or image file.');
-      setSelectedAttachment(null);
-      return;
-    }
-
-    setSelectedAttachment(file);
-    setAttachmentError('');
-  };
-
-  const handleAcceptQuote = () => {
-    if (!showAttachmentPrompt) {
-      setShowAttachmentPrompt(true);
-      return;
-    }
-
-    onAcceptQuote?.({ attachmentFile: selectedAttachment || null });
-    setShowAttachmentPrompt(false);
-  };
-
-  const handleSkipAttachment = () => {
-    setShowAttachmentPrompt(false);
-    setSelectedAttachment(null);
-    setAttachmentError('');
-    onAcceptQuote?.({ attachmentFile: null });
-  };
-
-  const handleLogQuote = () => {
-    if (!showAttachmentPrompt) {
-      setShowAttachmentPrompt(true);
-      return;
-    }
-    onLogQuote?.({ attachmentFile: selectedAttachment || null });
-    setShowAttachmentPrompt(false);
-  };
 
   const toggleOverride = (key) => {
     dispatch?.({ type: 'SET_OVERRIDE', payload: { key, value: !activeOverrides?.[key] } });
@@ -280,114 +224,23 @@ export default function QuoteResultsCard({
             </button>
           </div>
 
-          {showDetails && (
-            <div className="bg-[#080c14] border border-slate-800 rounded-xl p-4 space-y-2.5 text-xs mb-5 shadow-inner text-left">
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                Route & {isMileageQuote ? 'Mileage' : 'Time'} Breakdown
-              </h3>
-              <div className="space-y-2 border-b border-slate-800/60 pb-3 mb-3 text-xs">
-                {[
-                  { label: isMileageQuote ? 'Mileage Rate' : 'Hourly Rate', value: effectiveRate, input: state?.customRateInput, action: 'SET_CUSTOM_RATE', prefix: '$', suffix: isMileageQuote ? '/mi' : '/hr', min: 0.01, max: 100000, step: '0.01' },
-                  ...(!isMileageQuote ? [
-                    { label: 'Drive Time Buffer', value: timeMetrics.driveTimeBufferPercent, input: state?.customDriveTimeBufferPercent, action: 'SET_CUSTOM_DRIVE_BUFFER', suffix: '%', min: 0, max: 1000, step: '0.1' },
-                    { label: 'Load / Unload Time', value: timeMetrics.loadUnloadMinutes, input: state?.customLoadUnloadMins, action: 'SET_CUSTOM_LOAD_UNLOAD', suffix: 'mins', min: 0, max: 10080, step: '1' },
-                  ] : []),
-                ].map((field) => (
-                  <label key={field.action} className="flex items-center justify-between gap-3 text-slate-400">
-                    <span>{field.label}</span>
-                    <span className="flex h-8 w-32 shrink-0 items-center gap-1.5 rounded-lg border border-slate-700/40 bg-white/[0.025] px-2.5 text-slate-200 transition-colors hover:border-slate-600/70 focus-within:border-blue-400/60 focus-within:bg-blue-400/5">
-                      <span className="w-2 shrink-0 text-slate-500">{field.prefix}</span>
-                      <input
-                        aria-label={field.label}
-                        title="Edit for this quote only; clear to use the default"
-                        type="number" min={field.min} max={field.max} step={field.step}
-                        value={field.input === '' ? '' : field.input ?? field.value}
-                        placeholder={String(field.value)}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          if (value === '' || (Number(value) >= field.min && Number(value) <= field.max)) {
-                            dispatch?.({ type: field.action, payload: value });
-                          }
-                        }}
-                        className="min-w-0 w-full appearance-none bg-transparent text-right font-medium tabular-nums text-slate-200 placeholder:text-slate-200 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      />
-                      <span className="w-7 shrink-0 text-right text-[10px] text-slate-500">{field.suffix}</span>
-                    </span>
-                  </label>
-                ))}
-                <p className="text-[10px] text-slate-500">Edit values for this quote only.</p>
-              </div>
-              {routeLegs.map((leg, index) => (
-                <div
-                  key={`${leg.label}-${index}`}
-                className="flex justify-between items-start gap-3 text-slate-400 pb-1.5 border-b border-slate-800/80"
-                >
-                  <span>{leg.label}</span>
-                  <span className="font-semibold text-slate-200">{leg.minutes} mins</span>
-                </div>
-              ))}
-              <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>
-                  Adjusted Drive Time (+{timeMetrics.driveTimeBufferPercent}%)
-                </span>
-                <span className="font-semibold text-slate-200">{Math.round(timeMetrics.adjustedDriveMinutes)} mins</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>Load / Unload Time</span>
-                <span className="font-semibold text-slate-200">{Math.round(timeMetrics.loadUnloadMinutes)} mins</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>Municipality Code(s)</span>
-                <span
-                  className={`font-semibold ${
-                    quoteData.hasMetroZone && activeOverrides?.metro
-                      ? 'text-purple-400'
-                      : 'text-slate-200'
-                  }`}
-                >
-                  {metroCodes.length > 0 ? metroCodes.join(', ') : 'No'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>Hazard Zone</span>
-                <span
-                  className={`font-semibold ${
-                    quoteData.hasHazardZone && activeOverrides?.hazard
-                      ? 'text-red-400'
-                      : 'text-slate-200'
-                  }`}
-                >
-                  {quoteData.hasHazardZone
-                    ? activeOverrides?.hazard
-                      ? 'Applied (+40%)'
-                      : 'Removed (0%)'
-                    : 'No'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>{isFixedEquipmentQuote ? 'Base Equipment Price' : 'Base Price (No Surcharges)'}</span>
-                <span className="font-semibold text-emerald-400">
-                  ${effectiveBaseQuote}
-                </span>
-              </div>
-              {permitSurcharge > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>{osow ? 'Permit / Escort Surcharge' : 'Weight Class Permit Cost'}</span>
-                <span className="font-semibold text-amber-300">+${permitSurcharge.toFixed(2)}</span>
-              </div>}
-              {osowFlagSummary && <div className="flex justify-between items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-100">
-                <span className="font-semibold">Permit flag</span>
-                <span className="text-right font-bold text-amber-300">{osowFlagSummary.label} · {osowFlagSummary.states.join(', ')}</span>
-              </div>}
-        {!osow && Number(escort.vehicleCount) > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
-                <span>{escort.vehicleCount} Escort Vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}</span>
-                <span className="font-semibold text-cyan-300">+${Number(escort.surcharge || 0).toFixed(2)}</span>
-              </div>}
-              <div className="flex justify-between items-center pt-1 text-sm font-bold text-white">
-                <span>{isMileageQuote ? 'Total Billable Miles' : 'Total Billable Hours'}</span>
-                <span className="text-blue-400">{isMileageQuote ? `${Number(quoteData.totalMiles || 0).toFixed(1)} mi` : `${Number(timeMetrics.rawTotalHours.toFixed(2))} hrs`}</span>
-              </div>
-            </div>
-          )}
+          {showDetails && <QuoteTripBreakdown
+            state={state}
+            dispatch={dispatch}
+            quoteData={quoteData}
+            activeOverrides={activeOverrides}
+            isMileageQuote={isMileageQuote}
+            effectiveRate={effectiveRate}
+            timeMetrics={timeMetrics}
+            routeLegs={routeLegs}
+            metroCodes={metroCodes}
+            isFixedEquipmentQuote={isFixedEquipmentQuote}
+            effectiveBaseQuote={effectiveBaseQuote}
+            permitSurcharge={permitSurcharge}
+            osow={osow}
+            osowFlagSummary={osowFlagSummary}
+            escort={escort}
+          />}
         </div>
       )}
 
@@ -406,133 +259,8 @@ export default function QuoteResultsCard({
         </div>
       )}
 
-      {/* 3. Save Form */}
-      <div className="space-y-3 pt-2 border-t border-slate-800/60">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <input
-            type="text"
-            placeholder="Contact Name"
-            value={customerName}
-            onChange={(e) =>
-              dispatch({
-                type: 'SET_CUSTOMER_INFO',
-                payload: { field: 'customerName', value: e.target.value },
-              })
-            }
-            className="bg-[#080c14] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          <input
-            type="text"
-            placeholder="Phone Number"
-            value={customerPhone}
-            onChange={(e) =>
-              dispatch({
-                type: 'SET_CUSTOMER_INFO',
-                payload: { field: 'customerPhone', value: e.target.value },
-              })
-            }
-            className="bg-[#080c14] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-        {isDispatcherView && <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <input type="text" placeholder="Equipment Make" value={state?.quoteMake ?? ''} onChange={(e) => dispatch?.({ type: 'SET_QUOTE_META_FIELDS', payload: { quoteMake: e.target.value } })} className="bg-[#080c14] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          <input type="text" placeholder="Equipment Model" value={state?.quoteModel ?? ''} onChange={(e) => dispatch?.({ type: 'SET_QUOTE_META_FIELDS', payload: { quoteModel: e.target.value } })} className="bg-[#080c14] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-        </div>}
-        <textarea placeholder="Quote notes" value={state?.quoteNotes ?? ''} onChange={(e) => dispatch?.({ type: 'SET_QUOTE_META_FIELDS', payload: { quoteNotes: e.target.value } })} rows={3} className="w-full resize-y bg-[#080c14] border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-
-        {quoteData?.approvalRequired && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
-            This quote exceeds the approval threshold and has been flagged for manager review.
-          </div>
-        )}
-
-        {onSaveForLater || onAcceptQuote ? (
-          <div className="space-y-2">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {onSaveForLater && (
-                <button
-                  type="button"
-                  onClick={onSaveForLater}
-                  disabled={isSaving}
-                  className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs rounded-xl transition disabled:opacity-50"
-                >
-                  {isSaving ? 'Saving...' : 'Save for later'}
-                </button>
-              )}
-              {onAcceptQuote && (
-                <button
-                  type="button"
-                  onClick={handleAcceptQuote}
-                  disabled={isSaving}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-xl transition disabled:opacity-50"
-                >
-                  {isSaving ? 'Submitting...' : 'Request Dispatch and Attach BOL'}
-                </button>
-              )}
-            </div>
-            {showAttachmentPrompt && (
-              <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3 space-y-2 text-left">
-                <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  Attach BOL (PDF or image, optional)
-                </label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf,image/png,image/jpeg,image/webp"
-                  onChange={handleAttachmentChange}
-                  className="block w-full text-[11px] text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600/20 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-blue-300"
-                />
-                {attachmentError && <p className="text-[10px] text-red-400">{attachmentError}</p>}
-                {selectedAttachment && <p className="text-[10px] text-emerald-400">Selected: {selectedAttachment.name}</p>}
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleAcceptQuote}
-                    className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-semibold text-white"
-                  >
-                    Continue
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSkipAttachment}
-                    className="flex-1 rounded-lg border border-slate-700 px-3 py-2 text-[11px] font-semibold text-slate-300"
-                  >
-                    Skip
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <button type="button" onClick={handleLogQuote} disabled={isSaving} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-xl transition disabled:bg-slate-800 cursor-pointer shadow-md">
-              {isSaving ? 'Saving Quote...' : 'Save & Log Quote'}
-            </button>
-            {showAttachmentPrompt && (
-              <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3 space-y-2 text-left">
-                <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">Attach BOL (PDF or image, optional)</label>
-                <input ref={fileInputRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={handleAttachmentChange} className="block w-full text-[11px] text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600/20 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-blue-300" />
-                {attachmentError && <p className="text-[10px] text-red-400">{attachmentError}</p>}
-                {selectedAttachment && <p className="text-[10px] text-emerald-400">Selected: {selectedAttachment.name}</p>}
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={handleLogQuote} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">Log quote</button>
-                  <button type="button" onClick={() => { setShowAttachmentPrompt(false); setSelectedAttachment(null); setAttachmentError(''); }} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300">Cancel</button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {saveStatus && (
-          <p
-            className={`text-xs text-center font-semibold ${
-              saveStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'
-            }`}
-          >
-            {saveStatus.message}
-          </p>
-        )}
-      </div>
+      <QuoteSaveForm state={state} dispatch={dispatch} isDispatcherView={isDispatcherView}
+        onLogQuote={onLogQuote} onSaveForLater={onSaveForLater} onAcceptQuote={onAcceptQuote} />
 
     </div>
   );

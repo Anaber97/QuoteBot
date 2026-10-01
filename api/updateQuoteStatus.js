@@ -34,8 +34,11 @@ export default async function handler(req, res) {
     if (!isValidTransition(quote.status, status)) {
       return res.status(409).json({ error: `Cannot change status from "${quote.status}" to "${status}".` });
     }
-    const { data, error } = await admin.from('quote_logs').update({ status }).eq('id', quoteId).eq('company_id', profile.company_id).select('id, status').single();
+    const { data, error } = await admin.from('quote_logs').update({ status })
+      .eq('id', quoteId).eq('company_id', profile.company_id).eq('status', quote.status)
+      .select('id, status').maybeSingle();
     if (error) throw error;
+    if (!data) return res.status(409).json({ error: 'This quote changed while you were editing it. Refresh and try again.' });
     return res.status(200).json({ success: true, quote: data });
   } catch (error) {
     return sendApiError(res, error, 'Unable to update quote status.', { route: '/api/updateQuoteStatus', provider: 'database' });

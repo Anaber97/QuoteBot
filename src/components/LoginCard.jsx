@@ -6,7 +6,7 @@ import { Mail, Lock, LogIn, CheckCircle2, UserPlus, HelpCircle } from 'lucide-re
 export default function LoginCard() {
   const [mode, setMode] = useState('login'); // 'login' | 'request'
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState(''); // 1. Added Password state
+  const [password, setPassword] = useState('');
   
   // Account Request Form State
   const [requestName, setRequestName] = useState('');
@@ -160,7 +160,7 @@ export default function LoginCard() {
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
                   <input
-                    type="email"
+                    type="email" aria-label="Email address" autoComplete="email"
                     required
                     placeholder="dispatcher@towco.com"
                     value={email}
@@ -170,13 +170,13 @@ export default function LoginCard() {
                 </div>
               </div>
 
-              {/* 3. Password Input Field */}
+              {/* Password */}
               <div>
                 <label className="text-[11px] font-semibold uppercase text-slate-400 block mb-1">Password</label>
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
                   <input
-                    type="password"
+                    type="password" aria-label="Password" autoComplete="current-password"
                     required
                     placeholder="••••••••"
                     value={password}

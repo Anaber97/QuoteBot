@@ -6,9 +6,9 @@ The repository also contains the standalone TowCalc marketing site under `market
 
 ## Local development
 
-1. Copy `.env.example` to `.env` and fill in the required values.
-2. Set `SITE_URL` to the application origin used in invitation links.
-3. Run `npm run dev`.
+1. Use Node 22 (see `.nvmrc`) and install dependencies with `npm ci`.
+2. Copy `.env.example` to `.env` and fill in the required values. Set `SITE_URL` to the application origin used in invitation links.
+3. Run `npm run dev`. Both the browser app and local API handlers use this server.
 
 To work on the marketing site, install its dependencies once with `npm --prefix marketing install`, then run `npm run marketing:dev` from the repository root.
 
@@ -26,7 +26,7 @@ Quote submission is server-authoritative. Apply `20260818154500_server_authorita
 - `npm run marketing:build` creates the standalone marketing-site bundle.
 - `npm audit --omit=dev` checks production dependencies.
 
-There is no live Supabase/Docker instance available in CI or local dev by default, so RLS/migration coverage is a static analysis of the migration SQL rather than a live-database integration test; see `test/rlsPolicyStaticAnalysis.test.js`. If you have Docker available, `supabase start` plus the Supabase CLI can be used to run these migrations against a real local Postgres instance for deeper verification.
+With Docker running, use `npx --no-install supabase start` to replay migrations in a disposable local database, then `npx --no-install supabase test db --local`. The database workflow runs these checks separately in CI. `supabase/tests/database/tenant_access.test.sql` verifies real role/tenant isolation and search beyond 1,000 records. The Node suite also retains fast static migration checks. Never use a destructive reset against the hosted project.
 
 The same commands run automatically for every pull request through `.github/workflows/quality.yml`. Pull requests should not be merged while any quality check is failing.
 
@@ -44,3 +44,5 @@ Supabase schema changes live in `supabase/migrations`. Apply all migrations befo
 Deployment security, migration, backup, recovery, quota, and key-rotation procedures are documented in `SECURITY_OPERATIONS.md`. Use `.env.example` as the authoritative environment-variable inventory.
 
 The quote formula, surcharge order, status lifecycle, permissions, deployment checklist, and rollback steps are documented in `docs/OPERATIONS.md`.
+
+The current component boundaries, retry guarantees, and September 2026 cleanup verification are documented in `docs/ENGINEERING_HANDOFF.md`. `docs/archive/schema-historical.sql` is historical reference only; migrations are the schema source of truth.

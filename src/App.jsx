@@ -1,3 +1,6 @@
+import { useWorkspaceSession } from './features/auth/useWorkspaceSession';
+import { pendingOperation } from './lib/pendingOperation';
+import { appReducer, initialState } from './features/quotes/calculatorState';
 // src/App.jsx
 
 // @ts-check
@@ -5,7 +8,7 @@ import React, { lazy, Suspense, useReducer, useEffect, useRef, useState } from '
 import { supabase } from './lib/supabase';
 import { authenticatedFetch } from './lib/api';
 import { calculateQuoteData } from './services/quoteCalculator';
-import { normalizeConfig, DEFAULT_CONFIG } from './lib/configSchema';
+import { normalizeConfig } from './lib/configSchema';
 
 import Header from './components/Header';
 import LoginCard from './components/LoginCard';
@@ -13,7 +16,7 @@ import SurchargeToggles from './components/SurchargeToggles';
 import WaypointList from './components/WaypointList';
 import QuoteResultsCard from './components/QuoteResultsCard';
 import ClientQuoteForm from './components/ClientQuoteForm';
-import Settings from './components/Settings';
+const Settings = lazy(() => import('./components/Settings'));
 import Toast from './components/Toast';
 import Footer from './components/Footer';
 import LegalPage from './components/LegalPage';
@@ -22,118 +25,7 @@ const QuoteLog = lazy(() => import('./components/QuoteLog'));
 const InviteRegister = lazy(() => import('./components/InviteRegister'));
 const LoadingPanel = () => <div className="p-8 text-center text-sm text-slate-400" role="status">Loading…</div>;
 
-const getInitialBaseId = () => {
-  const savedBase = localStorage.getItem('dispatch_default_base');
-  return savedBase || '';
-};
-
 const normalizeCompanyConfig = (rawConfig = {}) => normalizeConfig(rawConfig);
-
-const initialState = {
-  activeTab: 'calculator',
-  selectedBaseId: getInitialBaseId(),
-  selectedTruckClassId: '',
-  waypoints: ['', ''],
-  isAfterHours: false,
-  isRoadClub: false,
-  isMetro: false,
-  isHazard: false,
-  activeOverrides: { afterHours: true, roadClub: true, metro: true, hazard: true, customSurcharges: {} },
-  pendingCustomSurcharges: {},
-  showDetails: false,
-  customerName: '',
-  customerPhone: '',
-  quoteMake: '',
-  quoteModel: '',
-  quoteNotes: '',
-  customRateInput: '',
-  customLoadUnloadMins: '',
-  customDriveTimeBufferPercent: '',
-};
-
-function appReducer(state, action) {
-  switch (action.type) {
-    case 'SET_TAB':
-      return { ...state, activeTab: action.payload };
-    case 'SET_BASE':
-      return { ...state, selectedBaseId: action.payload };
-    case 'SET_TRUCK_CLASS':
-      return { ...state, selectedTruckClassId: action.payload };
-    case 'SET_WAYPOINTS':
-      return { ...state, waypoints: Array.isArray(action.payload) ? action.payload : ['', ''] };
-    case 'UPDATE_WAYPOINT': {
-      const currentWaypoints = Array.isArray(state.waypoints) ? state.waypoints : ['', ''];
-      const next = [...currentWaypoints];
-      next[action.payload.index] = action.payload.value;
-      return { ...state, waypoints: next };
-    }
-    case 'ADD_WAYPOINT': {
-      const currentWaypoints = Array.isArray(state.waypoints) ? state.waypoints : ['', ''];
-      return { ...state, waypoints: [...currentWaypoints, ''] };
-    }
-    case 'REMOVE_WAYPOINT': {
-      const currentWaypoints = Array.isArray(state.waypoints) ? state.waypoints : ['', ''];
-      if (currentWaypoints.length <= 2) return state;
-      const next = currentWaypoints.filter((_, idx) => idx !== action.payload);
-      return { ...state, waypoints: next };
-    }
-    case 'TOGGLE_SURCHARGE':
-      return { ...state, [action.payload]: !state[action.payload] };
-    case 'SET_OVERRIDE':
-      return {
-        ...state,
-        activeOverrides: {
-          ...state.activeOverrides,
-          [action.payload.key]: action.payload.value,
-        },
-      };
-    case 'TOGGLE_DETAILS':
-      return { ...state, showDetails: !state.showDetails };
-    case 'SET_CUSTOMER_INFO':
-      return { ...state, [action.payload.field]: action.payload.value };
-    case 'SET_QUOTE_META_FIELDS':
-      return { ...state, ...action.payload };
-    case 'SET_CUSTOM_RATE':
-      return { ...state, customRateInput: action.payload };
-    case 'RESET_QUOTE_OVERRIDES':
-      if (state.restoreQuoteOverrides) return { ...state, restoreQuoteOverrides: false };
-      return { ...state, customRateInput: '', customLoadUnloadMins: '', customDriveTimeBufferPercent: '' };
-    case 'SET_CUSTOM_DRIVE_BUFFER':
-      return { ...state, customDriveTimeBufferPercent: action.payload };
-    case 'SET_CUSTOM_LOAD_UNLOAD':
-      return { ...state, customLoadUnloadMins: action.payload };
-    case 'SET_PENDING_CUSTOM_SURCHARGES':
-      return { ...state, pendingCustomSurcharges: action.payload };
-    case 'LOAD_LOGGED_QUOTE':
-      return {
-        ...state,
-        activeTab: 'calculator',
-        restoreQuoteOverrides: true,
-        customRateInput: action.payload.quote_details?.pricingOverrides?.customRate ?? '',
-        customLoadUnloadMins: action.payload.quote_details?.pricingOverrides?.customLoadUnloadMins ?? '',
-        customDriveTimeBufferPercent: action.payload.quote_details?.pricingOverrides?.customDriveTimeBufferPercent ?? '',
-        selectedBaseId: action.payload.base_yard_id || '',
-        selectedTruckClassId: action.payload.truck_class || '',
-        waypoints: Array.isArray(action.payload.all_waypoints) && action.payload.all_waypoints.length >= 2
-          ? action.payload.all_waypoints
-          : [action.payload.pickup_address || '', action.payload.dropoff_address || ''],
-        customerName: action.payload.customer_name || '',
-        customerPhone: action.payload.customer_phone || '',
-        quoteMake: action.payload.quote_details?.make || '',
-        quoteModel: action.payload.quote_details?.model || '',
-        quoteNotes: action.payload.notes || '',
-      };
-    case 'RESET_FORM':
-      return {
-        ...initialState,
-        waypoints: ['', ''],
-        activeTab: state.activeTab,
-        selectedBaseId: state.selectedBaseId,
-      };
-    default:
-      return state;
-  }
-}
 
 export default function App() {
   const legalRoute = window.location.pathname.replace(/\/+$/, '') || '/';
@@ -141,17 +33,12 @@ export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [theme, setTheme] = useState(() => localStorage.getItem('towcalc_theme') || 'dark');
   const [isInviteRoute, setIsInviteRoute] = useState(false);
-  const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [companyRates, setCompanyRates] = useState(() => normalizeCompanyConfig(DEFAULT_CONFIG));
 
   const [loading, setLoading] = useState(false);
   const [quoteData, setQuoteData] = useState(null);
   const [showEquipmentCalculator, setShowEquipmentCalculator] = useState(false);
   const [openedLoggedQuote, setOpenedLoggedQuote] = useState(null);
   const [error, setError] = useState(null);
-  const [profileLoadError, setProfileLoadError] = useState(null);
-  const currentAuthUserIdRef = useRef(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -165,6 +52,8 @@ export default function App() {
     setError(null);
     setLoading(false);
   };
+
+  const { session, profile, companyRates, setCompanyRates, profileLoadError } = useWorkspaceSession(resetCalculatorState);
 
   const handleOpenLoggedQuote = (loggedQuote) => {
     dispatch({ type: 'LOAD_LOGGED_QUOTE', payload: loggedQuote });
@@ -201,107 +90,6 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     setIsInviteRoute(Boolean(params.get('invite')));
   }, []);
-
-  // 1. Auth Session listener & app_config loader
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      const nextUserId = session?.user?.id || null;
-      currentAuthUserIdRef.current = nextUserId;
-      if (nextUserId) {
-        resetCalculatorState();
-        fetchProfileAndRates(nextUserId);
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      const nextUserId = session?.user?.id || null;
-      const previousUserId = currentAuthUserIdRef.current;
-      const didAuthIdentityChange = previousUserId !== nextUserId;
-
-      if (didAuthIdentityChange) {
-        resetCalculatorState();
-      }
-
-      currentAuthUserIdRef.current = nextUserId;
-      setSession(session);
-      if (session?.user) fetchProfileAndRates(session.user.id);
-      else {
-        setProfile(null);
-        setCompanyRates(normalizeCompanyConfig(DEFAULT_CONFIG));
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchProfileAndRates = async (userId) => {
-    setProfileLoadError(null);
-    try {
-      const { data: prof, error: profErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (profErr) throw profErr;
-      setProfile(prof);
-
-      if (prof?.company_id) {
-        let loadedConfig = null;
-
-        try {
-          const params = new URLSearchParams({ company_id: String(prof.company_id) });
-          const response = await authenticatedFetch(`/api/getAppConfig?${params.toString()}`);
-          const result = await response.json().catch(() => ({}));
-
-          if (response.ok && result?.config) {
-            loadedConfig = result.config;
-          }
-        } catch (apiErr) {
-          console.warn('Server app_config fetch fallback triggered:', apiErr);
-        }
-
-        if (!loadedConfig) {
-          const { data: ratesData, error: ratesErr } = await supabase
-            .from('app_config')
-            .select('*')
-            .eq('company_id', prof.company_id)
-            .maybeSingle();
-
-          if (!ratesErr && ratesData) {
-            loadedConfig = ratesData;
-          }
-        }
-
-        if (loadedConfig) {
-          const { data: clientAccounts, error: clientAccountsError } = await supabase
-            .from('clients')
-            .select('id, company_id, client_name, contact_email, contact_phone, approval_threshold, pricing, logo_path')
-            .eq('company_id', prof.company_id);
-          if (!clientAccountsError) {
-            loadedConfig = {
-              ...loadedConfig,
-              client_portal: {
-                ...(loadedConfig.client_portal || {}),
-                clients: clientAccounts || [],
-              },
-            };
-          }
-          setCompanyRates(normalizeCompanyConfig(loadedConfig));
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching profile or rates:', err);
-      // Never leave a stale profile/config from a previous identity in place
-      // when the load for the *current* user fails.
-      setProfile(null);
-      setCompanyRates(normalizeCompanyConfig(DEFAULT_CONFIG));
-      setProfileLoadError('We could not load your account profile. Please refresh the page or sign in again.');
-    }
-  };
 
   const handleSettingsSave = (newConfig) => {
     setCompanyRates(normalizeCompanyConfig(newConfig));
@@ -393,7 +181,21 @@ export default function App() {
     try {
       const activeClientConfig = getActiveClientConfig(profile, companyRates);
       dispatch({ type: 'SET_QUOTE_META_FIELDS', payload: { quoteMake: make || '', quoteModel: model || '' } });
-      const data = await calculateQuoteData({
+      let data;
+      if (isClientPortalUser) {
+        const response = await authenticatedFetch('/api/createQuote', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ preview: true, baseId: state.selectedBaseId,
+            waypoints: routeWaypoints, equipment: { name: equipmentName, make, model, serialNumber,
+              weight, width, height, attachmentType, attachmentWeight } }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.estimate) throw new Error(result.error || 'Unable to calculate your quote.');
+        data = { authoritativeTotal: result.estimate.total, totalMiles: result.estimate.totalMiles,
+          totalHours: result.estimate.totalHours, rawTotalHours: result.estimate.totalHours,
+          approvalRequired: result.estimate.approvalRequired, cleanWaypoints: routeWaypoints };
+      } else {
+        data = await calculateQuoteData({
         currentBase,
         waypoints: routeWaypoints,
         selectedTruckClassId: isHeavy ? 'heavy' : state.selectedTruckClassId,
@@ -409,6 +211,7 @@ export default function App() {
         clientConfig: activeClientConfig,
         useWeightTierPricing: true,
       });
+      }
 
       const permitFee = Number(data.osow?.permitFee ?? permitInfo?.permitFee ?? 0);
 
@@ -449,10 +252,7 @@ export default function App() {
 
     try {
       const waypointsArr = Array.isArray(state.waypoints) ? state.waypoints : ['', ''];
-      const response = await authenticatedFetch('/api/createQuote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const payload = {
           baseId: state.selectedBaseId,
           waypoints: waypointsArr,
           quoteSource: showEquipmentCalculator ? 'equipment_calculator' : 'main_calculator',
@@ -472,7 +272,12 @@ export default function App() {
             make: state.quoteMake || quoteData.equipmentMeta?.make || '',
             model: state.quoteModel || quoteData.equipmentMeta?.model || '',
           },
-        }),
+        };
+      const operation = await pendingOperation('quote:' + profile.id, payload);
+      const response = await authenticatedFetch('/api/createQuote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.id },
+        body: JSON.stringify(payload),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.quote) throw new Error(result.error || 'The authoritative quote could not be saved.');
@@ -487,6 +292,7 @@ export default function App() {
         if (updateError) throw updateError;
       }
 
+      operation.complete();
       setNotice({ message: attachmentFile ? 'Quote logged with BOL attached!' : 'Quote successfully logged!' });
       dispatch({ type: 'RESET_FORM' });
       setQuoteData(null);
@@ -530,12 +336,12 @@ export default function App() {
             {state.activeTab === 'logs' && <Suspense fallback={<LoadingPanel />}><QuoteLog profile={profile} onSelectQuote={handleOpenLoggedQuote} /></Suspense>}
 
             {state.activeTab === 'settings' && (
-              <Settings
+              <Suspense fallback={<LoadingPanel />}><Settings
                 profile={profile}
                 currentUserRole={profile?.role || 'manager'}
                 config={companyRates}
                 onSaveConfig={handleSettingsSave}
-              />
+              /></Suspense>
             )}
 
             {state.activeTab === 'calculator' && (
@@ -543,6 +349,7 @@ export default function App() {
                 /* CLIENT PORTAL VIEW */
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                   <div className="lg:col-span-7">
+                    {error && <div role="alert" className="mb-4 rounded-xl border border-red-800/50 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
                     <Suspense fallback={<LoadingPanel />}><ClientQuoteForm
                       companyRates={companyRates}
                       onCalculate={handleClientCalculateQuote}
@@ -609,6 +416,7 @@ export default function App() {
                           Base Dispatch Location
                         </label>
                         <select
+                          aria-label="Base dispatch location"
                           value={state.selectedBaseId}
                           onChange={(e) => dispatch({ type: 'SET_BASE', payload: e.target.value })}
                           className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -628,6 +436,7 @@ export default function App() {
                           Tow Vehicle Class
                         </label>
                         <select
+                          aria-label="Tow vehicle class"
                           value={state.selectedTruckClassId}
                           onChange={(e) => dispatch({ type: 'SET_TRUCK_CLASS', payload: e.target.value })}
                           className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"

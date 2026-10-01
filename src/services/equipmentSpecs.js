@@ -25,9 +25,8 @@ function normalizeDimensionResults(results) {
       transport_height_in: heightIn != null ? Number(heightIn) : null,
       width_ft: widthIn != null ? Number((widthIn / 12).toFixed(1)) : null,
       height_ft: heightIn != null ? Number((heightIn / 12).toFixed(1)) : null,
-      verification_status: item?.verification_status === 'Verified'
-        ? 'Verified'
-        : 'Unverified',
+      confidence: ['HIGH', 'MEDIUM', 'LOW'].includes(item?.confidence) ? item.confidence : 'LOW',
+      requires_confirmation: !['HIGH', 'MEDIUM'].includes(item?.confidence) || item?.requires_confirmation === true,
     };
   });
 }
@@ -43,6 +42,7 @@ export async function searchEquipmentSpecs(query) {
   const lookup = async () => {
     const response = await authenticatedFetch(`/api/searchEquipment?query=${encodeURIComponent(cleanQuery)}`, {
       headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(65_000),
     });
 
     if (!response.ok) {
@@ -59,7 +59,7 @@ export async function searchEquipmentSpecs(query) {
     const results = Array.isArray(payload) ? payload : payload.results || [];
     return {
       results: normalizeDimensionResults(results).slice(0, 8),
-      source: payload?.source || (results.length > 0 ? 'ai-gateway' : ''),
+      source: payload?.source || '',
       error: payload?.error || '',
     };
   };

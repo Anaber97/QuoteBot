@@ -1,3 +1,5 @@
+import { requestId, fingerprint, assertSameRequest } from './_idempotency.js';
+import { readStoredConfig } from '../shared/config/storage.js';
 import { calculateAuthoritativeQuote } from './_quoteEngine.js';
 import { computeServerRoute, resolveGoogleLocalities } from './_routes.js';
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
@@ -37,17 +39,6 @@ export function normalizeQuoteInput(body, profile) {
   };
 }
 
-function mergeConfig(row) {
-  const legacy = row?.config && typeof row.config === 'object' ? row.config : {};
-  return {
-    ...legacy, ...row,
-    pricing: { ...(legacy.pricing || {}), ...(row?.pricing || {}) },
-    surcharges: { ...(legacy.surcharges || {}), ...(row?.surcharges || {}) },
-    geofences: { ...(legacy.geofences || {}), ...(row?.geofences || {}) },
-    client_portal: { ...(legacy.client_portal || {}), ...(row?.client_portal || {}) },
-  };
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
@@ -55,9 +46,22 @@ export default async function handler(req, res) {
     const { admin, profile } = await requireUser(req);
     await enforceRateLimit(admin, `create-quote:${profile.id}`, { limit: 60, windowMs: 60 * 60 * 1000 });
     const input = normalizeQuoteInput(body, profile);
+    const preview = body.preview === true;
+    const operationId = preview ? null : requestId(req);
+    const requestHash = fingerprint(input);
+    const findExisting = () => admin.from('quote_logs').select('*')
+      .eq('user_id', profile.id).eq('company_id', profile.company_id).eq('request_id', operationId).maybeSingle();
+    if (operationId) {
+      const { data: existing, error } = await findExisting();
+      if (error) throw error;
+      if (existing) {
+        assertSameRequest(existing, requestHash);
+        return res.status(200).json({ success: true, quote: existing });
+      }
+    }
     const { data: configRow, error: configError } = await admin.from('app_config').select('*').eq('company_id', profile.company_id).single();
     if (configError || !configRow) throw Object.assign(new Error('Company pricing is not configured.'), { status: 400 });
-    const config = mergeConfig(configRow);
+    const config = readStoredConfig(configRow);
     const base = (Array.isArray(config.bases) ? config.bases : []).find((item) => String(item.id) === input.baseId)
       || (Array.isArray(config.bases) ? config.bases[0] : null);
     if (!base?.address) throw Object.assign(new Error('A valid company base is required.'), { status: 400 });
@@ -82,7 +86,14 @@ export default async function handler(req, res) {
       config.state_transport_limits = data;
     }
     const calculated = calculateAuthoritativeQuote({ input, config, clientConfig, route, role: profile.role });
+    if (preview) {
+      return res.status(200).json({ success: true, estimate: {
+        total: calculated.minQuote, totalMiles: calculated.totalMiles,
+        totalHours: calculated.totalHours, approvalRequired: calculated.approvalRequired,
+      } });
+    }
     const payload = {
+      ...(operationId ? { request_id: operationId, request_hash: requestHash } : {}),
       company_id: profile.company_id, user_id: profile.id, client_id: profile.role === 'client' ? profile.client_id : null,
       quote_source: input.quoteSource, customer_name: input.customerName, customer_phone: input.customerPhone,
       pickup_address: input.waypoints[0], dropoff_address: input.waypoints.at(-1), all_waypoints: input.waypoints,
@@ -95,6 +106,14 @@ export default async function handler(req, res) {
       quote_details: { ...calculated.quoteDetails, pricingOverrides: { customRate: input.customRate > 0 ? input.customRate : null, customLoadUnloadMins: input.customLoadUnloadMins, customDriveTimeBufferPercent: input.customDriveTimeBufferPercent }, approvalRequired: calculated.approvalRequired, metroCodes: calculated.metroCodes, routeLegs: calculated.routeLegs },
     };
     const { data: quote, error: insertError } = await admin.from('quote_logs').insert(payload).select('*').single();
+    if (insertError?.code === '23505' && operationId) {
+      const { data: existing, error } = await findExisting();
+      if (error) throw error;
+      if (existing) {
+        assertSameRequest(existing, requestHash);
+        return res.status(200).json({ success: true, quote: existing });
+      }
+    }
     if (insertError) throw insertError;
 
     return res.status(201).json({ success: true, quote });

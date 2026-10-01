@@ -20,6 +20,8 @@ export default function SettingsTabsNav({ activeSubTab, setActiveSubTab, allGeof
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id)}
+            type="button"
+            aria-pressed={isActive}
             data-active={isActive}
             className={`settings-tab flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium rounded-t-lg transition cursor-pointer whitespace-nowrap ${
               isActive

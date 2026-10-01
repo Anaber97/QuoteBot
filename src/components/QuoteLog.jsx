@@ -1,3 +1,4 @@
+import { pendingOperation } from '../lib/pendingOperation';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { authenticatedFetch } from '../lib/api';
@@ -18,25 +19,29 @@ export default function QuoteLog({ onSelectQuote, profile }) {
   const [searchInput, setSearchInput] = useState(''); const [searchTerm, setSearchTerm] = useState('');
   const [notice, setNotice] = useState(null); const [dialog, setDialog] = useState(null); const [email, setEmail] = useState('');
   const [busyAction, setBusyAction] = useState('');
+  const loadRevision = useRef(0);
   const fileRef = useRef(null); const pendingQuoteRef = useRef(null); const isClientPortal = profile?.role === 'client';
 
   const fetchLogs = useCallback(async (nextPage = 0) => {
+    const revision = ++loadRevision.current;
     setLoading(true); setError(null);
     if (searchTerm) {
       try {
-        const response = await authenticatedFetch(`/api/ops?check=quote-search&q=${encodeURIComponent(searchTerm)}&page=${nextPage}`);
+        const response = await authenticatedFetch(`/api/searchQuotes?q=${encodeURIComponent(searchTerm)}&page=${nextPage}`);
         const body = await response.json();
+        if (revision !== loadRevision.current) return;
         if (!response.ok) throw new Error(body.error || 'Quote search failed.');
         setLogs(body.quotes || []); setHasMore(Boolean(body.hasMore)); setPage(nextPage);
-      } catch (searchError) { setError(searchError.message); }
+      } catch (searchError) { if (revision !== loadRevision.current) return; setError(searchError.message); }
       setLoading(false); return;
     }
     let query = supabase.from('quote_logs').select(LIST_COLUMNS).order('created_at', { ascending: false }).range(nextPage * PAGE_SIZE, nextPage * PAGE_SIZE + PAGE_SIZE);
     if (isClientPortal) query = query.eq('quote_source', 'client_portal').eq('client_id', profile.client_id);
     const { data, error: loadError } = await query;
+    if (revision !== loadRevision.current) return;
     if (loadError) setError(loadError.message); else { setLogs((data || []).slice(0, PAGE_SIZE)); setHasMore((data || []).length > PAGE_SIZE); setPage(nextPage); } setLoading(false);
   }, [isClientPortal, profile?.client_id, searchTerm]);
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+  useEffect(() => { fetchLogs(); return () => { loadRevision.current += 1; }; }, [fetchLogs]);
 
   const openQuote = async (log) => {
     setBusyId(log.id); setBusyAction('open'); setError(null);
@@ -50,8 +55,11 @@ export default function QuoteLog({ onSelectQuote, profile }) {
     setBusyId(log.id); setBusyAction(action === 'share' ? 'email' : 'dispatch');
     setNotice({ tone: 'progress', message: action === 'share' ? 'Sending quote email…' : 'Sending dispatch request…' });
     try {
-      const response = await authenticatedFetch('/api/sendQuoteEmail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quoteId: log.id, action, recipient }) });
+      const payload = { quoteId: log.id, action, recipient };
+      const operation = await pendingOperation('email:' + profile.id, payload);
+      const response = await authenticatedFetch('/api/sendQuoteEmail', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.id }, body: JSON.stringify(payload) });
       const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Email could not be sent.');
+      operation.complete();
       setNotice({ message: action === 'share' ? 'Quote emailed.' : 'Quote sent for dispatch.' });
     } catch (emailError) { setNotice({ tone: 'error', message: emailError.message }); } finally { setBusyId(null); setBusyAction(''); }
   };
@@ -111,17 +119,17 @@ export default function QuoteLog({ onSelectQuote, profile }) {
     } finally { setBusyId(null); setBusyAction(''); }
   };
 
-  const searchForm = <form onSubmit={(event) => { event.preventDefault(); const next = searchInput.trim(); setPage(0); if (next === searchTerm) fetchLogs(0); else setSearchTerm(next); }} className="flex flex-col gap-2 sm:flex-row">
-    <input type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search ID, POC name/number, Make/Model, or equipment" className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-[#0b0f17] px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" />
+  const searchForm = <><div className="mb-4"><h2 className="text-xl font-bold tracking-tight text-white">Quote history</h2><p className="mt-1 text-sm text-slate-400">Find saved estimates, review details, and share a quote.</p></div><form onSubmit={(event) => { event.preventDefault(); const next = searchInput.trim(); setPage(0); if (next === searchTerm) fetchLogs(0); else setSearchTerm(next); }} className="flex flex-col gap-2 sm:flex-row">
+    <input aria-label="Search quote history" type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search ID, POC name/number, Make/Model, or equipment" className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-[#0b0f17] px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" />
     <button type="submit" className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-500">Search</button>
     {(searchTerm || searchInput) && <button type="button" onClick={() => { setSearchInput(''); setSearchTerm(''); setPage(0); }} className="rounded-xl border border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-300">Clear</button>}
-  </form>;
+  </form></>;
 
-  if (loading) return <div className="py-12 text-center text-slate-400 text-sm"><div className="animate-spin inline-block w-6 h-6 border-2 border-current border-t-transparent text-blue-500 rounded-full mb-2" /><p>Loading saved quotes...</p></div>;
-  if (error) return <div className="p-4 bg-red-950/40 text-red-400 border border-red-800/50 rounded-xl text-xs font-medium">Failed to load quote log: {error}</div>;
-  if (!logs.length) return <div className="space-y-3">{searchForm}<div className="py-12 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl"><p className="text-sm font-semibold text-slate-400 mb-1">{searchTerm ? 'No matching quotes' : 'No Quotes Logged Yet 📊'}</p><p className="text-xs">{searchTerm ? 'Try another ID, contact, or equipment search.' : 'Saved quotes will appear here.'}</p></div></div>;
+  if (loading) return <div role="status" className="py-12 text-center text-slate-400 text-sm"><div className="animate-spin inline-block w-6 h-6 border-2 border-current border-t-transparent text-blue-500 rounded-full mb-2" /><p>Loading saved quotes...</p></div>;
+  if (error) return <div className="space-y-3">{searchForm}<div role="alert" className="rounded-xl border border-red-800/50 bg-red-950/40 p-4 text-sm text-red-300"><p>We couldn’t load your quotes. {error}</p><button type="button" onClick={() => fetchLogs(page)} className="mt-3 rounded-lg border border-red-500/40 px-3 py-2 font-semibold">Try again</button></div></div>;
+  if (!logs.length) return <div className="space-y-3">{searchForm}<div className="py-12 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl"><p className="text-sm font-semibold text-slate-400 mb-1">{searchTerm ? 'No matching quotes' : 'No saved quotes yet'}</p><p className="text-xs">{searchTerm ? 'Try another ID, contact, or equipment search.' : 'Saved quotes will appear here.'}</p></div></div>;
 
-  return <div className="space-y-3 max-h-[650px] overflow-y-auto pr-1">{searchForm}<input ref={fileRef} type="file" hidden accept="application/pdf,image/png,image/jpeg,image/webp" onChange={handleBolFile} />
+  return <div className="space-y-3 ">{searchForm}<input ref={fileRef} type="file" hidden accept="application/pdf,image/png,image/jpeg,image/webp" onChange={handleBolFile} />
     {logs.map((log) => {
       const isClientQuote = log.quote_source === 'client_portal';
       const equipment = log.quote_details && typeof log.quote_details === 'object' ? log.quote_details : {};

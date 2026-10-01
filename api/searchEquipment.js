@@ -6,8 +6,30 @@ export const config = { maxDuration: 60 };
 
 const responseCache = new Map();
 const CACHE_TTL_MS = 60 * 60 * 1000;
-const SAFE_STATUSES = new Set(['Verified']);
-const SOURCE_AGREEMENT_TOLERANCE = 0.025;
+const MAX_CACHE_ENTRIES = 500;
+const MEDIUM_TOLERANCE = 0.05; // two independent sources must agree within 5% on every field
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite'; // override with GEMINI_MODEL env var
+const SPEC_FIELDS = ['operating_weight_lbs', 'width_in', 'height_in'];
+const CONFIDENCE_RANK = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+const identitySchema = {
+  make: { type: 'string' }, model: { type: 'string' }, configuration: { type: ['string', 'null'] },
+};
+const RESEARCH_SCHEMA = {
+  type: 'object', required: ['results'], properties: {
+    results: { type: 'array', maxItems: 3, items: {
+      type: 'object', required: ['make', 'model', 'configuration', 'evidence'], properties: {
+        ...identitySchema,
+        evidence: { type: 'array', maxItems: 6, items: {
+          type: 'object', required: ['url', 'make', 'model', 'configuration', ...SPEC_FIELDS], properties: {
+            ...identitySchema, url: { type: 'string' }, title: { type: 'string' }, publisher: { type: 'string' },
+            ...Object.fromEntries(SPEC_FIELDS.map((field) => [field, { type: ['number', 'null'] }])),
+          },
+        } },
+      },
+    } },
+  },
+};
+
 const BRAND_ALIASES = new Map([
   ['cat', 'caterpillar'], ['caterpillar', 'caterpillar'],
   ['deere', 'john deere'], ['johndeere', 'john deere'],
@@ -21,19 +43,26 @@ const MANUFACTURER_DOMAINS = new Map([
   ['leeboy', ['leeboy.com']],
 ]);
 
+// ---------------------------------------------------------------- basics
+
 const text = (value) => value == null ? '' : String(value).trim();
 const number = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
+const hostOf = (value) => {
+  try { return new URL(text(value)).hostname.toLowerCase().replace(/^www\./, ''); }
+  catch { return ''; }
+};
+const escapeLike = (value) => text(value).replace(/[\\%_]/g, '\\$&');
+// Conservatively group subdomains together, including country-code domains.
+const independentDomain = (url) => hostOf(url).split('.').slice(-2).join('.');
+
 export const normalizeSearchText = (value) => text(value).toLowerCase()
   .replace(/([a-z])([0-9])/g, '$1 $2').replace(/([0-9])([a-z])/g, '$1 $2')
   .replace(/[^a-z0-9]+/g, ' ').trim();
 
-export function deFuzzEquipmentQuery(value = '') {
-  const tokens = normalizeSearchText(value).split(' ').filter(Boolean)
-    .filter((token) => !/^(?:19|20)\d{2}$/.test(token));
-  const normalized = tokens.join(' ');
+function applyBrandAlias(normalized) {
   for (const [alias, canonical] of BRAND_ALIASES) {
     if (normalized.startsWith(`${alias} `) || normalized === alias) {
       return `${canonical}${normalized.slice(alias.length)}`.trim();
@@ -42,24 +71,27 @@ export function deFuzzEquipmentQuery(value = '') {
   return normalized;
 }
 
-// Database matching benefits from splitting `L90H` into tolerant tokens. Web
-// search does not: search engines understand the compact model identifier and
-// rank manufacturer documents much more reliably when it stays intact.
+export function deFuzzEquipmentQuery(value = '') {
+  const tokens = normalizeSearchText(value).split(' ').filter(Boolean)
+    .filter((token) => !/^(?:19|20)\d{2}$/.test(token));
+  return applyBrandAlias(tokens.join(' '));
+}
+
+// Database matching splits `L90H` into tolerant tokens. Web search does not:
+// search engines rank manufacturer pages far better when the model stays intact.
 function webResearchQuery(value = '') {
   const tokens = text(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ')
     .split(' ').filter(Boolean).filter((token) => !/^(?:19|20)\d{2}$/.test(token));
-  let normalized = tokens.join(' ');
-  for (const [alias, canonical] of BRAND_ALIASES) {
-    if (normalized.startsWith(`${alias} `) || normalized === alias) {
-      normalized = `${canonical}${normalized.slice(alias.length)}`.trim();
-      break;
-    }
-  }
-  return normalized;
+  return applyBrandAlias(tokens.join(' '));
 }
 
 function searchTokenGroups(value = '') {
-  return deFuzzEquipmentQuery(value).split(' ').filter(Boolean).slice(0, 6).map((token) => {
+  const tokens = deFuzzEquipmentQuery(value).split(' ').filter(Boolean).slice(0, 6);
+  // Single characters (the "l" and "h" in "l 90 h") match nearly every row and
+  // would crowd the real match out of the DB result limit. JS matching below
+  // still checks every token.
+  const useful = tokens.filter((token) => token.length >= 2);
+  return (useful.length ? useful : tokens).map((token) => {
     const aliases = [...BRAND_ALIASES.entries()]
       .filter(([, canonical]) => canonical.split(' ').includes(token))
       .map(([alias]) => alias);
@@ -77,15 +109,13 @@ function specNumber(item, field) {
 }
 
 function hasCompleteSpecs(item) {
-  return Boolean(specNumber(item, 'operating_weight_lbs') && specNumber(item, 'width_in') && specNumber(item, 'height_in'));
+  return SPEC_FIELDS.every((field) => specNumber(item, field));
 }
 
 export function matchesEquipmentSearch(item, query = '') {
   const normalizedQuery = deFuzzEquipmentQuery(query);
   const normalizedCandidate = deFuzzEquipmentQuery([item?.make, item?.model, item?.serial_number].filter(Boolean).join(' '));
-  // Makes such as LeeBoy are often presented as either "LeeBoy" or
-  // "Lee Boy" by different sources. Compare a whitespace-free form before
-  // falling back to the token-level partial-match behavior.
+  // "LeeBoy" vs "Lee Boy": compare a whitespace-free form first.
   if (normalizedQuery && normalizedCandidate.replaceAll(' ', '').includes(normalizedQuery.replaceAll(' ', ''))) return true;
   const queryTokens = normalizedQuery.split(' ').filter(Boolean);
   const candidateTokens = normalizedCandidate.split(' ').filter(Boolean);
@@ -101,46 +131,29 @@ function cleanUrl(value) {
   } catch { return ''; }
 }
 
-function canonicalSourceUrl(value) {
-  const clean = cleanUrl(value);
-  if (!clean) return '';
-  const url = new URL(clean);
-  // Google grounding can return a tracked URL while Gemini cites that same
-  // page without its query string. Compare the stable destination only, but
-  // keep the model's original HTTPS URL in the returned evidence.
-  url.hash = '';
-  url.search = '';
-  url.hostname = url.hostname.toLowerCase();
-  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
-  return url.href;
-}
-
-function allowedSourceUrls(payload) {
-  const values = [...(Array.isArray(payload?.citations) ? payload.citations : []), ...(Array.isArray(payload?.search_results) ? payload.search_results : [])];
-  return new Set(values.map((entry) => canonicalSourceUrl(typeof entry === 'string' ? entry : entry?.url)).filter(Boolean));
-}
+// ---------------------------------------------------------------- Gemini
 
 function webSearchError(response, detail = '') {
-  const error = new Error(response.status === 429 ? 'Equipment web research is temporarily rate-limited. Please retry in a minute.' : `Equipment web search failed (${response.status})${detail ? `: ${detail}` : '.'}`);
+  const error = new Error(response.status === 429
+    ? 'Equipment web research has reached its provider quota. Try later or enter specifications manually.'
+    : `Equipment web search failed (${response.status})${detail ? `: ${detail}` : '.'}`);
   error.status = response.status === 429 ? 429 : 502;
   error.retryAfter = response.status === 429 ? Number(response.headers.get('retry-after')) || 60 : undefined;
   error.providerStatus = response.status;
   return error;
 }
 
-async function searchGemini(apiKey, prompt, { timeoutMs = 55_000 } = {}) {
-  // Gemini 2.5 models can return 404 for newly-created AI Studio projects.
-  // Flash-Lite is the current low-cost model available to new projects and
-  // supports both Google Search grounding and structured JSON output.
-  const model = 'gemini-3.5-flash-lite';
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+async function searchGemini(apiKey, prompt, { timeoutMs = 40_000 } = {}) {
+  const model = text(getServerEnv('GEMINI_MODEL')) || DEFAULT_GEMINI_MODEL;
+  const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      tools: [{ google_search: {} }],
-      generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+      model, input: prompt, store: false,
+      tools: [{ type: 'google_search' }],
+      response_format: { type: 'text', mime_type: 'application/json', schema: RESEARCH_SCHEMA },
+      generation_config: { temperature: 0.1, max_output_tokens: 4096 },
     }),
   });
   if (!response.ok) {
@@ -157,87 +170,62 @@ async function searchGemini(apiKey, prompt, { timeoutMs = 55_000 } = {}) {
 }
 
 function geminiOutputText(payload) {
+  if (Array.isArray(payload?.steps)) return payload.steps.filter((step) => step.type === 'model_output')
+    .flatMap((step) => step.content || []).filter((block) => block.type === 'text').map((block) => text(block.text)).join('\n');
   const candidate = payload?.candidates?.[0];
   return (candidate?.content?.parts || []).map((part) => text(part?.text)).filter(Boolean).join('\n');
 }
 
-function geminiGroundingUrls(payload) {
-  const candidate = payload?.candidates?.[0];
-  const chunks = candidate?.groundingMetadata?.groundingChunks || candidate?.grounding_metadata?.grounding_chunks || [];
-  return chunks.map((chunk) => cleanUrl(chunk?.web?.uri || chunk?.web?.url)).filter(Boolean);
+function canonicalUrl(value) {
+  const clean = cleanUrl(value);
+  if (!clean) return '';
+  const url = new URL(clean);
+  url.search = ''; url.hash = '';
+  url.hostname = url.hostname.replace(/^www\./, '');
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+  return url.href;
 }
 
-function isManufacturerDomain(source) {
-  const publisher = normalizeSearchText(source?.publisher).replaceAll(' ', '');
-  const normalizedMake = deFuzzEquipmentQuery(source?.make);
-  const make = normalizedMake.replaceAll(' ', '');
-  try {
-    const hostname = new URL(source?.url).hostname.toLowerCase().replace(/^www\./, '');
-    const knownDomains = MANUFACTURER_DOMAINS.get(normalizedMake) || [];
-    return Boolean(hostname && (knownDomains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))
-      || make.length >= 3 && hostname.includes(make) || publisher.length >= 4 && hostname.includes(publisher)));
-  } catch { return false; }
-}
-
-function specsAgree(a, b) {
-  const values = [specNumber(a, 'operating_weight_lbs'), specNumber(b, 'operating_weight_lbs'), specNumber(a, 'width_in'), specNumber(b, 'width_in'), specNumber(a, 'height_in'), specNumber(b, 'height_in')];
-  if (!values.every(Boolean)) return false;
-  const [weightA, weightB, widthA, widthB, heightA, heightB] = values;
-  return [
-    [weightA, weightB], [widthA, widthB], [heightA, heightB],
-  ].every(([first, second]) => Math.abs(first - second) / Math.max(first, second) <= SOURCE_AGREEMENT_TOLERANCE);
-}
-
-function highestEvidenceValue(evidence = [], field) {
-  const values = evidence.map((source) => specNumber(source, field)).filter(Boolean);
-  return values.length ? Math.max(...values) : null;
-}
-
-function combinedEvidenceSpecs(evidence = []) {
-  return {
-    operating_weight_lbs: highestEvidenceValue(evidence, 'operating_weight_lbs'),
-    width_in: highestEvidenceValue(evidence, 'width_in'),
-    height_in: highestEvidenceValue(evidence, 'height_in'),
-  };
-}
-
-function manufacturerEvidenceCoversSpecs(evidence = []) {
-  return hasCompleteSpecs(combinedEvidenceSpecs(evidence.filter((source) => source.is_manufacturer)));
-}
-
-function conservativeSpecs(evidence = []) {
-  const manufacturer = evidence.filter((source) => source.is_manufacturer);
-  if (manufacturerEvidenceCoversSpecs(manufacturer)) return combinedEvidenceSpecs(manufacturer);
-  const complete = evidence.filter(hasCompleteSpecs);
-  if (!complete.length) return {};
-  return {
-    operating_weight_lbs: highestEvidenceValue(complete, 'operating_weight_lbs'),
-    width_in: highestEvidenceValue(complete, 'width_in'),
-    height_in: highestEvidenceValue(complete, 'height_in'),
-  };
-}
-
-export function deriveVerificationStatus(evidence = []) {
-  const complete = evidence.filter((source) => cleanUrl(source?.url) && hasCompleteSpecs(source));
-  if (manufacturerEvidenceCoversSpecs(evidence)) return 'Verified';
-  if (!complete.length) return 'Unverified';
-  if (complete.some((source, index) => complete.slice(index + 1).some((other) => !specsAgree(source, other)))) return 'Conflict';
-  if (complete.length >= 2) return 'Unverified';
-  return 'Unverified';
-}
-
-function hasReliableWebEvidence(evidence = []) {
-  const complete = evidence.filter((source) => cleanUrl(source?.url) && hasCompleteSpecs(source));
-  return manufacturerEvidenceCoversSpecs(evidence) || complete.length >= 2 && deriveVerificationStatus(complete) !== 'Conflict';
+// Resolve only Google's grounding redirects. Never fetch model-supplied URLs.
+export async function geminiGroundedUrls(payload) {
+  let chunks = payload?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+  if (Array.isArray(payload?.steps)) {
+    const searched = payload.steps.some((step) => step.type === 'google_search_result' && !step.is_error);
+    if (!searched) return [];
+    const annotations = payload.steps.filter((step) => step.type === 'model_output')
+      .flatMap((step) => step.content || []).flatMap((block) => block.annotations || [])
+      .filter((annotation) => annotation.type === 'url_citation').map((annotation) => annotation.url);
+    // JSON outputs may omit annotations. A Google-signed grounding URL must
+    // actually resolve before it can support a result; arbitrary model URLs cannot.
+    const parsedResults = parseJson(geminiOutputText(payload)).results;
+    const signed = (Array.isArray(parsedResults) ? parsedResults : []).flatMap((item) => Array.isArray(item.evidence) ? item.evidence : [])
+      .map((source) => source.url).filter((url) => hostOf(url) === 'vertexaisearch.cloud.google.com'
+        && new URL(url).pathname.startsWith('/grounding-api-redirect/'));
+    chunks = [...new Set([...annotations, ...signed])].map((uri) => ({ web: { uri } }));
+  }
+  const urls = await Promise.all(chunks.slice(0, 12).map(async (chunk) => {
+    const original = cleanUrl(chunk?.web?.uri);
+    let url = original;
+    for (let hop = 0; hop < 3 && hostOf(url) === 'vertexaisearch.cloud.google.com'; hop += 1) {
+      try {
+        const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(3000) });
+        const location = response.headers.get('location');
+        await response.body?.cancel();
+        if (!location) return null;
+        url = cleanUrl(new URL(location, url).href);
+      } catch { return null; }
+    }
+    return url && hostOf(url) !== 'vertexaisearch.cloud.google.com' ? { original, url } : null;
+  }));
+  return urls.filter(Boolean);
 }
 
 function parseJson(value) {
   const content = text(value).replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
   try { return JSON.parse(content); }
   catch {
-    // Sonar appends inline source markers after its JSON despite an explicit
-    // JSON-only instruction. Extract the first complete JSON object instead
-    // of treating an otherwise valid search response as an empty result.
+    // Models sometimes add prose or markers around the JSON. Extract the first
+    // complete JSON object instead of treating the response as empty.
     const start = content.indexOf('{');
     if (start < 0) return { results: [] };
     let depth = 0; let quoted = false; let escaped = false;
@@ -263,68 +251,177 @@ function parseJson(value) {
   }
 }
 
+// ---------------------------------------------------------------- confidence
+
+// Source trust comes only from the URL's domain, never from a model-provided flag.
+function isManufacturerDomain(url, rawMake) {
+  const host = hostOf(url);
+  const make = deFuzzEquipmentQuery(rawMake);
+  if (!host || !make) return false;
+  const known = MANUFACTURER_DOMAINS.get(make) || [];
+  if (known.some((domain) => host === domain || host.endsWith(`.${domain}`))) return true;
+  return false;
+}
+
+function specsAgree(a, b, tolerance = MEDIUM_TOLERANCE) {
+  return SPEC_FIELDS.every((field) => {
+    const x = specNumber(a, field);
+    const y = specNumber(b, field);
+    return x && y && Math.abs(x - y) / Math.max(x, y) <= tolerance;
+  });
+}
+
+const highestSpecs = (sources) => Object.fromEntries(SPEC_FIELDS.map((field) => {
+  const values = sources.map((source) => specNumber(source, field)).filter(Boolean);
+  return [field, values.length ? Math.max(...values) : null];
+}));
+
+/**
+ * HIGH   - manufacturer page/PDF covers weight, width and height.
+ * MEDIUM - two independent (different-domain) sources agree within 5% on every field; higher value used.
+ * LOW    - everything else with complete specs (single source, or sources that disagree); higher value used.
+ */
+export function deriveConfidence(evidence = []) {
+  const usable = evidence.filter((source) => cleanUrl(source?.url));
+  const manufacturerSpecs = highestSpecs(usable.filter((source) => source.is_manufacturer));
+  if (hasCompleteSpecs(manufacturerSpecs)) {
+    return { confidence: 'HIGH', specs: manufacturerSpecs, reason: 'Confirmed by manufacturer source' };
+  }
+  const complete = usable.filter(hasCompleteSpecs);
+  for (let i = 0; i < complete.length; i += 1) {
+    for (let j = i + 1; j < complete.length; j += 1) {
+      if (independentDomain(complete[i].url) !== independentDomain(complete[j].url) && specsAgree(complete[i], complete[j])) {
+        return {
+          confidence: 'MEDIUM', specs: highestSpecs([complete[i], complete[j]]),
+          reason: 'Two independent sources agree within 5%; higher values used',
+        };
+      }
+    }
+  }
+  if (!complete.length) return { confidence: null, specs: {}, reason: '' };
+  const independent = new Set(complete.map((source) => hostOf(source.url))).size > 1;
+  return {
+    confidence: 'LOW', specs: highestSpecs(complete),
+    reason: independent ? 'Sources disagree by more than 5%; higher values used' : 'Single uncorroborated source',
+  };
+}
+
+// Kept for existing callers/tests.
+export function deriveVerificationStatus(evidence = []) {
+  const { confidence, reason } = deriveConfidence(evidence);
+  if (confidence === 'HIGH') return 'Verified';
+  return /disagree/.test(reason) ? 'Conflict' : 'Unverified';
+}
+
+// ---------------------------------------------------------------- normalization
+
 export function normalizeSourcedResults(payload, query = '') {
-  const parsed = typeof payload?.choices?.[0]?.message?.content === 'string' ? parseJson(payload.choices[0].message.content) : payload;
-  const allowedUrls = allowedSourceUrls(payload);
-  return (Array.isArray(parsed?.results) ? parsed.results : []).map((item, index) => {
-    let evidence = (Array.isArray(item?.evidence) ? item.evidence : []).map((source) => ({
-      url: cleanUrl(source?.url), title: text(source?.title), publisher: text(source?.publisher),
-      // Source trust is determined by the returned URL's domain, never by a
-      // model-provided boolean. The model receives untrusted source text and
-      // should not be the authority on whether a publisher is a manufacturer.
-      is_manufacturer: isManufacturerDomain({ ...source, make: item?.make }) || source?.is_manufacturer === true,
-      make: text(source?.make), model: text(source?.model), configuration: text(source?.configuration) || null,
-      operating_weight_lbs: specNumber(source, 'operating_weight_lbs'),
-      width_in: specNumber(source, 'width_in'),
-      height_in: specNumber(source, 'height_in'),
-    })).filter((source) => source.url && (allowedUrls.size
-      ? allowedUrls.has(canonicalSourceUrl(source.url))
-      // Vercel AI Gateway's Perplexity adapter can omit the separate citations
-      // collection for JSON-only responses. In that case retain only a direct
-      // manufacturer URL that agrees with the result's stated make/publisher.
-      : source.is_manufacturer && isManufacturerDomain({ ...source, make: item?.make })));
-    const primary = conservativeSpecs(evidence);
+  const grounded = Array.isArray(payload?.grounded_urls) ? payload.grounded_urls : [];
+  const allowed = new Set(grounded.map((entry) => canonicalUrl(entry.url || entry)));
+  const resolveCitation = (value) => grounded.find((entry) => entry.original === value)?.url || value;
+
+  return (Array.isArray(payload?.results) ? payload.results : []).map((item, index) => {
+    const make = text(item?.make);
+    const evidence = (Array.isArray(item?.evidence) ? item.evidence : []).map((source) => {
+      const url = cleanUrl(resolveCitation(source?.url));
+      return {
+        url, title: text(source?.title), publisher: text(source?.publisher),
+        is_manufacturer: isManufacturerDomain(url, make),
+        make: text(source?.make), model: text(source?.model), configuration: text(source?.configuration) || null,
+        operating_weight_lbs: specNumber(source, 'operating_weight_lbs'),
+        width_in: specNumber(source, 'width_in'),
+        height_in: specNumber(source, 'height_in'),
+      };
+    }).filter((source) => source.url
+      && allowed.has(canonicalUrl(source.url))
+      // The cited page must be about the model that was searched, not a sibling.
+      && source.model && normalizeSearchText(source.model) === normalizeSearchText(item.model)
+      && (!source.make || deFuzzEquipmentQuery(source.make) === deFuzzEquipmentQuery(make))
+      && normalizeSearchText(source.configuration) === normalizeSearchText(item.configuration));
+
+    const { confidence, specs, reason } = deriveConfidence(evidence);
+    if (!confidence) return null;
+
     const result = {
-      id: `web-${index}-${normalizeSearchText(`${item?.make}-${item?.model}`)}`,
-      make: text(item?.make), model: text(item?.model), configuration: text(item?.configuration) || null,
+      id: `web-${index}-${normalizeSearchText(`${make}-${item?.model}`)}`,
+      make, model: text(item?.model), configuration: text(item?.configuration) || null,
       serial_number: text(item?.serial_number) || null,
-      operating_weight_lbs: primary.operating_weight_lbs || null,
-      width_in: primary.width_in || null,
-      height_in: primary.height_in || null,
-      verification_status: deriveVerificationStatus(evidence), sources: evidence, source: 'web',
+      operating_weight_lbs: specs.operating_weight_lbs,
+      width_in: specs.width_in,
+      height_in: specs.height_in,
+      confidence,
+      confidence_reason: reason,
+      requires_confirmation: confidence === 'LOW',
+      verification_status: confidence === 'HIGH' ? 'Verified' : (/disagree/.test(reason) ? 'Conflict' : 'Unverified'),
+      sources: evidence, source: 'web',
       retrieved_at: new Date().toISOString(), weight_type: 'operating',
     };
     result.transport_width_in = result.width_in;
     result.transport_height_in = result.height_in;
-    result.width_ft = result.width_in ? Number((result.width_in / 12).toFixed(1)) : null;
-    result.height_ft = result.height_in ? Number((result.height_in / 12).toFixed(1)) : null;
+    result.width_ft = Number((result.width_in / 12).toFixed(1));
+    result.height_ft = Number((result.height_in / 12).toFixed(1));
     return result;
-  }).filter((item) => item.make && item.model && hasCompleteSpecs(item) && hasReliableWebEvidence(item.sources) && matchesEquipmentSearch(item, query)).slice(0, 3);
+  }).filter((item) => item && item.make && item.model && hasCompleteSpecs(item) && matchesEquipmentSearch(item, query))
+    .sort((a, b) => CONFIDENCE_RANK[a.confidence] - CONFIDENCE_RANK[b.confidence])
+    .slice(0, 3);
 }
 
-function normalizeStoredResults(stored = [], query = '') {
-  return stored.filter((item) => hasCompleteSpecs(item) && matchesEquipmentSearch(item, query)).map((item) => {
-    const width_in = specNumber(item, 'width_in');
-    const height_in = specNumber(item, 'height_in');
-    return { ...item, operating_weight_lbs: specNumber(item, 'operating_weight_lbs'), width_in, height_in,
-      transport_width_in: width_in, transport_height_in: height_in, verification_status: 'Verified', source: 'database' };
-  }).slice(0, 3);
+export function normalizeStoredResults(stored = [], query = '') {
+  return stored
+    .filter((item) => hasCompleteSpecs(item) && matchesEquipmentSearch(item, query))
+    .map((item) => {
+      const evidence = (Array.isArray(item.sources) ? item.sources : []).filter((source) =>
+        source.model && normalizeSearchText(source.model) === normalizeSearchText(item.model)
+        && normalizeSearchText(source.configuration) === normalizeSearchText(item.configuration)
+        && (!source.make || deFuzzEquipmentQuery(source.make) === deFuzzEquipmentQuery(item.make))
+      ).map((source) => ({ ...source, is_manufacturer: isManufacturerDomain(source.url, item.make) }));
+      const derived = deriveConfidence(evidence);
+      const confidence = derived.confidence || 'LOW';
+      const specs = derived.confidence ? derived.specs : item;
+      const width_in = specNumber(specs, 'width_in');
+      const height_in = specNumber(specs, 'height_in');
+      return {
+        ...item, operating_weight_lbs: specNumber(specs, 'operating_weight_lbs'), width_in, height_in,
+        transport_width_in: width_in, transport_height_in: height_in,
+        verification_status: confidence === 'HIGH' ? 'Verified' : 'Unverified', confidence,
+        confidence_reason: derived.reason || 'Saved specs without corroborating source evidence',
+        requires_confirmation: confidence === 'LOW', source: 'database',
+      };
+    }).sort((a, b) => CONFIDENCE_RANK[a.confidence] - CONFIDENCE_RANK[b.confidence]).slice(0, 3);
 }
 
-async function persistSafeResults(results, admin, companyId) {
-  for (const item of results.filter((result) => SAFE_STATUSES.has(result.verification_status))) {
-    const candidate = {
-      company_id: companyId, make: item.make, model: item.model, configuration: item.configuration,
-      serial_number: item.serial_number, operating_weight_lbs: item.operating_weight_lbs,
-      width_in: item.width_in, height_in: item.height_in, width_ft: item.width_ft, height_ft: item.height_ft,
-      source: 'web', sources: item.sources, verification_status: item.verification_status,
-      retrieved_at: item.retrieved_at, weight_type: 'operating',
-    };
-    const { data: existing } = await admin.from('equipment_specs').select('id').eq('company_id', companyId).ilike('make', item.make).ilike('model', item.model).limit(1);
-    if (existing?.[0]?.id) await admin.from('equipment_specs').update(candidate).eq('id', existing[0].id);
-    else await admin.from('equipment_specs').insert(candidate);
+async function persistHighConfidence(results, admin, companyId) {
+  for (const item of results.filter((result) => result.confidence === 'HIGH')) {
+    try {
+      const candidate = {
+        company_id: companyId, make: item.make, model: item.model, configuration: item.configuration,
+        serial_number: item.serial_number, operating_weight_lbs: item.operating_weight_lbs,
+        width_in: item.width_in, height_in: item.height_in, width_ft: item.width_ft, height_ft: item.height_ft,
+        source: 'web', sources: item.sources, verification_status: 'Verified',
+        retrieved_at: item.retrieved_at, weight_type: 'operating',
+      };
+      let existingQuery = admin.from('equipment_specs').select('id')
+        .eq('company_id', companyId).ilike('make', escapeLike(item.make)).ilike('model', escapeLike(item.model));
+      existingQuery = item.configuration ? existingQuery.eq('configuration', item.configuration) : existingQuery.is('configuration', null);
+      const { data: existing, error: lookupError } = await existingQuery.limit(1);
+      if (lookupError) throw lookupError;
+      const { error } = existing?.[0]?.id
+        ? await admin.from('equipment_specs').update(candidate).eq('id', existing[0].id).eq('company_id', companyId)
+        : await admin.from('equipment_specs').insert(candidate);
+      if (error) throw error;
+    } catch (error) {
+      // Saving is a bonus; never fail the lookup because of it.
+      void reportOperationalError(error, { event: 'persist_failure', route: '/api/searchEquipment' });
+    }
   }
 }
+
+function cacheResponse(key, payload) {
+  if (responseCache.size >= MAX_CACHE_ENTRIES) responseCache.delete(responseCache.keys().next().value);
+  responseCache.set(key, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
+// ---------------------------------------------------------------- handler
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -334,50 +431,70 @@ export default async function handler(req, res) {
     if (rawQuery.length < 2 || rawQuery.length > 80) return res.status(400).json({ error: 'Search must be 2 to 80 characters.' });
     const query = rawQuery.replace(/[,%()]/g, ' ').replace(/\s+/g, ' ').trim();
     const { admin, profile } = await requireUser(req);
+    if (!profile.company_id) return res.status(403).json({ error: 'A company profile is required.' });
     await enforceRateLimit(admin, `equipment-search:${profile.id}`, { limit: 120, windowMs: 60 * 60 * 1000 });
     const cacheKey = `${profile.company_id}:${query.toLowerCase()}`;
     const cached = responseCache.get(cacheKey);
-    if (cached?.expiresAt > Date.now()) return res.status(200).json(cached.payload);
 
-    const tokenGroups = searchTokenGroups(query);
+    // 1) Supabase first. Cache hits and DB hits never touch the web-research quotas below.
     let dbQuery = admin.from('equipment_specs').select('*').or(`company_id.is.null,company_id.eq.${profile.company_id}`);
-    for (const group of tokenGroups) {
+    for (const group of searchTokenGroups(query)) {
       const predicates = group.flatMap((token) => [`make.ilike.%${token}%`, `model.ilike.%${token}%`, `serial_number.ilike.%${token}%`]);
       dbQuery = dbQuery.or(predicates.join(','));
     }
-    const { data: stored, error: storedError } = await dbQuery.limit(8);
+    const { data: stored, error: storedError } = await dbQuery.limit(25);
+    if (storedError) void reportOperationalError(storedError, { event: 'db_failure', route: '/api/searchEquipment' });
     const storedResults = !storedError ? normalizeStoredResults(stored, query) : [];
     if (storedResults.length) {
       const payload = { results: storedResults, source: 'database', error: '' };
-      responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
+      cacheResponse(cacheKey, payload);
       return res.status(200).json(payload);
     }
+    if (cached?.expiresAt > Date.now()) return res.status(200).json(cached.payload);
 
-    // Keep a daily cost guardrail, but allow normal client use and QA. The
-    // hourly limiter above still blocks bursts before they reach web search.
-    await enforceRateLimit(admin, `equipment-web-research:${profile.id}`, { limit: 120, windowMs: 24 * 60 * 60 * 1000 });
+    // 2) Bounded paid fallback. This request cap is not a dollar spending cap:
+    //    one grounded generation can issue multiple Google searches.
     const geminiApiKey = getServerEnv('GOOGLE_GEMINI_API_KEY');
-    if (!geminiApiKey) return res.status(200).json({ results: [], source: '', error: 'Equipment web research is unavailable.' });
+    if (!geminiApiKey) return res.status(200).json({ results: [], source: '', error: 'Web lookup is not configured. Enter specifications manually to continue.' });
+    const configuredCap = Number(getServerEnv('GEMINI_DAILY_CAP') ?? 20);
+    const dailyCap = Number.isFinite(configuredCap) ? Math.min(20, Math.max(0, Math.floor(configuredCap))) : 20;
+    if (!dailyCap) return res.status(200).json({ results: [], source: '', error: 'Web lookup is disabled. Enter specifications manually to continue.' });
+    await enforceRateLimit(admin, `equipment-web-research:${profile.id}`, { limit: dailyCap, windowMs: 24 * 60 * 60 * 1000 });
+    await enforceRateLimit(admin, 'equipment-web-research:global', {
+      limit: dailyCap, windowMs: 24 * 60 * 60 * 1000,
+    });
 
-    // Preserve compact model identifiers for Google (e.g. `L90H`, not
-    // `l 90 h`) while retaining the tolerant DB normalization above.
-    const webQuery = webResearchQuery(query) || query;
-    const aiModeQuery = `Find transport specifications for the exact equipment model "${webQuery}" using Google Search grounding. Return only JSON matching this shape:
-{"results":[{"make":"","model":"","configuration":null,"serial_number":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0,"evidence":[{"url":"https://...","title":"","publisher":"","is_manufacturer":false,"make":"","model":"","configuration":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0}]}]}
+    const results = await researchEquipment(query, geminiApiKey);
 
-Rules: return at most three likely exact matches, ordered by match quality. Each evidence URL must be a URL returned by Google Search grounding in this response. Do not estimate, use memory, combine similar models, or substitute a related model. Return an exact base-model result when no conflicting configuration is named. Treat an exact-model manufacturer's overall machine width or overall machine height as the transport width or transport height. Include a result only when operating weight (lbs), width (in), and height (in) are established. Prefer one manufacturer product page or manufacturer PDF; otherwise use two independent non-manufacturer sources that agree within 2.5%. Each evidence entry must contain only values supported by that cited page; use null for unsupported fields.`;
-    const geminiPayload = await searchGemini(geminiApiKey, aiModeQuery);
-    const geminiText = geminiOutputText(geminiPayload);
-    const groundedUrls = geminiGroundingUrls(geminiPayload);
-    const results = normalizeSourcedResults({
-      ...parseJson(geminiText), citations: groundedUrls,
-    }, webQuery);
-    await persistSafeResults(results, admin, profile.company_id);
+    // 3) Only manufacturer-confirmed (HIGH) results are saved for future lookups.
+    await persistHighConfidence(results, admin, profile.company_id);
+
     const payload = { results, source: results.length ? 'web' : '', error: results.length ? '' : 'No sourced exact-model specifications found.' };
-    if (results.length) responseCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
+    if (results.length) cacheResponse(cacheKey, payload);
     return res.status(200).json(payload);
   } catch (error) {
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+      return res.status(504).json({ error: 'Equipment lookup timed out. Try again or enter specifications manually.' });
+    }
     void reportOperationalError(error, { event: 'provider_failure', route: '/api/searchEquipment', provider: 'gemini' });
     return sendApiError(res, error, 'Equipment search failed.', { route: '/api/searchEquipment', provider: 'gemini' });
   }
+}
+
+export async function researchEquipment(query, geminiApiKey = getServerEnv('GOOGLE_GEMINI_API_KEY')) {
+  const webQuery = webResearchQuery(query) || query;
+  const manufacturerDomains = [...MANUFACTURER_DOMAINS].find(([make]) => deFuzzEquipmentQuery(query).startsWith(`${make} `))?.[1] || [];
+  const prompt = `Find transport specifications for the exact equipment model "${webQuery}" using Google Search. ${manufacturerDomains.length ? `First search site:${manufacturerDomains[0]} for this model's weight, width and height. Then search another independent source to corroborate. Include all useful sources, not just the first match.` : 'Seek the manufacturer and two independent sources.'} Return only JSON matching this shape:
+{"results":[{"make":"","model":"","configuration":null,"serial_number":null,"evidence":[{"url":"https://...","title":"","publisher":"","make":"","model":"","configuration":null,"operating_weight_lbs":0,"transport_height_in":0,"transport_width_in":0}]}]}
+
+Rules: return at most three likely exact matches, ordered by match quality. Each evidence url must be the exact citation URL returned by Google Search, including its grounding redirect if supplied. Never invent a URL. Do not estimate, use memory, combine similar models, or substitute a related model. Return an exact base-model result when no conflicting configuration is named. Treat an exact-model manufacturer's overall machine width or overall machine height as the transport width or transport height. Search specifically for shipping/transport width AND shipping/transport height AND operating weight, not only weight. Prefer manufacturer product pages or manufacturer PDFs, and include dealers/specification sites when the manufacturer search lacks dimensions. Convert published metric units (kg, mm, m) or feet/inches to lbs and decimal inches. For multiple configurations, return separate results and use the same configuration label on their evidence. Include a result when at least one cited page establishes operating weight (lbs), width (in), and height (in). Each evidence entry must contain only values stated on that cited page; use null for unsupported fields.`;
+
+  const geminiPayload = await searchGemini(geminiApiKey, prompt);
+  const suggestions = (geminiPayload.steps || []).filter((step) => step.type === 'google_search_result')
+    .flatMap((step) => step.result || []).map((result) => text(result.search_suggestions)).filter(Boolean).join('\n');
+  return normalizeSourcedResults({
+      ...parseJson(geminiOutputText(geminiPayload)),
+      grounded_urls: await geminiGroundedUrls(geminiPayload),
+    }, webQuery).map((result) => ({ ...result, search_suggestions: suggestions }));
+
 }

@@ -1,4 +1,21 @@
 @import "tailwindcss";
+:root {
+  color-scheme: dark;
+  --surface-dialog: #101621;
+}
+html[data-theme='light'] {
+  color-scheme: light;
+  --surface-dialog: #ffffff;
+}
+button:disabled { cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 body {
   background-color: #0b0f17;
   color: #f1f5f9;
@@ -24,6 +41,7 @@ html[data-theme='light'] .app-shell [class*='bg-[#080c14]'],
 html[data-theme='light'] .app-shell [class*='bg-[#0b0f17]'],
 html[data-theme='light'] .app-shell [class*='bg-[#0c1019]'],
 html[data-theme='light'] .app-shell [class*='bg-[#0f1523]'],
+html[data-theme='light'] .app-shell [class*='bg-[#101621]'],
 html[data-theme='light'] .app-shell [class*='bg-[#121824]'] {
   background-color: #ffffff !important;
 }
@@ -39,6 +57,12 @@ html[data-theme='light'] .app-shell .text-slate-400,
 html[data-theme='light'] .app-shell .text-slate-500 {
   color: #475569 !important;
 }
+
+html[data-theme='light'] .app-shell :is(.text-emerald-300, .text-emerald-400) { color: #047857 !important; }
+html[data-theme='light'] .app-shell :is(.text-purple-300, .text-purple-400) { color: #7e22ce !important; }
+html[data-theme='light'] .app-shell :is(.text-amber-300, .text-amber-400) { color: #92400e !important; }
+html[data-theme='light'] .app-shell :is(.text-red-300, .text-red-400) { color: #b91c1c !important; }
+html[data-theme='light'] .app-shell :is(.text-blue-300, .text-blue-400) { color: #1d4ed8 !important; }
 
 html[data-theme='light'] .app-shell [class*='border-slate-8'],
 html[data-theme='light'] .app-shell [class*='border-slate-7'] {

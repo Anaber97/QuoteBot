@@ -1,26 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-/**
- * Regression guard: Settings.jsx's handleSave() previously referenced
- * `normalizeDriveTimeBuffer` and `ROUNDING_OPTIONS` without importing them,
- * which would throw a ReferenceError the first time a manager saved
- * settings. This statically verifies both are imported from configSchema.
- */
-test('Settings.jsx imports every identifier it references from configSchema', async () => {
-  const fs = await import('node:fs');
-  const path = await import('node:path');
-  const { fileURLToPath } = await import('node:url');
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const settingsSource = fs.readFileSync(path.resolve(__dirname, '../src/components/Settings.jsx'), 'utf8');
-
-  const importLine = settingsSource.match(/import\s*\{([^}]+)\}\s*from\s*'\.\.\/lib\/configSchema'/);
-  assert(importLine, 'Settings.jsx must import from ../lib/configSchema');
-  const imported = new Set(importLine[1].split(',').map((s) => s.trim()));
-
-  for (const identifier of ['normalizeDriveTimeBuffer', 'ROUNDING_OPTIONS', 'normalizeConfig', 'normalizeClientPortalTier', 'DEFAULT_CONFIG']) {
-    assert(imported.has(identifier), `Settings.jsx references "${identifier}" and must import it from configSchema`);
-  }
+// Exercise the save payload directly instead of tying this regression to a component's imports.
+test('settings payload normalization executes and retains company scope', async () => {
+  const { buildSettingsPayload } = await import('../src/features/settings/buildSettingsPayload.js');
+  const result = buildSettingsPayload({ pricing: { hourly_rate: 175 } }, 'company-a');
+  assert.equal(result.company_id, 'company-a');
+  assert.equal(result.pricing.hourly_rate, 175);
+  assert(Array.isArray(result.client_portal.weight_tiers));
 });
 
 test('configSchema exports ROUNDING_OPTIONS and normalizeDriveTimeBuffer', async () => {

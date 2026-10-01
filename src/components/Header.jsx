@@ -9,8 +9,6 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
   const rawRole = profile?.role || '';
   const role = rawRole.toLowerCase().trim();
 
-  // Debug log to browser console
-
   const isManager = role === 'manager';
 
   const roleBadgeStyle =
@@ -55,9 +53,9 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
           )}
           <div>
             <h1 className="text-lg font-bold text-white tracking-tight leading-none flex items-center gap-2">
-                <span className="text-[#afda00] font-semibold text-xs">
-  Route-Based Towing Calculator
-</span>
+              <span className={`font-semibold text-xs ${theme === 'dark' ? 'text-[#afda00]' : 'text-[#526600]'}`}>
+                Route-Based Towing Calculator
+              </span>
             </h1>
             <p className="text-[11px] text-slate-400 mt-0.5">Instant. Accurate. Dispatched.</p>
           </div>
@@ -65,10 +63,11 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
 
         {/* Navigation Tabs */}
         {session && (
-          <div className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 w-full lg:w-auto overflow-x-auto">
+          <nav aria-label="Main navigation" className="flex bg-[#080c14] border border-slate-800/80 rounded-xl p-1 w-full lg:w-auto overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('calculator')}
+            aria-current={activeTab === 'calculator' ? 'page' : undefined}
             className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
               activeTab === 'calculator'
                 ? 'bg-blue-600 text-white shadow-md'
@@ -81,6 +80,7 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
           <button
             type="button"
             onClick={() => setActiveTab('logs')}
+            aria-current={activeTab === 'logs' ? 'page' : undefined}
             className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
               activeTab === 'logs'
                 ? 'bg-blue-600 text-white shadow-md'
@@ -95,6 +95,7 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
             <button
               type="button"
               onClick={() => setActiveTab('settings')}
+              aria-current={activeTab === 'settings' ? 'page' : undefined}
               className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
                 activeTab === 'settings'
                   ? 'bg-blue-600 text-white shadow-md'
@@ -104,7 +105,7 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
               Settings
             </button>
           )}
-          </div>
+          </nav>
         )}
 
         {/* Account controls must remain available even when profile loading fails. */}
@@ -130,7 +131,7 @@ export default function Header({ session, activeTab, setActiveTab, profile, onSi
             <button
               type="button"
               onClick={onToggleTheme}
-              className="text-slate-500 hover:text-blue-400 p-1 transition cursor-pointer"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-500/10 hover:text-blue-400 transition cursor-pointer lg:min-h-8 lg:min-w-8"
               title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
               aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             >

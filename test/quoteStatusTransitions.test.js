@@ -38,6 +38,36 @@ function makeAdmin(quote, updateResult) {
 
 const managerProfile = { id: 'user-1', role: 'manager', company_id: 'company-a' };
 
+test('competing transitions cannot overwrite the first successful change', async (t) => {
+  const stored = { id: 'quote-1', company_id: 'company-a', status: 'submitted' };
+  let reads = 0;
+  let releaseReads;
+  const bothRead = new Promise((resolve) => { releaseReads = resolve; });
+  const admin = createFakeAdmin({ tableResponders: { quote_logs: async (state) => {
+    if (state.op === 'update') {
+      if (stored.status !== state.filters.status) return { data: null, error: null };
+      stored.status = state.payload.status;
+      return { data: { ...stored }, error: null };
+    }
+    const snapshot = { ...stored };
+    if (++reads === 2) releaseReads();
+    await bothRead;
+    return { data: snapshot, error: null };
+  } } });
+  t.mock.module('../api/_security.js', { exports: {
+    requireUser: async () => ({ admin, profile: managerProfile }), canAccessQuote,
+    enforceRateLimit: async () => {},
+    sendApiError: (res) => res.status(500).json({ error: 'Unexpected error' }),
+  } });
+  const { default: handler } = await import(`../api/updateQuoteStatus.js?race=${Math.random()}`);
+  const first = createMockReqRes({ method: 'PATCH', body: { quoteId: stored.id, status: 'cancelled' } });
+  const second = createMockReqRes({ method: 'PATCH', body: { quoteId: stored.id, status: 'dispatched' } });
+  await Promise.all([handler(first.req, first.res), handler(second.req, second.res)]);
+  assert.deepEqual([first.res.statusCode, second.res.statusCode].sort(), [200, 409]);
+  const winner = first.res.statusCode === 200 ? first : second;
+  assert.equal(stored.status, winner.res.body.quote.status);
+});
+
 async function callUpdateStatus(t, { profile, quote, status, updateResult }) {
   t.mock.module('../api/_security.js', mockSecurity({ profile, quote, updateResult }));
   const { default: handler } = await import(`../api/updateQuoteStatus.js?t=${Math.random()}`);

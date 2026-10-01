@@ -1,3 +1,4 @@
+import { resolveZoneCharge, formatZoneCharge } from '../../shared/pricing/zoneCharge.js';
 // src/components/SurchargeToggles.jsx
 import React from 'react';
 
@@ -25,7 +26,7 @@ export default function SurchargeToggles({ state, dispatch, companyRates = {} })
           className="w-4 h-4 accent-blue-500 rounded cursor-pointer"
         />
         <label htmlFor="metro" className="text-xs font-medium text-slate-200 cursor-pointer flex-1">
-          Metro Traffic (+28.57%)
+          Metro Traffic ({formatZoneCharge(resolveZoneCharge({ multiplier: 1.2857 }, companyRates, 'metro_multiplier'))})
         </label>
       </div>
 
@@ -39,7 +40,7 @@ export default function SurchargeToggles({ state, dispatch, companyRates = {} })
           className="w-4 h-4 accent-blue-500 rounded cursor-pointer"
         />
         <label htmlFor="hazard" className="text-xs font-medium text-slate-200 cursor-pointer flex-1">
-          Hazard Zone (+40%)
+          Hazard Zone ({formatZoneCharge(resolveZoneCharge({ multiplier: 1.4 }, companyRates, 'hazard_multiplier'))})
         </label>
       </div>
     </div>
