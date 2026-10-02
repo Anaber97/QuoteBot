@@ -189,6 +189,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   if (useWeightTierPricing && config.client_portal?.osow_pricing?.enabled) {
     const companyTier = (config.client_portal.weight_tiers || []).find((item) => totalWeight >= toFinite(item.minWeight) && totalWeight <= toFinite(item.maxWeight, 999999));
     osow = evaluateOsow({ weight: totalWeight, width: input.equipment?.width, height: input.equipment?.height,
+      lengthFt: input.equipment?.lengthFt, overhangFt: input.equipment?.overhangFt,
       tier: { ...tier, permitCost: tier?.permitCost ?? pricing.base_permit_fee ?? 150, averageClearanceIn: companyTier?.averageClearanceIn, averageVehicleWeightLbs: companyTier?.averageVehicleWeightLbs },
       states: resolveRouteStates(customerRoutePoints), routeKnown: customerRoutePoints.length > 1,
       limits: config.state_transport_limits || [], pricing: config.client_portal.osow_pricing });

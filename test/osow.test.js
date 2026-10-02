@@ -5,6 +5,48 @@ import { resolveRouteStates } from '../src/lib/routeStates.js';
 import { normalizeConfig } from '../src/lib/configSchema.js';
 import { sanitizeConfig, validateConfigInput } from '../src/lib/configValidator.js';
 import { calculateAuthoritativeQuote } from '../api/_quoteEngine.js';
+import { readFileSync } from 'node:fs';
+const workbook = JSON.parse(readFileSync(new URL('../data/osow-regulations-2026-10-01.json', import.meta.url)));
+const v2limits = workbook.rows.map((row) => ({ state_code: row.state_code, regulations_v2: row }));
+
+test('new workbook imports all states and uses numeric thresholds instead of conflicting prose', () => {
+  assert.equal(new Set(workbook.rows.map((row) => row.state_code)).size, 50);
+  const result = evaluateOsow({ ...base, limits: v2limits, states: ['AZ'], width: 144, lengthFt: 60, overhangFt: 0 });
+  assert.equal(result.escort.vehicleCount, 1);
+  assert.equal(result.escort.surcharge, 300);
+  assert.ok(result.states[0].notes.some((note) => note.includes('1 escort >14 ft')));
+  assert.equal(evaluateOsow({ ...base, limits: v2limits, states: ['AZ'], width: 143, lengthFt: 60, overhangFt: 0 }).escort.vehicleCount, 0);
+});
+
+test('new length, overhang and height-pole triggers use one escort tier without stacking', () => {
+  const result = evaluateOsow({ ...base, limits: v2limits, states: ['TX', 'TX'], height: 156, lengthFt: 110, overhangFt: 15 });
+  assert.equal(result.escort.vehicleCount, 1);
+  assert.equal(result.escort.surcharge, 300);
+  assert.equal(result.permitFee, 175);
+  assert.deepEqual(result.states[0].triggers, ['Height-pole escort', '1 escort — length', '1 escort — overhang']);
+  assert.ok(result.states[0].reasons.includes('Overlength'));
+  assert.ok(result.states[0].reasons.includes('Overhang'));
+  assert.equal(evaluateOsow({ ...base, limits: v2limits, width: 216, height: 156 }).escort.vehicleCount, 2);
+});
+
+test('notes appear only for flagged states; legal equality is allowed and missing inputs stay unknown', () => {
+  const clear = evaluateOsow({ ...base, limits: v2limits, lengthFt: 65, overhangFt: 4 });
+  assert.equal(clear.needsPermit, false);
+  assert.deepEqual(clear.states[0].notes, []);
+  assert.equal(clear.reviewRequired, false);
+  const missing = evaluateOsow({ ...base, limits: v2limits });
+  assert.equal(missing.reviewRequired, true);
+  assert.ok(missing.reviewReasons.some((r) => r.includes('Overlength')));
+  const mixed = evaluateOsow({ ...base, height: 125, limits: v2limits, states: ['TX','AK'], lengthFt: 50, overhangFt: 0 });
+  assert.ok(mixed.states[0].notes.length);
+  assert.deepEqual(mixed.states[1].notes, []);
+});
+
+test('new workbook replaces old Indiana exception and does not invent missing source links', () => {
+  const result = evaluateOsow({ ...base, limits: v2limits, states: ['IN'], weight: 160001 });
+  assert.equal(result.escort.vehicleCount, 0);
+  assert.equal(result.states[0].sourceUrl, null);
+});
 
 const limit = { state_code: 'TX', legal_width_in: 102, legal_height_in: 168, legal_weight_lbs: 80000,
   one_escort_width_in: 144, one_escort_height_in: 180, two_escort_width_in: 168, two_escort_height_in: 192 };

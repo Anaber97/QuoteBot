@@ -165,6 +165,8 @@ export default function App() {
       permitInfo,
       attachmentType,
       attachmentWeight,
+      lengthFt,
+      overhangFt,
       waypoints: clientWaypoints,
     } = clientPayload;
 
@@ -187,7 +189,7 @@ export default function App() {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ preview: true, baseId: state.selectedBaseId,
             waypoints: routeWaypoints, equipment: { name: equipmentName, make, model, serialNumber,
-              weight, width, height, attachmentType, attachmentWeight } }),
+              weight, width, height, attachmentType, attachmentWeight, lengthFt, overhangFt } }),
         });
         const result = await response.json();
         if (!response.ok || !result.estimate) throw new Error(result.error || 'Unable to calculate your quote.');
@@ -208,6 +210,8 @@ export default function App() {
         clientWeight: Number(weight) + Number(attachmentWeight || 0),
         equipmentWidth: Number(width || 0),
         equipmentHeight: Number(height || 0),
+        equipmentLengthFt: lengthFt,
+        equipmentOverhangFt: overhangFt,
         clientConfig: activeClientConfig,
         useWeightTierPricing: true,
       });
@@ -232,6 +236,8 @@ export default function App() {
           osow: data.osow,
           attachmentType,
           attachmentWeight: Number(attachmentWeight || 0),
+          lengthFt,
+          overhangFt,
         },
       });
 

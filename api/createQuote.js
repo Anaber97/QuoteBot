@@ -9,6 +9,8 @@ const number = (value, maximum = 10_000_000) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(maximum, Math.max(0, parsed)) : 0;
 };
+const optionalMeasurement = (value) => value == null || value === '' || !['number', 'string'].includes(typeof value)
+  || !Number.isFinite(Number(value)) || Number(value) < 0 ? null : number(value, 1000);
 
 export function normalizeQuoteInput(body, profile) {
   const rawWaypoints = Array.isArray(body.waypoints) ? body.waypoints : [];
@@ -35,6 +37,7 @@ export function normalizeQuoteInput(body, profile) {
       make: text(body.equipment?.make, 120), model: text(body.equipment?.model, 120), serialNumber: text(body.equipment?.serialNumber, 120),
       weight: number(body.equipment?.weight), width: number(body.equipment?.width, 10000), height: number(body.equipment?.height, 10000),
       attachmentType: text(body.equipment?.attachmentType, 120), attachmentWeight: number(body.equipment?.attachmentWeight),
+      lengthFt: optionalMeasurement(body.equipment?.lengthFt), overhangFt: optionalMeasurement(body.equipment?.overhangFt),
     },
   };
 }
@@ -81,7 +84,7 @@ export default async function handler(req, res) {
       : [];
     if (config.client_portal?.osow_pricing?.enabled && (profile.role === 'client' || input.quoteSource === 'equipment_calculator')) {
       const { data, error } = await admin.from('state_transport_limits')
-        .select('state_code,legal_height_in,legal_width_in,legal_weight_lbs,one_escort_height_in,one_escort_width_in,two_escort_height_in,two_escort_width_in,source_url,retrieved_at');
+        .select('state_code,legal_height_in,legal_width_in,legal_weight_lbs,one_escort_height_in,one_escort_width_in,two_escort_height_in,two_escort_width_in,source_url,retrieved_at,regulations_v2');
       if (error) throw error;
       config.state_transport_limits = data;
     }

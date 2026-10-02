@@ -116,6 +116,18 @@ export default function QuoteTripBreakdown({
                 <span className="font-semibold">Permit flag</span>
                 <span className="text-right font-bold text-amber-300">{osowFlagSummary.label} · {osowFlagSummary.states.join(', ')}</span>
               </div>}
+              {(osow?.states || []).filter((row) => row.needsPermit && row.notes?.length).map((row) => (
+                <section key={row.state} aria-label={`${row.state} permit notes`} className="rounded-lg border border-amber-500/20 p-3 space-y-2 text-xs text-slate-300">
+                  <h5 className="font-bold text-amber-300">{row.state}: {[...(row.reasons || []), ...(row.triggers || [])].join(', ')}</h5>
+                  {row.notes.map((note, index) => <p key={index}>{note}</p>)}
+                  <p className="text-[11px] text-slate-400">Dispatch review guidance · {row.sourceAgency} · {row.retrievedAt}</p>
+                  {/^https?:\/\//i.test(row.sourceUrl || '') && <a href={row.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-300 underline">State source</a>}
+                </section>
+              ))}
+              {osow?.reviewRequired && <div className="text-xs text-amber-200" role="note">
+                <p className="font-semibold">OSOW review needed</p>
+                <ul>{(osow.reviewReasons || []).map((reason) => <li key={reason}>{reason}</li>)}</ul>
+              </div>}
         {!osow && Number(escort.vehicleCount) > 0 && <div className="flex justify-between items-center text-slate-400 pb-1.5 border-b border-slate-800/80">
                 <span>{escort.vehicleCount} Escort Vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}</span>
                 <span className="font-semibold text-cyan-300">+${Number(escort.surcharge || 0).toFixed(2)}</span>

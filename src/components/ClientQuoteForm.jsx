@@ -31,6 +31,8 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const [weight, setWeight] = useState('');
   const [width, setWidth] = useState('');
   const [height, setHeight] = useState('');
+  const [lengthFt, setLengthFt] = useState('');
+  const [overhangFt, setOverhangFt] = useState('');
 
   // Location state
   const [pickupAddr, setPickupAddr] = useState('');
@@ -54,6 +56,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     setMake(details.make || ''); setModel(details.model || ''); setSerialNumber(details.serialNumber || '');
     setWeight(details.weight ?? ''); setWidth(details.width ?? details.widthFt ?? ''); setHeight(details.height ?? details.heightFt ?? '');
     setAttachmentType(details.attachmentType || ''); setAttachmentWeight(details.attachmentWeight ?? '');
+    setLengthFt(details.lengthFt ?? ''); setOverhangFt(details.overhangFt ?? '');
     setPickupAddr(initialQuote.pickup_address || ''); setDropoffAddr(initialQuote.dropoff_address || '');
     const stops = Array.isArray(initialQuote.all_waypoints) ? initialQuote.all_waypoints.slice(1, -1) : [];
     setWaypoints(stops);
@@ -211,6 +214,8 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
       height: Number(height) || 0,
       attachmentType,
       attachmentWeight: Number(attachmentWeight) || 0,
+      lengthFt: lengthFt === '' ? null : Number(lengthFt),
+      overhangFt: overhangFt === '' ? null : Number(overhangFt),
       pickupAddr,
       dropoffAddr: effectiveDropoff,
       waypoints: [pickupAddr, ...waypoints.filter(Boolean), effectiveDropoff],
@@ -224,6 +229,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     setSearchQuery(''); setSearchResults([]); setSelectedEquipmentName(''); setMake(''); setModel(''); setSerialNumber('');
     setSelectedEquipment(null);
     setSearchFailed(false); setEquipmentSaveStatus('');
+    setLengthFt(''); setOverhangFt('');
     setWeight(''); setWidth(''); setHeight(''); setPickupAddr(''); setDropoffAddr(''); setWaypoints([]); setAttachmentType(''); setAttachmentWeight(''); setPermitInfo(null);
     setPendingUnverifiedEquipment(null);
     onReset?.();
@@ -432,6 +438,19 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             />
           </div>
         </div>
+
+        {(companyRates?.client_portal?.osow_pricing?.enabled || companyRates?.client_portal?.collect_transport_dimensions) && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="transport-length" className="block text-[11px] text-slate-400 mb-1">Overall loaded vehicle length (ft)</label>
+            <input id="transport-length" type="number" min="0" max="1000" step="any" value={lengthFt} onChange={(e) => setLengthFt(e.target.value)} placeholder="Optional — truck, trailer and load"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white" />
+          </div>
+          <div>
+            <label htmlFor="transport-overhang" className="block text-[11px] text-slate-400 mb-1">Load overhang (ft)</label>
+            <input id="transport-overhang" type="number" min="0" max="1000" step="any" value={overhangFt} onChange={(e) => setOverhangFt(e.target.value)} placeholder="Optional — enter 0 for none"
+              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white" />
+          </div>
+        </div>}
 
         {/* Attachments */}
         <div className="space-y-2">

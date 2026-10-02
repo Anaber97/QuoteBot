@@ -3,6 +3,22 @@ import { expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import QuoteResultsCard from '../../src/components/QuoteResultsCard';
 
+it('shows state notes only for flagged states in the dispatcher breakdown', () => {
+  const props = { companyRates: { pricing: { hourly_min: 100 } }, state: {
+    showDetails: true, activeOverrides: {}, quoteData: { authoritativeTotal: 725, rawTotalHours: 2,
+      osow: { needsPermit: true, permitFee: 175, escort: { vehicleCount: 1, surcharge: 300 }, states: [
+        { state: 'TX', needsPermit: true, reasons: ['Overwidth'], triggers: ['1 escort — width'], notes: ['Texas roadway guidance'], sourceUrl: 'https://www.txdmv.gov/' },
+        { state: 'AK', needsPermit: false, notes: ['Unrelated Alaska guidance'] },
+      ] } },
+  } };
+  const { rerender } = render(<QuoteResultsCard {...props} isDispatcherView />);
+  expect(screen.getByRole('region', { name: 'TX permit notes' })).toHaveTextContent('Texas roadway guidance');
+  expect(screen.queryByText('Unrelated Alaska guidance')).not.toBeInTheDocument();
+  rerender(<QuoteResultsCard {...props} />);
+  expect(screen.queryByText('Texas roadway guidance')).not.toBeInTheDocument();
+  expect(screen.getByText('$725')).toBeInTheDocument();
+});
+
 it('shows clients only the quote amount even when internal fees and breakdown state exist', () => {
   const props = {
     companyRates: { pricing: { hourly_min: 100, hourly_max: 100, rounding_interval: 1 } },

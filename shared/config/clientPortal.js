@@ -10,6 +10,7 @@ export function clientPortalConfig(config) {
       contact_phone: portal.contact_phone || '',
       contact_email: portal.contact_email || '',
       disclosure: portal.disclosure || '',
+      collect_transport_dimensions: portal.osow_pricing?.enabled === true,
     },
   };
 }

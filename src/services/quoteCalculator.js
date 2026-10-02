@@ -81,6 +81,8 @@ export async function calculateQuoteData({
   clientWeight = 0,
   equipmentWidth = 0,
   equipmentHeight = 0,
+  equipmentLengthFt = null,
+  equipmentOverhangFt = null,
   clientConfig = null,
   useWeightTierPricing = false,
 }) {
@@ -231,6 +233,7 @@ export async function calculateQuoteData({
     const { loadOsowLimits } = await import('./osowLimits.js');
     const companyTier = (companyRates.client_portal.weight_tiers || []).find((item) => clientWeight >= Number(item.minWeight) && clientWeight <= Number(item.maxWeight));
     osow = evaluateOsow({ weight: clientWeight, width: equipmentWidth, height: equipmentHeight,
+      lengthFt: equipmentLengthFt, overhangFt: equipmentOverhangFt,
       tier: { ...matchingTier, permitCost: matchingTier?.permitCost ?? pricing.base_permit_fee ?? 150, averageClearanceIn: companyTier?.averageClearanceIn, averageVehicleWeightLbs: companyTier?.averageVehicleWeightLbs },
       states: resolveRouteStates(customerRoutePoints), routeKnown: customerRoutePoints.length > 1,
       limits: await loadOsowLimits(), pricing: companyRates.client_portal.osow_pricing });

@@ -15,4 +15,7 @@ test('portal config excludes internal pricing, staff, other clients, and base ad
   assert.equal(result.bases[0].address, undefined);
   assert.equal(result.branding.internal, undefined);
   assert.equal(result.client_portal.contact_email, 'dispatch@example.test');
+  const enabled = clientPortalConfig({ client_portal: { osow_pricing: { enabled: true, generalPermit: 999 } } });
+  assert.equal(enabled.client_portal.collect_transport_dimensions, true);
+  assert.equal(enabled.client_portal.osow_pricing, undefined);
 });
