@@ -16,6 +16,7 @@ import SurchargeToggles from './components/SurchargeToggles';
 import WaypointList from './components/WaypointList';
 import QuoteResultsCard from './components/QuoteResultsCard';
 import ClientQuoteForm from './components/ClientQuoteForm';
+import QuoteReport from './components/QuoteReport';
 const Settings = lazy(() => import('./components/Settings'));
 import Toast from './components/Toast';
 import Footer from './components/Footer';
@@ -61,6 +62,20 @@ export default function App() {
     setOpenedLoggedQuote(loggedQuote);
     setShowEquipmentCalculator(['client_portal', 'equipment_calculator'].includes(loggedQuote.quote_source));
   };
+
+  useEffect(() => {
+    const quoteId = new URLSearchParams(window.location.search).get('quote');
+    if (!quoteId || !session?.user?.id || !profile?.company_id) return;
+    let active = true;
+    const openLinkedQuote = async () => {
+      const { data, error: loadError } = await supabase.from('quote_logs').select('*').eq('id', quoteId).eq('company_id', profile.company_id).single();
+      if (!active) return;
+      if (loadError || !data) setNotice({ tone: 'error', message: 'This quote is unavailable or you do not have access to it.' });
+      else handleOpenLoggedQuote(data);
+    };
+    void openLinkedQuote();
+    return () => { active = false; };
+  }, [session?.user?.id, profile?.company_id, profile?.client_id]);
 
   const handleSignOut = async () => {
     resetCalculatorState();
@@ -253,7 +268,7 @@ export default function App() {
   };
 
   // Log Quote Handler
-  const handleLogQuote = async ({ attachmentFile = null } = {}) => {
+  const handleLogQuote = async ({ attachmentFile = null, forReport = false } = {}) => {
     if (!session || !profile || !quoteData) return;
 
     try {
@@ -298,14 +313,28 @@ export default function App() {
         if (updateError) throw updateError;
       }
 
+      if (forReport) return { quote: loggedQuote, complete: operation.complete };
       operation.complete();
       setNotice({ message: attachmentFile ? 'Quote logged with BOL attached!' : 'Quote successfully logged!' });
       dispatch({ type: 'RESET_FORM' });
       setQuoteData(null);
     } catch (err) {
+      if (forReport) throw err;
       console.error(err);
       setNotice({ tone: 'error', message: `Failed to log quote: ${err.message}` });
     }
+  };
+
+  const handleReportQuote = async (reason) => {
+    const saved = quoteData.reportQuoteId ? { quote: { id: quoteData.reportQuoteId }, complete: () => {} } : await handleLogQuote({ forReport: true });
+    if (!saved?.quote?.id) throw new Error('Please sign in and calculate a quote first.');
+    setQuoteData((current) => current === quoteData ? { ...current, reportQuoteId: saved.quote.id } : current);
+    const payload = { quoteId: saved.quote.id, action: 'report', reason, displayedTotal: quoteData.authoritativeTotal };
+    const operation = await pendingOperation('report:' + profile.id, payload);
+    const response = await authenticatedFetch('/api/sendQuoteEmail', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.id }, body: JSON.stringify(payload) });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || 'Report could not be sent. Please retry.');
+    operation.complete(); saved.complete();
   };
 
   if (legalRoute === '/privacy') return <LegalPage type="privacy" />;
@@ -367,7 +396,7 @@ export default function App() {
 
                   <div className="lg:col-span-5">
                     {quoteData ? (
-                      <QuoteResultsCard
+                      <><QuoteResultsCard
                         state={{
                           ...state,
                           activeOverrides: state.activeOverrides,
@@ -379,7 +408,7 @@ export default function App() {
                         onLogQuote={handleLogQuote}
                         companyRates={companyRates}
                         isDispatcherView={false}
-                      />
+                      /><QuoteReport onSubmit={handleReportQuote} /></>
                     ) : (
                       <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
                         <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">

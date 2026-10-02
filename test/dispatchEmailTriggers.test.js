@@ -7,8 +7,8 @@ test('saving a quote never sends an automatic email', () => {
   assert.doesNotMatch(source, /functions\.invoke|sendStoredApprovalEmail|notifyApproval/);
 });
 
-test('dispatch email endpoint accepts only explicit share and dispatch actions', () => {
+test('email endpoint accepts only explicit share, dispatch and report actions', () => {
   const source = fs.readFileSync(new URL('../api/sendQuoteEmail.js', import.meta.url), 'utf8');
-  assert.match(source, /\['share', 'action'\]\.includes\(action\)/);
+  assert.match(source, /\['share', 'action', 'report'\]\.includes\(action\)/);
   assert.doesNotMatch(source, /bol_attached/);
 });

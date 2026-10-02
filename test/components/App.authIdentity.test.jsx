@@ -62,6 +62,9 @@ vi.mock('../../src/lib/supabase.js', () => ({
       if (table === 'clients') {
         return makeThenableBuilder(() => ({ data: [], error: null }));
       }
+      if (table === 'quote_logs') {
+        return makeThenableBuilder(() => ({ data: { id: 'linked-quote', company_id: 'company-a', quote_source: 'client_portal', quote_details: { make: 'Clark', model: 'S25', weight: 7561, width: 42, height: 83 }, all_waypoints: ['Pickup', 'Dropoff'] }, error: null }));
+      }
       return makeThenableBuilder(() => ({ data: null, error: null }));
     }),
   },
@@ -74,6 +77,19 @@ vi.mock('../../src/lib/api.js', () => ({
 }));
 
 const { default: App } = await import('../../src/App.jsx');
+
+test('email quote link waits for sign-in and opens the saved equipment form', async () => {
+  window.history.replaceState({}, '', '/?quote=linked-quote');
+  currentSession = null;
+  try {
+    render(<App />);
+    await waitFor(() => expect(authStateCallback).toBeTruthy());
+    await signIn('user-1');
+    await waitFor(() => expect(screen.getByLabelText('Make')).toHaveValue('Clark'));
+    expect(screen.getByLabelText('Model')).toHaveValue('S25');
+    expect(screen.getByLabelText('Operating Weight (lbs)')).toHaveValue(7561);
+  } finally { window.history.replaceState({}, '', '/'); }
+});
 
 function signIn(userId) {
   currentSession = { user: { id: userId } };

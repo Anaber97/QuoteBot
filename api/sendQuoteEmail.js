@@ -1,6 +1,7 @@
 import { canAccessQuote, enforceRateLimit, escapeHtml, requireUser, sendApiError } from './_security.js';
 import { buildQuotePdf, loadQuoteDocumentContext } from './_quoteDocument.js';
 import { findEmailDelivery, storeEmailDelivery, sendEmailDelivery } from './_emailDelivery.js';
+import { buildQuoteReport } from './_quoteReport.js';
 
 const validEmail = (value) => /^\S+@\S+\.\S+$/.test(String(value || '').trim());
 
@@ -26,7 +27,10 @@ export default async function handler(req, res) {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
     const quoteId = String(body.quoteId || '').trim();
     const action = String(body.action || '').trim();
-    if (!['share', 'action'].includes(action)) return res.status(400).json({ error: 'A valid email action is required.' });
+    if (!['share', 'action', 'report'].includes(action)) return res.status(400).json({ error: 'A valid email action is required.' });
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (action === 'report' && (!reason || reason.length > 2000)) return res.status(400).json({ error: 'Enter a report reason of 1 to 2,000 characters.' });
+    const displayedTotal = typeof body.displayedTotal === 'number' && Number.isFinite(body.displayedTotal) && body.displayedTotal >= 0 ? body.displayedTotal : null;
     if (!quoteId) return res.status(400).json({ error: 'quoteId is required.' });
     const { admin, profile } = await requireUser(req);
     await enforceRateLimit(admin, `quote-email:${profile.id}`, { limit: 30, windowMs: 60 * 60 * 1000 });
@@ -35,7 +39,7 @@ export default async function handler(req, res) {
     if (quoteError || !quote) return res.status(404).json({ error: 'Quote not found.' });
     if (!canAccessQuote(profile, quote, action === 'action' ? 'request_dispatch' : 'read')) return res.status(403).json({ error: 'You do not have access to this quote.' });
 
-    const operation = await findEmailDelivery(admin, profile, req, { quoteId, action, recipient: String(body.recipient || '').trim().toLowerCase() });
+    const operation = await findEmailDelivery(admin, profile, req, { quoteId, action, recipient: String(body.recipient || '').trim().toLowerCase(), ...(action === 'report' ? { reason, displayedTotal } : {}) });
     if (operation.delivery) {
       await sendEmailDelivery(admin, operation.delivery);
       return res.status(200).json({ success: true });
@@ -51,6 +55,14 @@ export default async function handler(req, res) {
       }
     }
     if (!validEmail(recipient)) return res.status(400).json({ error: 'A valid recipient email is required.' });
+
+    if (action === 'report') {
+      const delivery = await storeEmailDelivery(admin, profile, operation, quote, 'email_sent', {
+        to: recipient, ...buildQuoteReport({ quote, profile, reason, displayedTotal }),
+      });
+      await sendEmailDelivery(admin, delivery);
+      return res.status(200).json({ success: true });
+    }
 
     let bolAttachment = null;
     if (quote.bol_path) {
