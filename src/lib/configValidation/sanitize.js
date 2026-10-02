@@ -30,6 +30,7 @@ const sanitizePricing = (pricing) => {
     heavy_hourly_max: pricing.heavy_hourly_max,
     custom_truck_classes: Array.isArray(pricing.custom_truck_classes) ? pricing.custom_truck_classes.slice(0, LIMITS.MAX_TRUCK_CLASSES) : [],
     custom_surcharges: Array.isArray(pricing.custom_surcharges) ? pricing.custom_surcharges.slice(0, LIMITS.MAX_CUSTOM_SURCHARGES) : [],
+    configurable_business_surcharges: pricing.configurable_business_surcharges === true,
     surchargeModes: pricing.surchargeModes && typeof pricing.surchargeModes === 'object' ? pricing.surchargeModes : {},
   };
 };

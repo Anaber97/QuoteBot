@@ -220,9 +220,9 @@ export function normalizeConfig(rawConfig = {}) {
   const migratedCustomSurcharges = baseConfig.pricing?.configurable_business_surcharges === true
     ? normalizedCustomSurcharges
     : [
+        ...(normalizedCustomSurcharges || []),
         { id: 'after-hours', name: 'After Hours', feeType: 'percent', value: toFinite(baseConfig.pricing?.after_hours_multiplier ?? 25, 25), active: true },
         { id: 'road-club', name: 'Road Club', feeType: 'percent', value: toFinite(baseConfig.pricing?.road_club_multiplier ?? 15, 15), active: true },
-        ...(normalizedCustomSurcharges || []),
       ].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id || candidate.name.toLowerCase() === item.name.toLowerCase()) === index);
 
   // Normalize weight tiers
