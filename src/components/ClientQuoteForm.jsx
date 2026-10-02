@@ -439,26 +439,13 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
           </div>
         </div>
 
-        {(companyRates?.client_portal?.osow_pricing?.enabled || companyRates?.client_portal?.collect_transport_dimensions) && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="transport-length" className="block text-[11px] text-slate-400 mb-1">Overall loaded vehicle length (ft)</label>
-            <input id="transport-length" type="number" min="0" max="1000" step="any" value={lengthFt} onChange={(e) => setLengthFt(e.target.value)} placeholder="Optional — truck, trailer and load"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white" />
-          </div>
-          <div>
-            <label htmlFor="transport-overhang" className="block text-[11px] text-slate-400 mb-1">Load overhang (ft)</label>
-            <input id="transport-overhang" type="number" min="0" max="1000" step="any" value={overhangFt} onChange={(e) => setOverhangFt(e.target.value)} placeholder="Optional — enter 0 for none"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white" />
-          </div>
-        </div>}
-
         {/* Attachments */}
         <div className="space-y-2">
           <button type="button" onClick={handleSaveEquipment} disabled={!canSaveEquipment || isSavingEquipment}
             className="rounded-lg border border-blue-500/30 bg-blue-600/20 px-3 py-2 text-xs font-semibold text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed">
             {isSavingEquipment ? 'Saving equipment…' : 'Save to my equipment'}
           </button>
-          <p className="text-[11px] text-slate-400">Saves these specs privately to your client account or company. Manually entered specs remain LOW confidence.</p>
+          <p className="text-[11px] text-slate-400">Saves these specs to your account.</p>
           {equipmentSaveStatus && <p role="status" className="text-xs text-slate-300">{equipmentSaveStatus}</p>}
         </div>
 
