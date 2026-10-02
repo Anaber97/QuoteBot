@@ -27,10 +27,15 @@ function evaluateRegulations(rule, measurements, reviewReasons) {
   const { state_code: state } = rule;
   const reasons = [];
   const triggers = [];
+  const skippedChecks = [];
   const legal = [['width', 'legal_width_in', 'Overwidth'], ['height', 'legal_height_in', 'Overheight'],
     ['weight', 'legal_weight_lb', 'Overweight'], ['lengthFt', 'legal_length_ft', 'Overlength'],
     ['overhangFt', 'legal_overhang_ft', 'Overhang']];
   for (const [measurement, key, flag] of legal) {
+    if (['lengthFt', 'overhangFt'].includes(measurement) && !known(measurements[measurement])) {
+      skippedChecks.push(flag);
+      continue;
+    }
     if (!known(measurements[measurement]) || !known(rule[key])) {
       reviewReasons.push(`${state}: ${flag} screening is incomplete.`);
     } else if (number(measurements[measurement]) > number(rule[key])) reasons.push(flag);
@@ -53,7 +58,7 @@ function evaluateRegulations(rule, measurements, reviewReasons) {
   const notes = needsPermit ? [rule.roadway_condition_notes,
     rule.police_escort_threshold ? `Police escort guidance: ${rule.police_escort_threshold}` : null].filter(Boolean) : [];
   if (notes.length) reviewReasons.push(`${state}: review roadway and police guidance for the flagged load.`);
-  return { state, needsPermit, reasons, vehicleCount, triggers, notes,
+  return { state, needsPermit, reasons, vehicleCount, triggers, notes, skippedChecks,
     sourceUrl: /^https?:\/\//i.test(rule.source_url || '') ? rule.source_url : null,
     sourceAgency: rule.source_agency, retrievedAt: rule.retrieved_on };
 }

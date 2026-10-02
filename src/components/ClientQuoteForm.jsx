@@ -353,7 +353,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             Look up specs on Google ↗
           </a>}
           {(searchResults[0]?.search_suggestions || selectedEquipment?.search_suggestions) && (
-            <iframe title="Google Search suggestions" sandbox="allow-popups allow-popups-to-escape-sandbox" className="mt-2 w-full h-24 border-0" srcDoc={searchResults[0]?.search_suggestions || selectedEquipment?.search_suggestions} />
+            <iframe title="Google Search suggestions" sandbox="allow-popups allow-popups-to-escape-sandbox" className="mt-2 w-full h-20 border-0 rounded-lg" srcDoc={`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{margin:0;padding:0;background:#0c1019;color-scheme:dark}body{overflow-x:auto}body>.container{max-width:100%;box-sizing:border-box}</style></head><body>${searchResults[0]?.search_suggestions || selectedEquipment?.search_suggestions}</body></html>`} />
           )}
           {selectedEquipment && <div className="mt-2 text-xs text-slate-400">
             <p>{selectedEquipment.confidence || 'LOW'} confidence · {selectedEquipment.confidence_reason}</p>

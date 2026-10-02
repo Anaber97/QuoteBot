@@ -86,7 +86,7 @@ export default function QuoteSaveForm({ state, dispatch, isDispatcherView, onLog
 
         {quoteData?.approvalRequired && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
-            This quote exceeds the approval threshold and has been flagged for manager review.
+            This quote requires manager review before dispatch.
           </div>
         )}
 

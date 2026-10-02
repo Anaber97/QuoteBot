@@ -35,8 +35,8 @@ test('notes appear only for flagged states; legal equality is allowed and missin
   assert.deepEqual(clear.states[0].notes, []);
   assert.equal(clear.reviewRequired, false);
   const missing = evaluateOsow({ ...base, limits: v2limits });
-  assert.equal(missing.reviewRequired, true);
-  assert.ok(missing.reviewReasons.some((r) => r.includes('Overlength')));
+  assert.equal(missing.reviewRequired, false);
+  assert.deepEqual(missing.states[0].skippedChecks, ['Overlength', 'Overhang']);
   const mixed = evaluateOsow({ ...base, height: 125, limits: v2limits, states: ['TX','AK'], lengthFt: 50, overhangFt: 0 });
   assert.ok(mixed.states[0].notes.length);
   assert.deepEqual(mixed.states[1].notes, []);
@@ -46,6 +46,20 @@ test('new workbook replaces old Indiana exception and does not invent missing so
   const result = evaluateOsow({ ...base, limits: v2limits, states: ['IN'], weight: 160001 });
   assert.equal(result.escort.vehicleCount, 0);
   assert.equal(result.states[0].sourceUrl, null);
+});
+
+test('small forklift without optional length/overhang does not require approval', () => {
+  const config = normalizeConfig({ client_portal: { approval_threshold: 80000,
+    weight_tiers: [{ minWeight: 0, maxWeight: 999999, rate: 100, ...base.tier }],
+    osow_pricing: { enabled: true, ...base.pricing } } });
+  config.state_transport_limits = v2limits;
+  const result = calculateAuthoritativeQuote({ config, role: 'client', clientConfig: {},
+    input: { equipment: { weight: 7561.8, width: 41.7, height: 82.9 }, waypoints: ['Pickup', 'Dropoff'] },
+    route: { totalMeters: 1000, rawDriveMinutes: 30, customerRoutePoints: [{lat:32.7767,lng:-96.797},{lat:32.7555,lng:-97.3308}], legs: [] } });
+  assert.equal(result.osow.needsPermit, false);
+  assert.equal(result.approvalRequired, false);
+  const incomplete = evaluateOsow({ ...base, limits: v2limits, tier: {} });
+  assert.equal(incomplete.reviewRequired, true);
 });
 
 const limit = { state_code: 'TX', legal_width_in: 102, legal_height_in: 168, legal_weight_lbs: 80000,

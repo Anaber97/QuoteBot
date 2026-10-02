@@ -124,6 +124,7 @@ export default function QuoteTripBreakdown({
                   {/^https?:\/\//i.test(row.sourceUrl || '') && <a href={row.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-300 underline">State source</a>}
                 </section>
               ))}
+              {(osow?.states || []).some((row) => row.skippedChecks?.length) && <p className="text-xs text-slate-400">Length and overhang are checked only when supplied; omitted measurements are not assessed.</p>}
               {osow?.reviewRequired && <div className="text-xs text-amber-200" role="note">
                 <p className="font-semibold">OSOW review needed</p>
                 <ul>{(osow.reviewReasons || []).map((reason) => <li key={reason}>{reason}</li>)}</ul>
