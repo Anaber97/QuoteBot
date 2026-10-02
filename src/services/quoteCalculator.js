@@ -16,6 +16,7 @@ import {
 } from '../lib/pricingEngine';
 
 import { evaluateOsow } from '../lib/osow.js';
+import { loadOsowLimits } from './osowLimits.js';
 
 export { roundToNearest }; // Re-export for backward compatibility
 
@@ -230,7 +231,6 @@ export async function calculateQuoteData({
   let osow = null;
   if (useWeightTierPricing && companyRates.client_portal?.osow_pricing?.enabled) {
     const { resolveRouteStates } = await import('../lib/routeStates.js');
-    const { loadOsowLimits } = await import('./osowLimits.js');
     const companyTier = (companyRates.client_portal.weight_tiers || []).find((item) => clientWeight >= Number(item.minWeight) && clientWeight <= Number(item.maxWeight));
     osow = evaluateOsow({ weight: clientWeight, width: equipmentWidth, height: equipmentHeight,
       lengthFt: equipmentLengthFt, overhangFt: equipmentOverhangFt,
