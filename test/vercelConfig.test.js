@@ -20,6 +20,6 @@ test('every response carries the baseline security headers', () => {
   assert.equal(headers['X-Frame-Options'], 'DENY');
   assert.equal(headers['X-Content-Type-Options'], 'nosniff');
   assert.match(headers['Strict-Transport-Security'], /max-age=\d{8}/);
-  assert.match(headers['Content-Security-Policy-Report-Only'], /frame-ancestors 'none'/);
-  assert.match(headers['Content-Security-Policy-Report-Only'], /connect-src [^;]*https:\/\/\*\.supabase\.co/);
+  assert.match(headers['Content-Security-Policy'], /frame-ancestors 'none'/);
+  assert.match(headers['Content-Security-Policy'], /connect-src [^;]*https:\/\/\*\.supabase\.co/);
 });
