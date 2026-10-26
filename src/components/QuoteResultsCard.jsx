@@ -2,6 +2,7 @@ import { resolveZoneCharge, formatZoneCharge } from '../../shared/pricing/zoneCh
 import QuoteTripBreakdown from '../features/quotes/QuoteTripBreakdown';
 // src/components/QuoteResultsCard.jsx
 import React from 'react';
+import { ChevronDown } from 'lucide-react';
 import QuoteSaveForm from '../features/quotes/QuoteSaveForm';
 import TimeRibbon from '../features/quotes/TimeRibbon';
 import { quoteTotals } from '../features/quotes/quoteTotal';
@@ -188,10 +189,10 @@ export default function QuoteResultsCard({
             type="button"
             aria-expanded={showDetails}
             onClick={() => dispatch?.({ type: 'TOGGLE_DETAILS' })}
-            className="flex w-full items-center justify-between rounded-lg px-0 text-left text-sm font-semibold text-slate-200 hover:text-white cursor-pointer"
+            className="flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border border-slate-700 bg-sunken px-4 text-left text-[15px] font-semibold text-white transition hover:border-accent/60 hover:bg-raised cursor-pointer"
           >
             <span>{showDetails ? 'Hide trip breakdown' : 'Show trip breakdown'}</span>
-            <span aria-hidden="true" className="text-slate-500">{showDetails ? '−' : '+'}</span>
+            <ChevronDown aria-hidden="true" strokeWidth={2.5} className={`h-6 w-6 shrink-0 text-accent-text transition-transform duration-200 ${showDetails ? 'rotate-180' : ''}`} />
           </button>
           {showDetails && <QuoteTripBreakdown
             state={state}
