@@ -316,11 +316,13 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     config: companyRates,
   });
 
+  const customMatches = activeOverrides?.custom === false ? [] : quoteData.customMatches || [];
+
   // Calculate surcharges using shared logic
   const { multiplier, flatSum } = calculateSurcharges({
     metroMatches: quoteData.hasMetroZone ? quoteData.metroMatches : [],
     hazardMatches: quoteData.hasHazardZone ? quoteData.hazardMatches : [],
-    customMatches: quoteData.customMatches || [],
+    customMatches,
     customSurcharges: pricing.custom_surcharges || [],
     useWeightTierPricing: quoteData.pricingMode === 'equipment-weight-tier',
     allowRouteSurcharges: quoteData.pricingMode !== 'equipment-weight-tier' || allowEquipmentRouteSurcharges,
@@ -328,8 +330,8 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
   });
 
   // Check for flat override
-  const flatOverride = getFlatOverride(quoteData.customMatches || []);
-  const maxOverride = getMaxOverride(quoteData.customMatches || []);
+  const flatOverride = getFlatOverride(customMatches);
+  const maxOverride = getMaxOverride(customMatches);
 
   const timeMetrics = applyQuoteTimeOverrides({
     rawTotalHours: quoteData.rawTotalHours,

@@ -23,7 +23,7 @@ export const initialState = {
   isRoadClub: false,
   isMetro: false,
   isHazard: false,
-  activeOverrides: { afterHours: true, roadClub: true, metro: true, hazard: true, customSurcharges: {} },
+  activeOverrides: { afterHours: true, roadClub: true, metro: true, hazard: true, custom: true, customSurcharges: {} },
   pendingCustomSurcharges: {},
   showDetails: savedShowDetails(),
   customerName: '',

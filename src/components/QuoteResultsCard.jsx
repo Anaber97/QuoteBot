@@ -58,7 +58,7 @@ export default function QuoteResultsCard({
     quoteData?.hasRoadClub ? { key: 'roadClub', active: activeOverrides?.roadClub } : null,
     quoteData?.hasMetroZone ? { key: 'metro', active: activeOverrides?.metro } : null,
     quoteData?.hasHazardZone ? { key: 'hazard', active: activeOverrides?.hazard } : null,
-    quoteData?.hasCustomZone ? { key: 'custom', active: true } : null,
+    quoteData?.hasCustomZone ? { key: 'custom', active: activeOverrides?.custom !== false } : null,
   ].filter(Boolean);
   const quoteCustomSurcharges = quoteData?.appliedCustomSurcharges || {};
   const availableCustomSurcharges = (companyRates.pricing?.custom_surcharges || []).filter((item) =>
@@ -93,7 +93,8 @@ export default function QuoteResultsCard({
       : null;
 
   const toggleOverride = (key) => {
-    dispatch?.({ type: 'SET_OVERRIDE', payload: { key, value: !activeOverrides?.[key] } });
+    const active = key === 'custom' ? activeOverrides?.custom !== false : activeOverrides?.[key];
+    dispatch?.({ type: 'SET_OVERRIDE', payload: { key, value: !active } });
   };
 
   const toggleCustomSurcharge = (id) => {

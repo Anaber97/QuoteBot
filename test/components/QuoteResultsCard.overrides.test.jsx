@@ -3,6 +3,32 @@ import { expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import QuoteResultsCard from '../../src/components/QuoteResultsCard';
 
+it.each([
+  ['flat_rate', 'flat', 100, 100],
+  ['max_rate', 'max', 100, 100],
+  ['surcharge', 'percent', 50, 300],
+  ['surcharge', 'flat', 50, 250],
+])('toggles custom zone %s %s pricing off and back on', (pricingMode, feeType, value, enabledTotal) => {
+  function Harness() {
+    const [activeOverrides, setActiveOverrides] = useState({});
+    return <QuoteResultsCard isDispatcherView
+      companyRates={{ pricing: { hourly_min: 100, hourly_max: 100, rounding_interval: 1 } }}
+      state={{ activeOverrides, quoteData: { rawTotalHours: 2, hasCustomZone: true,
+        customMatches: [{ pricingMode, charge: { feeType, value } }] } }}
+      dispatch={({ payload }) => setActiveOverrides((current) => ({ ...current, [payload.key]: payload.value }))} />;
+  }
+  render(<Harness />);
+  const badge = screen.getByRole('button', { name: /Custom zone/i });
+  expect(badge).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByText(`$${enabledTotal}`)).toBeInTheDocument();
+  fireEvent.click(badge);
+  expect(badge).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByText('$200')).toBeInTheDocument();
+  fireEvent.click(badge);
+  expect(badge).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByText(`$${enabledTotal}`)).toBeInTheDocument();
+});
+
 it('shows state notes only for flagged states in the dispatcher breakdown', () => {
   const props = { companyRates: { pricing: { hourly_min: 100 } }, state: {
     showDetails: true, activeOverrides: {}, quoteData: { authoritativeTotal: 725, rawTotalHours: 2,

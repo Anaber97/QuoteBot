@@ -110,6 +110,28 @@ const quote = (overrides = {}) => calculateAuthoritativeQuote({
   },
 });
 
+test('custom zone toggle removes pricing and saved zone metadata for dispatch only', () => {
+  for (const pricingMode of ['flat_rate', 'max_rate', 'surcharge']) {
+    const zoneConfig = structuredClone(config);
+    zoneConfig.geofences.customZones = [{ id: 'town', name: 'In town', pricingMode, price: 100,
+      surchargeFeeType: 'flat', shape: [{ lat: 32, lng: -95 }, { lat: 32, lng: -94 }, { lat: 33, lng: -94 }, { lat: 33, lng: -95 }] }];
+    const zoneRoute = { ...route, customerRoutePoints: [{ lat: 32.5, lng: -94.5 }, { lat: 32.6, lng: -94.6 }] };
+    const args = { config: zoneConfig, route: zoneRoute };
+    const enabled = quote(args);
+    const disabled = quote({ ...args, input: { activeOverrides: { custom: false } } });
+    assert.equal(disabled.minQuote, quote().minQuote);
+    assert.equal(disabled.maxQuote, quote().maxQuote);
+    assert.equal(disabled.appliedSurcharges.customZone, false);
+    assert.deepEqual(disabled.quoteDetails.customZoneNames, []);
+    assert.notEqual(enabled.minQuote, disabled.minQuote);
+    assert.equal(enabled.appliedSurcharges.customZone, true);
+    assert.equal(quote({ ...args, input: { activeOverrides: { custom: true } } }).minQuote, enabled.minQuote);
+    const client = quote({ ...args, role: 'client', input: { activeOverrides: { custom: false } } });
+    assert.equal(client.appliedSurcharges.customZone, true);
+    assert.deepEqual(client.quoteDetails.customZoneNames, ['In town']);
+  }
+});
+
 test('weight-tier boundaries are inclusive and select the next tier correctly', () => {
   const tierConfig = structuredClone(config);
   tierConfig.client_portal.weight_tiers = [

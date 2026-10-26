@@ -115,7 +115,8 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const customerRoutePoints = route.customerRoutePoints || [];
   const metroMatches = findConfiguredZones(GEOFENCES, addresses, customerRoutePoints, config, 'metro_multiplier');
   const hazardMatches = findConfiguredZones(HAZARD_ZONES, addresses, customerRoutePoints, config, 'hazard_multiplier');
-  const customMatches = findCustomZones(route.localities || [], customerRoutePoints, config);
+  const customMatches = role !== 'client' && input.activeOverrides?.custom === false
+    ? [] : findCustomZones(route.localities || [], customerRoutePoints, config);
   const selectedClass = (pricing.custom_truck_classes || []).find((item) => String(item.id) === String(input.selectedTruckClassId));
   const totalWeight = toFinite(input.equipment?.weight) + toFinite(input.equipment?.attachmentWeight);
   const useWeightTierPricing = role === 'client' || input.quoteSource === 'equipment_calculator';
