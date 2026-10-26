@@ -341,11 +341,11 @@ export default function App() {
   if (legalRoute === '/terms') return <LegalPage type="terms" />;
 
   if (isInviteRoute) {
-    return <div className="flex min-h-screen flex-col bg-[#080c14]"><Suspense fallback={<LoadingPanel />}><InviteRegister /></Suspense><Footer /></div>;
+    return <div className="flex min-h-screen flex-col bg-canvas"><Suspense fallback={<LoadingPanel />}><InviteRegister /></Suspense><Footer /></div>;
   }
 
   return (
-    <div className="app-shell flex min-h-screen flex-col bg-[#080c14] text-slate-100 font-sans overflow-x-hidden">
+    <div className="app-shell flex min-h-screen flex-col bg-canvas text-slate-100 font-sans overflow-x-hidden">
       <Header
         session={session}
         profile={profile}
@@ -410,12 +410,9 @@ export default function App() {
                         isDispatcherView={false}
                       /><QuoteReport onSubmit={handleReportQuote} /></>
                     ) : (
-                      <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
-                        <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">
-                          $
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-300">Quote Estimate</h4>
-                        <p className="text-xs max-w-xs">
+                      <div className="hidden lg:block p-6 bg-panel border border-slate-800 rounded-2xl text-slate-400 space-y-2">
+                        <h4 className="text-sm font-bold text-slate-200">Quote estimate</h4>
+                        <p className="text-sm max-w-sm">
                           Search your equipment and enter pickup/dropoff locations to view an instant transport quote.
                         </p>
                       </div>
@@ -426,7 +423,7 @@ export default function App() {
                 /* DISPATCHER / MANAGER CALCULATOR VIEW */
                 <>
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                    <div className="lg:col-span-7 bg-[#121824] border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-6 min-w-0">
+                    <div className="lg:col-span-7 bg-panel border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-6 min-w-0">
                     <div className="border-b border-slate-800/80 pb-4">
                       <div className="flex items-center justify-between gap-3">
                         <h2 className="text-lg font-bold text-white tracking-tight">{showEquipmentCalculator ? 'Equipment Calculator' : 'Quote Generator'}</h2>
@@ -447,14 +444,14 @@ export default function App() {
                     ) : <form onSubmit={handleCalculate} className="space-y-5">
                       {/* Base Shop Selector */}
                       <div>
-                        <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+                        <label className="text-xs font-semibold text-slate-400 block mb-1.5">
                           Base Dispatch Location
                         </label>
                         <select
                           aria-label="Base dispatch location"
                           value={state.selectedBaseId}
                           onChange={(e) => dispatch({ type: 'SET_BASE', payload: e.target.value })}
-                          className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full bg-canvas border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           {availableBases.length === 0 && <option value="">Add a base yard in Settings</option>}
                           {availableBases.map((loc) => (
@@ -467,14 +464,14 @@ export default function App() {
 
                       {/* Tow Vehicle / Class Selector */}
                       <div>
-                        <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+                        <label className="text-xs font-semibold text-slate-400 block mb-1.5">
                           Tow Vehicle Class
                         </label>
                         <select
                           aria-label="Tow vehicle class"
                           value={state.selectedTruckClassId}
                           onChange={(e) => dispatch({ type: 'SET_TRUCK_CLASS', payload: e.target.value })}
-                          className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                          className="w-full bg-canvas border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                         >
                           <option value="">
                             Standard Tow / Flatbed (${companyRates?.pricing?.hourly_min || 125}/hr)
@@ -488,7 +485,7 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="text-[13px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+                        <label className="text-[13px] font-semibold text-slate-400 block mb-1.5">
                           Route Waypoints
                         </label>
                         <WaypointList
@@ -504,7 +501,7 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+                        <label className="text-xs font-semibold text-slate-400 block mb-1.5">
                           Manual Surcharge Overrides
                         </label>
                         <SurchargeToggles state={state} dispatch={dispatch} companyRates={companyRates} />
@@ -513,7 +510,7 @@ export default function App() {
                       <button
                         type="submit"
                         disabled={loading}
-                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-white rounded-xl transition cursor-pointer shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-accent-ink rounded-xl transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                       >
                         {loading ? 'Calculating Route...' : 'Calculate Quote'}
                       </button>
@@ -536,13 +533,10 @@ export default function App() {
                           isDispatcherView={true}
                         />
                       ) : (
-                        <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-[#080c14] border border-dashed border-slate-800 rounded-2xl min-h-[380px] text-center text-slate-500 space-y-2">
-                          <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-xl font-bold">
-                            $
-                          </div>
-                          <h4 className="text-sm font-bold text-slate-300">Quote Breakdown Preview</h4>
-                          <p className="text-xs max-w-xs">
-                            Enter pick-up/drop-off locations and click <strong className="text-blue-400">Calculate Quote</strong> to display live route estimates here.
+                        <div className="hidden lg:block p-6 bg-panel border border-slate-800 rounded-2xl text-slate-400 space-y-2">
+                          <h4 className="text-sm font-bold text-slate-200">Quote breakdown</h4>
+                          <p className="text-sm max-w-sm">
+                            Enter pick-up/drop-off locations and click <strong className="text-slate-200">Calculate Quote</strong> to display live route estimates here.
                           </p>
                         </div>
                       )}
@@ -550,7 +544,7 @@ export default function App() {
                   </div>
 
                   <div className="mt-10 border-t border-slate-800/70 pt-5 text-center">
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-xs text-slate-400">
                       Quotes are electronically generated estimates and may contain occasional inaccuracies. Final pricing should be confirmed before dispatch.
                     </p>
                   </div>

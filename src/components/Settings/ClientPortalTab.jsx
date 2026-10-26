@@ -142,37 +142,37 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal 
   };
 
   return <div className="space-y-5 text-xs">
-    <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-3">
+    <div className="rounded-xl border border-slate-800 bg-canvas p-3.5 space-y-3">
       <h4 className="font-bold text-slate-200">Your Contact Details</h4>
       <div className="grid gap-3 sm:grid-cols-2">
-        <input value={formData.client_portal?.contact_phone ?? ''} onChange={(e) => updateClientPortal('contact_phone', e.target.value)} placeholder="Contact phone" className="rounded-lg border border-slate-700 bg-[#121824] px-3 py-2 text-white" />
-        <input value={formData.client_portal?.contact_email ?? ''} onChange={(e) => updateClientPortal('contact_email', e.target.value)} placeholder="Contact email" className="rounded-lg border border-slate-700 bg-[#121824] px-3 py-2 text-white" />
+        <input value={formData.client_portal?.contact_phone ?? ''} onChange={(e) => updateClientPortal('contact_phone', e.target.value)} placeholder="Contact phone" className="rounded-lg border border-slate-700 bg-panel px-3 py-2 text-white" />
+        <input value={formData.client_portal?.contact_email ?? ''} onChange={(e) => updateClientPortal('contact_email', e.target.value)} placeholder="Contact email" className="rounded-lg border border-slate-700 bg-panel px-3 py-2 text-white" />
         <label className="flex items-center gap-2 sm:col-span-2 text-slate-300"><input type="checkbox" checked={formData.client_portal?.send_jobs_to_contact_email !== false} onChange={(e) => updateClientPortal('send_jobs_to_contact_email', e.target.checked)} /> Send jobs to contact email</label>
-        {formData.client_portal?.send_jobs_to_contact_email === false && <label className="space-y-1 sm:col-span-2"><span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Dispatch email</span><input type="email" required value={formData.client_portal?.dispatch_email ?? ''} onChange={(e) => updateClientPortal('dispatch_email', e.target.value)} placeholder="dispatch@company.com" className="w-full rounded-lg border border-slate-700 bg-[#121824] px-3 py-2 text-white" /></label>}
+        {formData.client_portal?.send_jobs_to_contact_email === false && <label className="space-y-1 sm:col-span-2"><span className="block text-xs font-semibold text-slate-400">Dispatch email</span><input type="email" required value={formData.client_portal?.dispatch_email ?? ''} onChange={(e) => updateClientPortal('dispatch_email', e.target.value)} placeholder="dispatch@company.com" className="w-full rounded-lg border border-slate-700 bg-panel px-3 py-2 text-white" /></label>}
         <label className="space-y-1 sm:col-span-2">
-          <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Manual Quote Threshold (lbs)</span>
-          <input type="number" value={formData.client_portal?.approval_threshold ?? 80001} onChange={(e) => updateClientPortal('approval_threshold', Number(e.target.value) || 80001)} placeholder="e.g. 80,001" className="w-full rounded-lg border border-slate-700 bg-[#121824] px-3 py-2 text-white" />
-          <span className="block text-[10px] text-slate-500">Equipment at or above this weight requires manual review.</span>
+          <span className="block text-xs font-semibold text-slate-400">Manual Quote Threshold (lbs)</span>
+          <input type="number" value={formData.client_portal?.approval_threshold ?? 80001} onChange={(e) => updateClientPortal('approval_threshold', Number(e.target.value) || 80001)} placeholder="e.g. 80,001" className="w-full rounded-lg border border-slate-700 bg-panel px-3 py-2 text-white" />
+          <span className="block text-xs text-slate-500">Equipment at or above this weight requires manual review.</span>
         </label>
       </div>
     </div>
-    <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-4">
+    <div className="rounded-xl border border-slate-800 bg-canvas p-3.5 space-y-4">
       <div><h4 className="flex items-center gap-2 font-bold text-white"><Building className="h-4 w-4 text-blue-400" /> Client Accounts</h4><p className="mt-1 text-slate-400">Each account belongs only to this company. Create the account here, then invite its user in Users & Roles and choose this account.</p></div>
       {error && <p className="rounded-lg border border-red-800/50 bg-red-950/40 p-2 text-red-300">{error}</p>}
       {success && <p className="rounded-lg border border-emerald-800/50 bg-emerald-950/40 p-2 text-emerald-300">{success}</p>}
       <form onSubmit={addClient} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-        <input required value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Client company name" className="rounded-lg border border-slate-700 bg-[#121824] px-3 py-2 text-white" />
-        <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Main contact email" className="rounded-lg border border-slate-700 bg-[#121824] px-3 py-2 text-white" />
-        <button className="rounded-lg bg-blue-600 px-3 py-2 font-semibold text-white"><Plus className="inline h-3.5 w-3.5" /> Add account</button>
+        <input required value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Client company name" className="rounded-lg border border-slate-700 bg-panel px-3 py-2 text-white" />
+        <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Main contact email" className="rounded-lg border border-slate-700 bg-panel px-3 py-2 text-white" />
+        <button className="rounded-lg bg-blue-600 px-3 py-2 font-semibold text-accent-ink"><Plus className="inline h-3.5 w-3.5" /> Add account</button>
       </form>
-      {clients.map((client) => <details key={client.id} className="rounded-lg border border-slate-800 bg-[#121824] p-3">
+      {clients.map((client) => <details key={client.id} className="rounded-lg border border-slate-800 bg-panel p-3">
         <summary className="cursor-pointer font-semibold text-white">{client.client_name || 'Unnamed client account'}</summary>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <input value={client.client_name || ''} onChange={(e) => updateClient(client.id, 'client_name', e.target.value)} placeholder="Client name" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <input value={client.contact_email || ''} onChange={(e) => updateClient(client.id, 'contact_email', e.target.value)} placeholder="Contact email" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <input value={client.contact_phone || ''} onChange={(e) => updateClient(client.id, 'contact_phone', e.target.value)} placeholder="Contact phone" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
+          <input value={client.client_name || ''} onChange={(e) => updateClient(client.id, 'client_name', e.target.value)} placeholder="Client name" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+          <input value={client.contact_email || ''} onChange={(e) => updateClient(client.id, 'contact_email', e.target.value)} placeholder="Contact email" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+          <input value={client.contact_phone || ''} onChange={(e) => updateClient(client.id, 'contact_phone', e.target.value)} placeholder="Contact phone" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
         </div>
-        <div className="mt-3 grid gap-3 rounded-xl border border-slate-800 bg-[#080c14] p-3 sm:grid-cols-[9rem_1fr]">
+        <div className="mt-3 grid gap-3 rounded-xl border border-slate-800 bg-canvas p-3 sm:grid-cols-[9rem_1fr]">
           <div className="flex min-h-20 items-center justify-center rounded-lg border border-dashed border-slate-700 bg-white p-2">
             {logoUrls[client.id] ? <img src={logoUrls[client.id]} alt={`${client.client_name} logo preview`} className="max-h-16 max-w-full object-contain" /> : <Image className="h-6 w-6 text-slate-400" />}
           </div>
@@ -182,23 +182,23 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal 
               <input hidden disabled={Boolean(uploadingClientId)} type="file" accept="image/png,image/jpeg,image/svg+xml,.svg" onChange={(event) => uploadClientLogo(client, event)} />
             </label>
             {client.logo_path && <button type="button" onClick={() => removeClientLogo(client)} className="rounded-lg border border-red-500/30 px-3 py-2 text-red-300">Remove logo</button>}
-            <p className="basis-full text-[10px] text-slate-500">PNG, JPG, or SVG up to 2 MB. SVG is safely converted to PNG.</p>
+            <p className="basis-full text-xs text-slate-500">PNG, JPG, or SVG up to 2 MB. SVG is safely converted to PNG.</p>
           </div>
         </div>
-        <label className="mt-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-300"><input type="checkbox" checked={client.pricing?.use_custom_pricing === true} onChange={(e) => updatePricing(client.id, 'use_custom_pricing', e.target.checked)} /> Use custom pricing for this client</label>
-        {client.pricing?.use_custom_pricing === true && <div className="mt-3 space-y-2 rounded-xl border border-slate-800 bg-[#080c14] p-3">
+        <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-300"><input type="checkbox" checked={client.pricing?.use_custom_pricing === true} onChange={(e) => updatePricing(client.id, 'use_custom_pricing', e.target.checked)} /> Use custom pricing for this client</label>
+        {client.pricing?.use_custom_pricing === true && <div className="mt-3 space-y-2 rounded-xl border border-slate-800 bg-canvas p-3">
           <div className="flex items-center justify-between gap-2">
-            <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-300">Client Equipment Weight Pricing</p><p className="text-[10px] text-slate-500">Overrides the company equipment table for this client.</p></div>
+            <div><p className="text-xs font-semibold text-slate-300">Client Equipment Weight Pricing</p><p className="text-xs text-slate-500">Overrides the company equipment table for this client.</p></div>
             <button type="button" onClick={() => addClientTier(client.id)} className="rounded-lg border border-blue-500/30 px-2.5 py-1.5 text-blue-300"><Plus className="inline h-3 w-3" /> Add class</button>
           </div>
-          <div className="hidden gap-2 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500 lg:grid lg:grid-cols-[1fr_1fr_1fr_0.8fr_0.9fr_0.9fr_auto]"><span>Class</span><span>Min lbs</span><span>Max lbs</span><span>$/hr</span><span>Buffer %</span><span>Load min</span><span /></div>
-          {(client.pricing?.weight_tiers || []).map((tier, tierIndex) => <div key={tier.id || tierIndex} className="grid gap-2 rounded-lg border border-slate-800 bg-[#121824] p-2 lg:grid-cols-[1fr_1fr_1fr_0.8fr_0.9fr_0.9fr_auto]">
-            <input value={tier.label || ''} onChange={(e) => updateClientTier(client.id, tierIndex, 'label', e.target.value)} placeholder="Class name" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-            <input type="number" value={tier.minWeight ?? 0} onChange={(e) => updateClientTier(client.id, tierIndex, 'minWeight', e.target.value)} placeholder="Min lbs" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-            <input type="number" value={tier.maxWeight ?? 999999} onChange={(e) => updateClientTier(client.id, tierIndex, 'maxWeight', e.target.value)} placeholder="Max lbs" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-            <input type="number" value={tier.rate ?? 0} onChange={(e) => updateClientTier(client.id, tierIndex, 'rate', e.target.value)} placeholder="$/hr" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-            <input type="number" value={tier.drive_time_buffer ?? 10} onChange={(e) => updateClientTier(client.id, tierIndex, 'drive_time_buffer', e.target.value)} placeholder="Buffer %" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-            <input type="number" value={tier.load_unload_base_mins ?? 30} onChange={(e) => updateClientTier(client.id, tierIndex, 'load_unload_base_mins', e.target.value)} placeholder="Load min" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
+          <div className="hidden gap-2 px-1 text-xs font-semibold text-slate-500 lg:grid lg:grid-cols-[1fr_1fr_1fr_0.8fr_0.9fr_0.9fr_auto]"><span>Class</span><span>Min lbs</span><span>Max lbs</span><span>$/hr</span><span>Buffer %</span><span>Load min</span><span /></div>
+          {(client.pricing?.weight_tiers || []).map((tier, tierIndex) => <div key={tier.id || tierIndex} className="grid gap-2 rounded-lg border border-slate-800 bg-panel p-2 lg:grid-cols-[1fr_1fr_1fr_0.8fr_0.9fr_0.9fr_auto]">
+            <input value={tier.label || ''} onChange={(e) => updateClientTier(client.id, tierIndex, 'label', e.target.value)} placeholder="Class name" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+            <input type="number" value={tier.minWeight ?? 0} onChange={(e) => updateClientTier(client.id, tierIndex, 'minWeight', e.target.value)} placeholder="Min lbs" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+            <input type="number" value={tier.maxWeight ?? 999999} onChange={(e) => updateClientTier(client.id, tierIndex, 'maxWeight', e.target.value)} placeholder="Max lbs" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+            <input type="number" value={tier.rate ?? 0} onChange={(e) => updateClientTier(client.id, tierIndex, 'rate', e.target.value)} placeholder="$/hr" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+            <input type="number" value={tier.drive_time_buffer ?? 10} onChange={(e) => updateClientTier(client.id, tierIndex, 'drive_time_buffer', e.target.value)} placeholder="Buffer %" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+            <input type="number" value={tier.load_unload_base_mins ?? 30} onChange={(e) => updateClientTier(client.id, tierIndex, 'load_unload_base_mins', e.target.value)} placeholder="Load min" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
             <button type="button" onClick={() => removeClientTier(client.id, tierIndex)} className="rounded border border-red-500/30 px-2 text-red-300" title="Delete class"><Trash2 className="h-3.5 w-3.5" /></button>
           </div>)}
         </div>}

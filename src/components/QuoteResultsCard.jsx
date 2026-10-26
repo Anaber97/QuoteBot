@@ -143,16 +143,16 @@ export default function QuoteResultsCard({
   return (
     <div
       ref={resultsRef}
-      className="mt-6 lg:mt-0 bg-[#0c1019] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xl space-y-5 transition-all min-w-0"
+      className="mt-6 lg:mt-0 bg-sunken border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-5 transition-all min-w-0"
     >
       {/* 1. Single Price Display */}
       <div className="text-center space-y-1">
-        <span className="text-[10px] uppercase font-mono tracking-widest text-slate-400">
+        <span className="text-xs font-mono text-slate-400">
           {isDispatcherView ? 'Estimated Total Quote' : 'Your Estimated Quote'}
         </span>
         <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>
         {isDispatcherView && isFixedEquipmentQuote && (
-          <div className="text-[11px] text-slate-400">
+          <div className="text-xs text-slate-400">
             {quoteData.weightTierLabel || 'Equipment weight class'} · ${Number(effectiveRate).toFixed(quoteData.pricingRateMode === 'mileage' ? 2 : 0)}/{quoteData.pricingRateMode === 'mileage' ? 'mi' : 'hr'}
           </div>
         )}
@@ -172,7 +172,7 @@ export default function QuoteResultsCard({
       </div>
 
       {!isDispatcherView && (
-        <p role="note" className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-[11px] leading-5 text-slate-300">
+        <p role="note" className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs leading-5 text-slate-300">
           <span className="font-semibold text-blue-300">Estimate notice: </span>
           {companyRates?.client_portal?.disclosure || estimateDisclaimer}
         </p>
@@ -189,12 +189,12 @@ export default function QuoteResultsCard({
                   key={key}
                   type="button"
                   onClick={() => toggleOverride(key)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${active ? style.active : style.disabled}`}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition cursor-pointer ${active ? style.active : style.disabled}`}
                   title={active ? 'Click to remove surcharge' : 'Click to restore surcharge'}
                   aria-pressed={active}
                 >
                   <span>{key === 'metro' ? metroBadgeLabel : style.label}</span>
-                  <span className="rounded bg-black/20 px-1 text-[10px] font-black leading-none opacity-80">
+                  <span className="rounded bg-black/20 px-1 text-xs font-black leading-none opacity-80">
                     {active ? '✕' : '↻'}
                   </span>
                 </button>
@@ -203,14 +203,14 @@ export default function QuoteResultsCard({
             {availableCustomSurcharges.map((item) => {
               const active = activeOverrides?.customSurcharges?.[item.id] === true;
               return (
-              <button key={item.id} type="button" onClick={() => toggleCustomSurcharge(item.id)} title={active ? 'Click to remove surcharge' : 'Click to restore surcharge'} aria-pressed={active} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${active ? 'border-violet-500/30 bg-violet-500/10 text-violet-300' : BADGE_STYLES.custom.disabled}`}>
+              <button key={item.id} type="button" onClick={() => toggleCustomSurcharge(item.id)} title={active ? 'Click to remove surcharge' : 'Click to restore surcharge'} aria-pressed={active} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${active ? 'border-violet-500/30 bg-violet-500/10 text-violet-300' : BADGE_STYLES.custom.disabled}`}>
                 <span>{item.name} ({item.feeType === 'percent' ? `+${item.value}%` : `+$${item.value}`})</span>
-                <span className="rounded bg-black/20 px-1 text-[10px] font-black leading-none opacity-80">{active ? '✕' : '↻'}</span>
+                <span className="rounded bg-black/20 px-1 text-xs font-black leading-none opacity-80">{active ? '✕' : '↻'}</span>
               </button>
               );
             })}
             {!hasAppliedSurcharges && (
-              <span className="text-[10px] uppercase tracking-wide text-slate-500">No surcharge add-ons applied</span>
+              <span className="text-xs text-slate-500">No surcharge add-ons applied</span>
             )}
           </div>
           <div className="text-center">
@@ -246,7 +246,7 @@ export default function QuoteResultsCard({
 
       {/* 2. Google Maps Minimap Preview */}
       {mapEmbedUrl && (
-        <div className="rounded-xl overflow-hidden border border-slate-800 shadow-xl bg-[#080c14] h-52 w-full">
+        <div className="rounded-xl overflow-hidden border border-slate-800 bg-canvas h-52 w-full">
           <iframe
             title="Route Map Preview"
             width="100%"

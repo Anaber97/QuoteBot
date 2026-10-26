@@ -111,7 +111,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   }, [formData.pricing?.custom_surcharges, customSurchargeFilter, customSurchargeSearch]);
   if (!canEdit) {
     return (
-      <div className="p-8 text-center bg-[#0c1019] border border-red-800/40 rounded-xl my-4">
+      <div className="p-8 text-center bg-sunken border border-red-800/40 rounded-xl my-4">
         <ShieldAlert className="w-12 h-12 text-red-400 mx-auto mb-3" />
         <h3 className="text-lg font-bold text-white mb-1">Access Restricted</h3>
         <p className="text-xs text-slate-400">Settings & Configuration are restricted to authorized workspace roles.</p>
@@ -120,7 +120,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
   }
 
   return (
-    <div className="flex min-h-[32rem] flex-col rounded-xl border border-slate-800 bg-[#0c1019] lg:h-[calc(100dvh-8.5rem)] lg:overflow-hidden">
+    <div className="flex min-h-[32rem] flex-col rounded-xl border border-slate-800 bg-sunken lg:h-[calc(100dvh-8.5rem)] lg:overflow-hidden">
       {/* Sub-navigation Tabs */}
       <SettingsTabsNav
         activeSubTab={activeSubTab}
@@ -233,7 +233,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
 
       {/* Action Footer */}
       {activeSubTab !== 'clients' && activeSubTab !== 'users' && (
-        <div className="sticky bottom-0 z-30 flex flex-none items-center justify-between gap-4 rounded-b-xl border-t border-slate-800 bg-[#0c1019] px-3 py-3 shadow-[0_-10px_24px_rgba(0,0,0,0.2)] sm:px-4 lg:static">
+        <div className="sticky bottom-0 z-30 flex flex-none items-center justify-between gap-4 rounded-b-xl border-t border-slate-800 bg-sunken px-3 py-3 shadow-[0_-10px_24px_rgba(0,0,0,0.2)] sm:px-4 lg:static">
           {saveStatus?.type === 'error' ? (
             <p className="flex items-center gap-1.5 text-xs font-medium text-red-400">
               <AlertCircle className="w-4 h-4" />
@@ -255,7 +255,7 @@ export default function Settings({ config, onSaveConfig, currentUserRole, profil
             type="button"
             onClick={handleSave}
             disabled={isSaving || !hasUnsavedChanges}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition cursor-pointer shadow-lg disabled:opacity-50"
+            className="flex items-center gap-2 bg-accent hover:bg-accent-strong active:bg-accent-strong text-accent-ink font-bold text-xs px-5 py-2.5 rounded-xl transition cursor-pointer disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
             {isSaving ? 'Saving...' : hasUnsavedChanges ? 'Save Settings' : 'Saved'}

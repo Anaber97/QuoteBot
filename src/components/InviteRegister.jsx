@@ -126,8 +126,8 @@ export default function InviteRegister() {
   };
 
   return (
-    <div className="min-h-screen bg-[#080c14] px-4 py-12 text-slate-100">
-      <div className="mx-auto w-full max-w-md rounded-2xl border border-slate-800 bg-[#121824] p-6 shadow-2xl">
+    <div className="min-h-screen bg-canvas px-4 py-12 text-slate-100">
+      <div className="mx-auto w-full max-w-md rounded-2xl border border-slate-800 bg-panel p-6">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-blue-500/20 bg-blue-600/10 text-blue-400">
             <LogIn className="h-6 w-6" />
@@ -145,45 +145,45 @@ export default function InviteRegister() {
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">Full Name</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-400">Full Name</label>
             <input
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              className="w-full rounded-xl border border-slate-800 bg-[#080c14] px-3 py-2.5 text-sm text-white"
+              className="w-full rounded-xl border border-slate-800 bg-canvas px-3 py-2.5 text-sm text-white"
               placeholder="Alex Johnson"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">Email</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-400">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-slate-800 bg-[#080c14] px-3 py-2.5 text-sm text-white"
+              className="w-full rounded-xl border border-slate-800 bg-canvas px-3 py-2.5 text-sm text-white"
               placeholder="alex@company.com"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">Password</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-400">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-slate-800 bg-[#080c14] px-3 py-2.5 text-sm text-white"
+              className="w-full rounded-xl border border-slate-800 bg-canvas px-3 py-2.5 text-sm text-white"
               placeholder="••••••••"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">Confirm Password</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-400">Confirm Password</label>
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full rounded-xl border border-slate-800 bg-[#080c14] px-3 py-2.5 text-sm text-white"
+              className="w-full rounded-xl border border-slate-800 bg-canvas px-3 py-2.5 text-sm text-white"
               placeholder="••••••••"
             />
           </div>
@@ -193,7 +193,7 @@ export default function InviteRegister() {
           <button
             type="submit"
             disabled={loading || !policyAccepted}
-            className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60"
+            className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-accent-ink transition hover:bg-blue-500 disabled:opacity-60"
           >
             {loading ? 'Creating account...' : 'Create Account'}
           </button>

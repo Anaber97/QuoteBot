@@ -12,7 +12,7 @@ export default function SettingsTabsNav({ activeSubTab, setActiveSubTab, allGeof
   ];
 
   return (
-    <div className="z-30 grid flex-none grid-cols-3 gap-1 border-b border-slate-800 bg-[#0c1019] pb-1 shadow-md sm:grid-cols-7">
+    <div className="z-30 grid flex-none grid-cols-3 gap-1 border-b border-slate-800 bg-sunken pb-1 sm:grid-cols-7">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeSubTab === tab.id;
@@ -25,8 +25,8 @@ export default function SettingsTabsNav({ activeSubTab, setActiveSubTab, allGeof
             data-active={isActive}
             className={`settings-tab flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium rounded-t-lg transition cursor-pointer whitespace-nowrap ${
               isActive
-                ? 'bg-[#1a2234] text-blue-400 border-b-2 border-blue-500 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-[#0f1522]'
+                ? 'bg-raised text-blue-400 border-b-2 border-blue-500 font-bold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-sunken'
             }`}
           >
             <Icon className="w-3.5 h-3.5" />
@@ -34,7 +34,7 @@ export default function SettingsTabsNav({ activeSubTab, setActiveSubTab, allGeof
           </button>
         );
       })}
-      <div className={`hidden items-center justify-center gap-1.5 rounded-t-lg px-2 py-2 text-[10px] font-bold uppercase tracking-wide sm:flex ${hasUnsavedChanges ? 'text-amber-400' : 'text-emerald-400'}`}>
+      <div className={`hidden items-center justify-center gap-1.5 rounded-t-lg px-2 py-2 text-xs font-bold sm:flex ${hasUnsavedChanges ? 'text-amber-400' : 'text-emerald-400'}`}>
         <span className={`h-1.5 w-1.5 rounded-full ${hasUnsavedChanges ? 'bg-amber-400' : 'bg-emerald-400'}`} />
         {hasUnsavedChanges ? 'Unsaved' : 'Saved'}
       </div>

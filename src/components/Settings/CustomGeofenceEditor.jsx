@@ -75,7 +75,7 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
         });
         mapRef.current = map;
         const controls = document.createElement('div');
-        controls.className = 'm-2 flex overflow-hidden rounded-lg border border-slate-300 bg-white shadow-lg';
+        controls.className = 'm-2 flex overflow-hidden rounded-lg border border-slate-300 bg-white';
         const makeControlButton = (label, action) => {
           const button = document.createElement('button');
           button.type = 'button';
@@ -286,50 +286,50 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
   if (!zone) return null;
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-800 bg-[#121824] p-3">
+    <div className="space-y-3 rounded-xl border border-slate-800 bg-panel p-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-[10px] uppercase tracking-wide text-slate-500">Custom geofence</p>
+          <p className="text-xs text-slate-500">Custom geofence</p>
           <p className="font-semibold text-white">{zone.name || 'New municipality zone'}</p>
         </div>
         <button
           type="button"
           onClick={onDelete}
-          className="flex items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] text-slate-300"
+          className="flex items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-300"
         >
           <Trash2 className="w-3.5 h-3.5" /> Delete
         </button>
       </div>
 
       <div>
-        <label className="mb-1 block text-[10px] text-slate-400">Search locality</label>
+        <label className="mb-1 block text-xs text-slate-400">Search locality</label>
         <input
           ref={searchInputRef}
           type="text"
           defaultValue={buildReviewQuery(zone)}
           placeholder="Start typing a city or municipality"
-          className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white"
+          className="w-full rounded border border-slate-700 bg-canvas p-2 text-white"
         />
-        <p className="mt-1 text-[10px] text-slate-500">City and state identify the zone; the boundary drawn below decides whether pricing applies.</p>
+        <p className="mt-1 text-xs text-slate-500">City and state identify the zone; the boundary drawn below decides whether pricing applies.</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
-          <label className="mb-1 block text-[10px] text-slate-400">Area label</label>
+          <label className="mb-1 block text-xs text-slate-400">Area label</label>
           <input
             type="text"
             value={zone.name || ''}
             onChange={(e) => onChange('name', e.target.value)}
             placeholder="Example: Henderson, TX"
-            className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white"
+            className="w-full rounded border border-slate-700 bg-canvas p-2 text-white"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] text-slate-400">Price mode</label>
+          <label className="mb-1 block text-xs text-slate-400">Price mode</label>
           <select
             value={zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')}
             onChange={(e) => onChange('pricingMode', e.target.value)}
-            className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white"
+            className="w-full rounded border border-slate-700 bg-canvas p-2 text-white"
           >
             <option value="surcharge">Surcharge</option>
             <option value="flat_rate">Flat rate ($)</option>
@@ -340,8 +340,8 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
 
       {(zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) === 'surcharge' && (
         <div>
-          <label className="mb-1 block text-[10px] text-slate-400">Surcharge (%/$)</label>
-          <button type="button" onClick={() => onChange('surchargeFeeType', zone.surchargeFeeType === 'flat' ? 'percent' : 'flat')} className="light-surcharge-type-toggle rounded-full border border-slate-700 px-3 py-1.5 text-[10px] font-semibold text-slate-200">
+          <label className="mb-1 block text-xs text-slate-400">Surcharge (%/$)</label>
+          <button type="button" onClick={() => onChange('surchargeFeeType', zone.surchargeFeeType === 'flat' ? 'percent' : 'flat')} className="light-surcharge-type-toggle rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200">
             {zone.surchargeFeeType === 'flat' ? 'Dollar amount ($)' : 'Percent (%)'}
           </button>
         </div>
@@ -349,60 +349,60 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_8rem]">
         <div>
-          <label className="mb-1 block text-[10px] text-slate-400">{zone.pricingMode === 'max_rate' ? 'Maximum quote' : 'Charge value'}</label>
+          <label className="mb-1 block text-xs text-slate-400">{zone.pricingMode === 'max_rate' ? 'Maximum quote' : 'Charge value'}</label>
           <input
             type="number"
             value={zone.price ?? ''}
             onChange={(e) => onChange('price', e.target.value)}
             placeholder={(zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) === 'flat_rate' || zone.surchargeFeeType === 'flat' ? '75' : '25'}
-            className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white font-mono"
+            className="w-full rounded border border-slate-700 bg-canvas p-2 text-white font-mono"
           />
         </div>
         <div>
-          <label className="mb-1 block text-[10px] text-slate-400">Priority</label>
-          <input aria-label="Priority" type="number" min="0" max="999" step="1" value={zone.priority ?? 0} onChange={(e) => onChange('priority', e.target.value)} className="w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white font-mono" />
+          <label className="mb-1 block text-xs text-slate-400">Priority</label>
+          <input aria-label="Priority" type="number" min="0" max="999" step="1" value={zone.priority ?? 0} onChange={(e) => onChange('priority', e.target.value)} className="w-full rounded border border-slate-700 bg-canvas p-2 text-white font-mono" />
         </div>
-        <p className="text-[10px] text-slate-500 sm:col-span-2">{zone.pricingMode === 'max_rate' ? 'The normal quote is kept when lower, or capped at this amount when higher. ' : ''}Higher priority wins when zones overlap. Zones tied at the highest priority stack together.</p>
+        <p className="text-xs text-slate-500 sm:col-span-2">{zone.pricingMode === 'max_rate' ? 'The normal quote is kept when lower, or capped at this amount when higher. ' : ''}Higher priority wins when zones overlap. Zones tied at the highest priority stack together.</p>
       </div>
 
-      <div className="space-y-2 rounded-lg border border-slate-700 bg-[#0b1220] p-2.5">
+      <div className="space-y-2 rounded-lg border border-slate-700 bg-sunken p-2.5">
         <div>
-          <p className="text-[10px] font-semibold text-slate-300">Generate a radius</p>
-          <p className="text-[10px] text-slate-500">Replace the current shape with a circle from the searched city center or a saved base.</p>
+          <p className="text-xs font-semibold text-slate-300">Generate a radius</p>
+          <p className="text-xs text-slate-500">Replace the current shape with a circle from the searched city center or a saved base.</p>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[9rem_1fr_7rem]">
-          <select value={radiusSource} onChange={(e) => setRadiusSource(e.target.value)} aria-label="Radius center source" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white">
+          <select value={radiusSource} onChange={(e) => setRadiusSource(e.target.value)} aria-label="Radius center source" className="rounded border border-slate-700 bg-canvas p-2 text-white">
             <option value="city">City center</option>
             <option value="base">Saved base</option>
           </select>
           {radiusSource === 'base' ? (
-            <select value={selectedBaseId} onChange={(e) => setSelectedBaseId(e.target.value)} aria-label="Radius base" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white">
+            <select value={selectedBaseId} onChange={(e) => setSelectedBaseId(e.target.value)} aria-label="Radius base" className="rounded border border-slate-700 bg-canvas p-2 text-white">
               <option value="">Select a base</option>
               {bases.map((base) => <option key={base.id} value={base.id}>{base.name || base.address}</option>)}
             </select>
           ) : (
-            <div className="flex items-center rounded border border-slate-800 px-2 text-[10px] text-slate-400">{zone.localityQuery || 'Select a city above'}</div>
+            <div className="flex items-center rounded border border-slate-800 px-2 text-xs text-slate-400">{zone.localityQuery || 'Select a city above'}</div>
           )}
-          <div className="flex items-center rounded border border-slate-700 bg-[#080c14] pr-2">
+          <div className="flex items-center rounded border border-slate-700 bg-canvas pr-2">
             <input type="number" min="0.1" max="250" step="0.1" value={radiusMiles} onChange={(e) => setRadiusMiles(e.target.value)} aria-label="Radius in miles" className="min-w-0 flex-1 bg-transparent p-2 text-white font-mono outline-none" />
-            <span className="text-[10px] text-slate-500">mi</span>
+            <span className="text-xs text-slate-500">mi</span>
           </div>
         </div>
-        <button type="button" onClick={generateRadius} className="w-full rounded border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-[10px] font-semibold text-cyan-200">Generate radius polygon</button>
+        <button type="button" onClick={generateRadius} className="w-full rounded border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200">Generate radius polygon</button>
       </div>
 
       <div className="grid grid-cols-1 gap-3">
         <div className="space-y-2">
           <div>
-            <p className="text-[10px] font-semibold text-slate-300">Municipality and pricing boundary</p>
-            <p className="text-[10px] text-slate-500"><span className="font-semibold text-orange-400">Orange</span> is Google&apos;s municipality reference. Click matching points to draw TowCalc&apos;s <span className="font-semibold text-cyan-400">cyan</span> pricing polygon.</p>
+            <p className="text-xs font-semibold text-slate-300">Municipality and pricing boundary</p>
+            <p className="text-xs text-slate-500"><span className="font-semibold text-orange-400">Orange</span> is Google&apos;s municipality reference. Click matching points to draw TowCalc&apos;s <span className="font-semibold text-cyan-400">cyan</span> pricing polygon.</p>
           </div>
-          <div ref={mapElementRef} role="application" aria-label="Draw city-limit boundary" className="h-72 overflow-hidden rounded-lg border border-slate-700 bg-[#080c14]" />
-          {!MAP_ID && <p className="text-[10px] text-amber-300">Google&apos;s reference layer needs a configured vector Map ID. Polygon drawing still works.</p>}
+          <div ref={mapElementRef} role="application" aria-label="Draw city-limit boundary" className="h-72 overflow-hidden rounded-lg border border-slate-700 bg-canvas" />
+          {!MAP_ID && <p className="text-xs text-amber-300">Google&apos;s reference layer needs a configured vector Map ID. Polygon drawing still works.</p>}
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-800 bg-[#0b1220] p-2.5 text-[10px] text-slate-400">
+      <div className="rounded-lg border border-slate-800 bg-sunken p-2.5 text-xs text-slate-400">
         <div className="flex items-center gap-1.5 text-slate-300">
           <MapPin className="w-3.5 h-3.5 text-cyan-400" />
           <span>{status}</span>
@@ -410,11 +410,11 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
       </div>
 
       {Array.isArray(zone.shape) && zone.shape.length >= 3 ? (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-[10px] text-emerald-200">
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-200">
           {zone.shape.length} boundary points selected. Quotes will use this polygon, not the city name in the address.
         </div>
       ) : (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[10px] text-amber-200">
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-200">
           This zone is inactive until at least three boundary points are drawn and saved.
         </div>
       )}
@@ -423,7 +423,7 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
         type="button"
         onClick={onSave}
         disabled={!String(zone.city || '').trim() || !String(zone.state || '').trim() || !Array.isArray(zone.shape) || zone.shape.length < 3}
-        className="w-full rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+        className="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-accent-ink disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
       >
         Apply geofence changes
       </button>

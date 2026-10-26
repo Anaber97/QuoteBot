@@ -26,10 +26,9 @@ export default defineConfig({
         name: 'TowCalc Pro',
         short_name: 'TowCalc Pro',
         description: 'Dispatch & Route Rate Engine',
-        theme_color: '#080c14',
-        background_color: '#080c14',
+        theme_color: '#0e100c',
+        background_color: '#0e100c',
         display: 'standalone',
-        orientation: 'portrait',
         start_url: '/',
         icons: [
           {

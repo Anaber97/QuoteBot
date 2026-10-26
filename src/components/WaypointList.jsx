@@ -86,7 +86,7 @@ const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRe
 
   return (
     <div className="w-full">
-      <label className="block text-[11px] uppercase tracking-wider font-semibold text-slate-400 mb-1.5">
+      <label className="block text-xs font-semibold text-slate-400 mb-1.5">
         {label}
       </label>
       <div className="flex items-center gap-2 w-full">
@@ -97,7 +97,7 @@ const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRe
           placeholder={isPickUp ? 'Business, address, city, or municipality...' : isDropOff ? 'Business, address, city, or municipality...' : `Enter ${label.toLowerCase()}...`}
           value={value}
           onChange={(e) => onChange(index, e.target.value)}
-          className="w-full flex-1 bg-[#080c14] border border-slate-800 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-sm shadow-inner"
+          className="w-full flex-1 bg-canvas border border-slate-800 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-sm shadow-inner"
         />
         {isWaypoint && (
           <button

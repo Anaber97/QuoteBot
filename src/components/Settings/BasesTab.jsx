@@ -9,13 +9,13 @@ export default function BasesTab({ formData, addBase, removeBase, setFormData })
         <button
           type="button"
           onClick={addBase}
-          className="flex items-center gap-1 text-[11px] bg-blue-600/20 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30"
+          className="flex items-center gap-1 text-xs bg-blue-600/20 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30"
         >
           <Plus className="w-3 h-3" /> Add Yard
         </button>
       </div>
       {(formData.bases || []).map((base, idx) => (
-        <div key={base.id} className="flex flex-col sm:flex-row gap-2 bg-[#080c14] p-3 rounded-xl border border-slate-800">
+        <div key={base.id} className="flex flex-col sm:flex-row gap-2 bg-canvas p-3 rounded-xl border border-slate-800">
           <input
             type="text"
             placeholder="Yard Name"
@@ -25,7 +25,7 @@ export default function BasesTab({ formData, addBase, removeBase, setFormData })
               updated[idx].name = e.target.value;
               setFormData((prev) => ({ ...prev, bases: updated }));
             }}
-            className="bg-[#121824] border border-slate-700 rounded px-2.5 py-1.5 text-white flex-1"
+            className="bg-panel border border-slate-700 rounded px-2.5 py-1.5 text-white flex-1"
           />
           <input
             type="text"
@@ -36,7 +36,7 @@ export default function BasesTab({ formData, addBase, removeBase, setFormData })
               updated[idx].address = e.target.value;
               setFormData((prev) => ({ ...prev, bases: updated }));
             }}
-            className="bg-[#121824] border border-slate-700 rounded px-2.5 py-1.5 text-white flex-1"
+            className="bg-panel border border-slate-700 rounded px-2.5 py-1.5 text-white flex-1"
           />
           <button
             type="button"

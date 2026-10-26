@@ -92,14 +92,14 @@ export default function PricingTab({
 
   return (
     <div className="flex flex-col gap-5 text-xs">
-      <div className="-order-3 bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
+      <div className="-order-3 bg-canvas p-3.5 rounded-xl border border-slate-800 space-y-3">
         <div>
           <h4 className="font-bold text-slate-200 text-xs">Pricing Mode</h4>
-          <p className="text-[10px] text-slate-400">Choose whether standard quotes are based on billable time or total routed mileage.</p>
+          <p className="text-xs text-slate-400">Choose whether standard quotes are based on billable time or total routed mileage.</p>
         </div>
-        <div className="grid grid-cols-2 gap-2 rounded-xl bg-[#121824] p-1 border border-slate-800">
+        <div className="grid grid-cols-2 gap-2 rounded-xl bg-panel p-1 border border-slate-800">
           {['hourly', 'mileage'].map((mode) => (
-            <button key={mode} type="button" onClick={() => updatePricing('pricing_mode', mode)} className={`rounded-lg px-3 py-2 text-[11px] font-bold transition ${pricingMode === mode ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
+            <button key={mode} type="button" onClick={() => updatePricing('pricing_mode', mode)} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${pricingMode === mode ? 'bg-blue-600 text-accent-ink shadow' : 'text-slate-400 hover:text-slate-200'}`}>
               {mode === 'hourly' ? 'Hourly Mode' : 'Mileage Mode'}
             </button>
           ))}
@@ -111,43 +111,43 @@ export default function PricingTab({
         </h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Min Rate ($/hr)</label>
+            <label className="text-xs text-slate-400 block mb-1">Min Rate ($/hr)</label>
             <input
               type="number"
               value={formData.pricing?.hourly_min ?? 125}
               onChange={(e) => updatePricing('hourly_min', parseFloat(e.target.value) || 0)}
-              className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
+              className="w-full bg-panel border border-slate-700 rounded p-2 text-white font-mono"
             />
           </div>
           <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Max Rate ($/hr)</label>
+            <label className="text-xs text-slate-400 block mb-1">Max Rate ($/hr)</label>
             <input
               type="number"
               value={formData.pricing?.hourly_max ?? 135}
               onChange={(e) => updatePricing('hourly_max', parseFloat(e.target.value) || 0)}
-              className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white font-mono"
+              className="w-full bg-panel border border-slate-700 rounded p-2 text-white font-mono"
             />
           </div>
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-[#080c14] p-3.5 space-y-3">
+      <div className="rounded-xl border border-slate-800 bg-canvas p-3.5 space-y-3">
         <h4 className="font-bold text-slate-200 text-xs">OSOW Permit and Escort Pricing</h4>
         <label className="flex gap-2 text-slate-200"><input type="checkbox" checked={Boolean(formData.client_portal?.osow_pricing?.enabled)} onChange={(e) => updateClientPortal('osow_pricing', { ...formData.client_portal?.osow_pricing, enabled: e.target.checked })} />Use state-specific OSOW rules</label>
         <p className="text-xs text-slate-400">General permit pricing applies once per affected state. The highest escort requirement applies once per trip; 2-escort pricing is the total for both escorts. Blank general pricing uses the weight class permit price. Unspecified escort prices require review.</p>
-        <div className="grid gap-3 sm:grid-cols-3">{[['generalPermit', 'General OSOW ($ / state)'], ['oneEscort', '1 Escort ($ / trip)'], ['twoEscort', '2 Escorts ($ / trip)']].map(([field, label]) => <label key={field} className="text-xs text-slate-300">{label}<input aria-label={label} type="number" min="0" step="0.01" value={formData.client_portal?.osow_pricing?.[field] ?? ''} onChange={(e) => updateClientPortal('osow_pricing', { ...formData.client_portal?.osow_pricing, [field]: e.target.value === '' ? null : Number(e.target.value) })} className="mt-1 w-full rounded border border-slate-700 bg-[#121824] p-2 text-white" /></label>)}</div>
+        <div className="grid gap-3 sm:grid-cols-3">{[['generalPermit', 'General OSOW ($ / state)'], ['oneEscort', '1 Escort ($ / trip)'], ['twoEscort', '2 Escorts ($ / trip)']].map(([field, label]) => <label key={field} className="text-xs text-slate-300">{label}<input aria-label={label} type="number" min="0" step="0.01" value={formData.client_portal?.osow_pricing?.[field] ?? ''} onChange={(e) => updateClientPortal('osow_pricing', { ...formData.client_portal?.osow_pricing, [field]: e.target.value === '' ? null : Number(e.target.value) })} className="mt-1 w-full rounded border border-slate-700 bg-panel p-2 text-white" /></label>)}</div>
       </div>
-      <div className="order-2 bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-        <div className="flex items-center justify-between"><div><h4 className="font-bold text-slate-200 text-xs">Equipment Weight Pricing</h4><p className="text-[10px] text-slate-400">Used by the Equipment Calculator with the selected pricing mode.</p></div><button type="button" onClick={addClientPortalTier} className="rounded-lg border border-blue-500/30 px-2.5 py-1 text-blue-400"><Plus className="inline w-3 h-3" /> Add class</button></div>
-        <div className="hidden gap-2 px-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr_auto]"><span>Min Weight (lbs.)</span><span>Max Weight (lbs.)</span><span>Rate ({rateUnit})</span><span>Permit ($)</span><span>Drive Buffer (%)</span><span>Load / Unload (min.)</span><span>Reorder / Delete</span></div>
-        {(formData.client_portal?.weight_tiers || []).map((tier, index) => <div key={tier.id || index} data-reorder-list="equipment" data-reorder-index={index} className={`grid gap-2 rounded-lg border bg-[#121824] p-2.5 transition sm:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr_auto] ${dragging?.list === 'equipment' && dragging.index === index ? 'border-cyan-400 opacity-70' : 'border-slate-800'}`}>
-          <div className="grid gap-2 sm:col-span-full sm:grid-cols-2">{[['averageClearanceIn', 'Average Clearance (deck height, in.)'], ['averageVehicleWeightLbs', 'Average Vehicle Weight (empty truck/trailer, lbs.)']].map(([field, label]) => <label key={field} className="text-xs text-slate-300">{label}<input aria-label={`${label} class ${index + 1}`} type="number" min="0" value={tier[field] ?? ''} onChange={(e) => updateClientPortalTier(index, field, e.target.value === '' ? null : Number(e.target.value))} className="mt-1 w-full rounded border border-slate-700 bg-[#080c14] p-2 text-white" /></label>)}</div>
-          <input type="number" value={tier.minWeight} onChange={(e) => updateClientPortalTier(index, 'minWeight', e.target.value)} placeholder="Min lbs" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <input type="number" value={tier.maxWeight} onChange={(e) => updateClientPortalTier(index, 'maxWeight', e.target.value)} placeholder="Max lbs" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <input type="number" step={isMileageMode ? '0.01' : '1'} value={isMileageMode ? (tier.mileageRate ?? 5) : (tier.hourlyRate ?? tier.rate)} onChange={(e) => updateClientPortalTier(index, isMileageMode ? 'mileageRate' : 'hourlyRate', e.target.value)} placeholder={rateUnit} className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <input type="number" min="0" step="1" value={tier.permitCost ?? 150} onChange={(e) => updateClientPortalTier(index, 'permitCost', e.target.value)} placeholder="Permit $" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <input type="number" value={tier.drive_time_buffer ?? 10} onChange={(e) => updateClientPortalTier(index, 'drive_time_buffer', e.target.value)} placeholder="Drive %" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <input type="number" value={tier.load_unload_base_mins ?? 30} onChange={(e) => updateClientPortalTier(index, 'load_unload_base_mins', e.target.value)} placeholder="Load mins" className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
+      <div className="order-2 bg-canvas p-3.5 rounded-xl border border-slate-800 space-y-3">
+        <div className="flex items-center justify-between"><div><h4 className="font-bold text-slate-200 text-xs">Equipment Weight Pricing</h4><p className="text-xs text-slate-400">Used by the Equipment Calculator with the selected pricing mode.</p></div><button type="button" onClick={addClientPortalTier} className="rounded-lg border border-blue-500/30 px-2.5 py-1 text-blue-400"><Plus className="inline w-3 h-3" /> Add class</button></div>
+        <div className="hidden gap-2 px-2 text-xs font-semibold text-slate-400 sm:grid sm:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr_auto]"><span>Min Weight (lbs.)</span><span>Max Weight (lbs.)</span><span>Rate ({rateUnit})</span><span>Permit ($)</span><span>Drive Buffer (%)</span><span>Load / Unload (min.)</span><span>Reorder / Delete</span></div>
+        {(formData.client_portal?.weight_tiers || []).map((tier, index) => <div key={tier.id || index} data-reorder-list="equipment" data-reorder-index={index} className={`grid gap-2 rounded-lg border bg-panel p-2.5 transition sm:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.9fr_0.9fr_auto] ${dragging?.list === 'equipment' && dragging.index === index ? 'border-cyan-400 opacity-70' : 'border-slate-800'}`}>
+          <div className="grid gap-2 sm:col-span-full sm:grid-cols-2">{[['averageClearanceIn', 'Average Clearance (deck height, in.)'], ['averageVehicleWeightLbs', 'Average Vehicle Weight (empty truck/trailer, lbs.)']].map(([field, label]) => <label key={field} className="text-xs text-slate-300">{label}<input aria-label={`${label} class ${index + 1}`} type="number" min="0" value={tier[field] ?? ''} onChange={(e) => updateClientPortalTier(index, field, e.target.value === '' ? null : Number(e.target.value))} className="mt-1 w-full rounded border border-slate-700 bg-canvas p-2 text-white" /></label>)}</div>
+          <input type="number" value={tier.minWeight} onChange={(e) => updateClientPortalTier(index, 'minWeight', e.target.value)} placeholder="Min lbs" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+          <input type="number" value={tier.maxWeight} onChange={(e) => updateClientPortalTier(index, 'maxWeight', e.target.value)} placeholder="Max lbs" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+          <input type="number" step={isMileageMode ? '0.01' : '1'} value={isMileageMode ? (tier.mileageRate ?? 5) : (tier.hourlyRate ?? tier.rate)} onChange={(e) => updateClientPortalTier(index, isMileageMode ? 'mileageRate' : 'hourlyRate', e.target.value)} placeholder={rateUnit} className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+          <input type="number" min="0" step="1" value={tier.permitCost ?? 150} onChange={(e) => updateClientPortalTier(index, 'permitCost', e.target.value)} placeholder="Permit $" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+          <input type="number" value={tier.drive_time_buffer ?? 10} onChange={(e) => updateClientPortalTier(index, 'drive_time_buffer', e.target.value)} placeholder="Drive %" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+          <input type="number" value={tier.load_unload_base_mins ?? 30} onChange={(e) => updateClientPortalTier(index, 'load_unload_base_mins', e.target.value)} placeholder="Load mins" className="rounded border border-slate-700 bg-canvas p-2 text-white" />
           <div className="flex items-center justify-end gap-1">
             <button type="button" aria-label={`Drag equipment weight class ${index + 1} to reorder`} title="Drag to reorder; arrow keys also work" onPointerDown={(event) => startDrag('equipment', index, event)} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag} onKeyDown={(event) => handleReorderKey('equipment', index, event)} className="inline-flex touch-none cursor-grab items-center justify-center rounded border border-slate-700 px-2 py-2 text-slate-300 active:cursor-grabbing"><GripVertical className="h-4 w-4" /></button>
             <button type="button" onClick={() => removeClientPortalTier(index)} aria-label={`Delete equipment weight class ${index + 1}`} title="Delete class" className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -155,28 +155,28 @@ export default function PricingTab({
         </div>)}
       </div>
 
-      <div className="order-2 bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
-        <div><h4 className="font-bold text-slate-200 text-xs">Escort Vehicle Thresholds</h4><p className="text-[10px] text-slate-400">Used when state-specific OSOW rules are disabled. Width and height are inches. If either threshold is reached, the highest matching escort rule and its flat surcharge are applied.</p></div>
-        <div className="hidden gap-2 px-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-[0.8fr_1fr_1fr_1fr]"><span>Escorts</span><span>Min Width (in.)</span><span>Min Height (in.)</span><span>Surcharge ($)</span></div>
-        {(formData.client_portal?.escort_rules || []).map((rule) => <div key={rule.vehicleCount} className="grid gap-2 rounded-lg border border-slate-800 bg-[#121824] p-2.5 sm:grid-cols-[0.8fr_1fr_1fr_1fr]">
-          <div className="flex items-center rounded border border-slate-700 bg-[#080c14] p-2 font-semibold text-white">{rule.vehicleCount} escort{Number(rule.vehicleCount) === 1 ? '' : 's'}</div>
-          <input aria-label={`${rule.vehicleCount} escort minimum width`} type="number" min="0" value={rule.minWidth ?? 0} onChange={(event) => updateEscortRule(rule.vehicleCount, 'minWidth', event.target.value)} className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <input aria-label={`${rule.vehicleCount} escort minimum height`} type="number" min="0" value={rule.minHeight ?? 0} onChange={(event) => updateEscortRule(rule.vehicleCount, 'minHeight', event.target.value)} className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
-          <input aria-label={`${rule.vehicleCount} escort surcharge`} type="number" min="0" value={rule.surcharge ?? 0} onChange={(event) => updateEscortRule(rule.vehicleCount, 'surcharge', event.target.value)} className="rounded border border-slate-700 bg-[#080c14] p-2 text-white" />
+      <div className="order-2 bg-canvas p-3.5 rounded-xl border border-slate-800 space-y-3">
+        <div><h4 className="font-bold text-slate-200 text-xs">Escort Vehicle Thresholds</h4><p className="text-xs text-slate-400">Used when state-specific OSOW rules are disabled. Width and height are inches. If either threshold is reached, the highest matching escort rule and its flat surcharge are applied.</p></div>
+        <div className="hidden gap-2 px-2 text-xs font-semibold text-slate-400 sm:grid sm:grid-cols-[0.8fr_1fr_1fr_1fr]"><span>Escorts</span><span>Min Width (in.)</span><span>Min Height (in.)</span><span>Surcharge ($)</span></div>
+        {(formData.client_portal?.escort_rules || []).map((rule) => <div key={rule.vehicleCount} className="grid gap-2 rounded-lg border border-slate-800 bg-panel p-2.5 sm:grid-cols-[0.8fr_1fr_1fr_1fr]">
+          <div className="flex items-center rounded border border-slate-700 bg-canvas p-2 font-semibold text-white">{rule.vehicleCount} escort{Number(rule.vehicleCount) === 1 ? '' : 's'}</div>
+          <input aria-label={`${rule.vehicleCount} escort minimum width`} type="number" min="0" value={rule.minWidth ?? 0} onChange={(event) => updateEscortRule(rule.vehicleCount, 'minWidth', event.target.value)} className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+          <input aria-label={`${rule.vehicleCount} escort minimum height`} type="number" min="0" value={rule.minHeight ?? 0} onChange={(event) => updateEscortRule(rule.vehicleCount, 'minHeight', event.target.value)} className="rounded border border-slate-700 bg-canvas p-2 text-white" />
+          <input aria-label={`${rule.vehicleCount} escort surcharge`} type="number" min="0" value={rule.surcharge ?? 0} onChange={(event) => updateEscortRule(rule.vehicleCount, 'surcharge', event.target.value)} className="rounded border border-slate-700 bg-canvas p-2 text-white" />
         </div>)}
       </div>
 
-      <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
+      <div className="bg-canvas p-3.5 rounded-xl border border-slate-800 space-y-3">
         <h4 className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
           <Clock className="w-4 h-4 text-blue-400" /> Time & Calculation Defaults
         </h4>
         <div className="grid grid-cols-1 gap-3">
           <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Rounding Interval ($)</label>
+            <label className="text-xs text-slate-400 block mb-1">Rounding Interval ($)</label>
             <select
               value={formData.pricing?.rounding_interval ?? 25}
               onChange={(e) => updatePricing('rounding_interval', parseInt(e.target.value))}
-              className="w-full bg-[#121824] border border-slate-700 rounded p-2 text-white"
+              className="w-full bg-panel border border-slate-700 rounded p-2 text-white"
             >
               <option value={1}>Exact ($1)</option>
               <option value={5}>Nearest $5</option>
@@ -188,16 +188,16 @@ export default function PricingTab({
         </div>
       </div>
 
-      <div className="bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
+      <div className="bg-canvas p-3.5 rounded-xl border border-slate-800 space-y-3">
         <div className="flex justify-between items-center">
           <div>
             <h4 className="font-bold text-slate-200 text-xs">Surcharges</h4>
-            <p className="text-[10px] text-slate-400">Automatic rules and optional fees—including hook-up and fuel charges—in one table.</p>
+            <p className="text-xs text-slate-400">Automatic rules and optional fees—including hook-up and fuel charges—in one table.</p>
           </div>
           <button
             type="button"
             onClick={addCustomSurcharge}
-            className="flex items-center gap-1 text-[11px] bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30 transition cursor-pointer"
+            className="flex items-center gap-1 text-xs bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30 transition cursor-pointer"
           >
             <Plus className="w-3 h-3" /> Add Surcharge
           </button>
@@ -208,44 +208,44 @@ export default function PricingTab({
             placeholder="Search surcharges"
             value={customSurchargeSearch}
             onChange={(e) => setCustomSurchargeSearch(e.target.value)}
-            className="flex-1 bg-[#121824] border border-slate-700 rounded p-2 text-white text-xs"
+            className="flex-1 bg-panel border border-slate-700 rounded p-2 text-white text-xs"
           />
           <select
             value={customSurchargeFilter}
             onChange={(e) => setCustomSurchargeFilter(e.target.value)}
-            className="bg-[#121824] border border-slate-700 rounded p-2 text-white text-xs"
+            className="bg-panel border border-slate-700 rounded p-2 text-white text-xs"
           >
             <option value="all">All</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
         </div>
-        <div className="hidden grid-cols-[minmax(10rem,1fr)_8rem_7rem_minmax(10rem,1fr)_5rem] gap-2 px-2 text-[9px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+        <div className="hidden grid-cols-[minmax(10rem,1fr)_8rem_7rem_minmax(10rem,1fr)_5rem] gap-2 px-2 text-xs font-semibold text-slate-500 sm:grid">
           <span>Surcharge</span><span>Type</span><span>Amount</span><span>Applied</span><span>Action</span>
         </div>
         <div className="space-y-2">
           {customSurchargeFilter !== 'inactive' && systemSurcharges.map((item) => {
             const feeType = formData.pricing?.surchargeModes?.[item.field] || 'percent';
-            return <div key={item.field} className="grid gap-2 rounded-lg border border-amber-500/20 bg-[#121824] p-2.5 sm:grid-cols-[minmax(10rem,1fr)_8rem_7rem_minmax(10rem,1fr)_5rem] sm:items-center">
+            return <div key={item.field} className="grid gap-2 rounded-lg border border-amber-500/20 bg-panel p-2.5 sm:grid-cols-[minmax(10rem,1fr)_8rem_7rem_minmax(10rem,1fr)_5rem] sm:items-center">
               <div><span className="font-semibold text-slate-200">{item.label}</span></div>
-              <select value={feeType} onChange={(e) => updatePricingMode(item.field, e.target.value)} className="bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"><option value="flat">Flat $</option><option value="percent">Percent %</option></select>
-              <input type="number" value={formData.pricing?.[item.field] ?? item.defaultValue} onChange={(e) => updatePricing(item.field, parseFloat(e.target.value) || 0)} className="w-full bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs font-mono" />
-              <span className="text-[10px] text-slate-400">{item.trigger}</span>
-              <span className="w-full text-center text-[10px] text-slate-600">Locked</span>
+              <select value={feeType} onChange={(e) => updatePricingMode(item.field, e.target.value)} className="bg-canvas border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"><option value="flat">Flat $</option><option value="percent">Percent %</option></select>
+              <input type="number" value={formData.pricing?.[item.field] ?? item.defaultValue} onChange={(e) => updatePricing(item.field, parseFloat(e.target.value) || 0)} className="w-full bg-canvas border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs font-mono" />
+              <span className="text-xs text-slate-400">{item.trigger}</span>
+              <span className="w-full text-center text-xs text-slate-600">Locked</span>
             </div>;
           })}
           {customSurchargeItems.map((item) => (
-            <div key={item.id} className="grid gap-2 rounded-lg border border-slate-800 bg-[#121824] p-2.5 sm:grid-cols-[minmax(10rem,1fr)_8rem_7rem_minmax(10rem,1fr)_5rem] sm:items-center">
+            <div key={item.id} className="grid gap-2 rounded-lg border border-slate-800 bg-panel p-2.5 sm:grid-cols-[minmax(10rem,1fr)_8rem_7rem_minmax(10rem,1fr)_5rem] sm:items-center">
               <input
                 type="text"
                 value={item.name}
                 onChange={(e) => updateCustomSurcharge(item.id, 'name', e.target.value)}
-                className="flex-1 bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
+                className="flex-1 bg-canvas border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
               />
               <select
                 value={item.feeType || 'flat'}
                 onChange={(e) => updateCustomSurcharge(item.id, 'feeType', e.target.value)}
-                className="bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
+                className="bg-canvas border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
               >
                 <option value="flat">Flat</option>
                 <option value="percent">Percent</option>
@@ -254,46 +254,46 @@ export default function PricingTab({
                 type="number"
                 value={item.value ?? 0}
                 onChange={(e) => updateCustomSurcharge(item.id, 'value', e.target.value)}
-                className="w-full bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs font-mono"
+                className="w-full bg-canvas border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs font-mono"
               />
-              <button type="button" onClick={() => toggleCustomSurcharge(item.id)} data-enabled={item.active !== false} className={`surcharge-status inline-flex items-center justify-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${item.active !== false ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15' : 'border-slate-600 bg-slate-900/70 text-slate-400 hover:border-slate-500 hover:text-slate-300'}`}><span className={`h-1.5 w-1.5 rounded-full ${item.active !== false ? 'bg-emerald-400' : 'bg-slate-500'}`} />{item.active !== false ? 'Enabled' : 'Disabled'}</button>
+              <button type="button" onClick={() => toggleCustomSurcharge(item.id)} data-enabled={item.active !== false} className={`surcharge-status inline-flex items-center justify-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold transition ${item.active !== false ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15' : 'border-slate-600 bg-slate-900/70 text-slate-400 hover:border-slate-500 hover:text-slate-300'}`}><span className={`h-1.5 w-1.5 rounded-full ${item.active !== false ? 'bg-emerald-400' : 'bg-slate-500'}`} />{item.active !== false ? 'Enabled' : 'Disabled'}</button>
               <button type="button" onClick={() => removeCustomSurcharge(item.id)} aria-label={`Delete ${item.name}`} title="Delete surcharge" className="inline-flex items-center justify-center rounded border border-red-500/30 px-2 py-2 text-red-300 transition hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="-order-2 bg-[#080c14] p-3.5 rounded-xl border border-slate-800 space-y-3">
+      <div className="-order-2 bg-canvas p-3.5 rounded-xl border border-slate-800 space-y-3">
         <div className="flex justify-between items-center">
           <div>
             <h4 className="font-bold text-slate-200 text-xs">Truck & Equipment Classes ({rateUnit})</h4>
-            <p className="text-[10px] text-slate-400">{isMileageMode ? 'Mileage quotes use only the routed miles and per-mile class rates.' : 'Standard is the calculator default; additional rows are selectable classes.'}</p>
+            <p className="text-xs text-slate-400">{isMileageMode ? 'Mileage quotes use only the routed miles and per-mile class rates.' : 'Standard is the calculator default; additional rows are selectable classes.'}</p>
           </div>
           <button
             type="button"
             onClick={addTruckClass}
-            className="flex items-center gap-1 text-[11px] bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30 transition cursor-pointer"
+            className="flex items-center gap-1 text-xs bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-2.5 py-1 rounded-lg border border-blue-500/30 transition cursor-pointer"
           >
             <Plus className="w-3 h-3" /> Add Class
           </button>
         </div>
-        <div className={`grid gap-2 bg-[#121824] p-2.5 rounded-lg border border-emerald-500/30 sm:items-end ${classTableColumns}`}>
-          <div className="flex-1 text-xs font-semibold text-emerald-300">Standard Tow / Flatbed <span className="block text-[10px] font-normal text-slate-400">Default calculator class</span></div>
-          <label className="text-[10px] text-slate-400">Rate {rateUnit}<input type="number" step={isMileageMode ? '0.01' : '1'} value={formData.pricing?.[rateField] ?? (isMileageMode ? 5 : 125)} onChange={(e) => updateStandardRate(e.target.value)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>
-          {!isMileageMode && <label className="text-[10px] text-slate-400">Drive buffer %<input type="number" value={formData.pricing?.drive_time_buffer ?? 10} onChange={(e) => updatePricing('drive_time_buffer', parseFloat(e.target.value) || 0)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>}
-          {!isMileageMode && <label className="text-[10px] text-slate-400">Load mins<input type="number" value={formData.pricing?.load_unload_base_mins ?? 30} onChange={(e) => updatePricing('load_unload_base_mins', parseInt(e.target.value, 10) || 0)} className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>}
-          <span className="pb-2 text-center text-[9px] uppercase tracking-wide text-slate-600">Default</span>
+        <div className={`grid gap-2 bg-panel p-2.5 rounded-lg border border-emerald-500/30 sm:items-end ${classTableColumns}`}>
+          <div className="flex-1 text-xs font-semibold text-emerald-300">Standard Tow / Flatbed <span className="block text-xs font-normal text-slate-400">Default calculator class</span></div>
+          <label className="text-xs text-slate-400">Rate {rateUnit}<input type="number" step={isMileageMode ? '0.01' : '1'} value={formData.pricing?.[rateField] ?? (isMileageMode ? 5 : 125)} onChange={(e) => updateStandardRate(e.target.value)} className="mt-1 w-full bg-canvas border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>
+          {!isMileageMode && <label className="text-xs text-slate-400">Drive buffer %<input type="number" value={formData.pricing?.drive_time_buffer ?? 10} onChange={(e) => updatePricing('drive_time_buffer', parseFloat(e.target.value) || 0)} className="mt-1 w-full bg-canvas border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>}
+          {!isMileageMode && <label className="text-xs text-slate-400">Load mins<input type="number" value={formData.pricing?.load_unload_base_mins ?? 30} onChange={(e) => updatePricing('load_unload_base_mins', parseInt(e.target.value, 10) || 0)} className="mt-1 w-full bg-canvas border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono" /></label>}
+          <span className="pb-2 text-center text-xs text-slate-600">Default</span>
         </div>
         {formData.pricing?.custom_truck_classes?.map((tc, idx) => (
-          <div key={tc.id} data-reorder-list="truck" data-reorder-index={idx} className={`grid gap-2 bg-[#121824] p-2.5 rounded-lg border transition sm:items-end ${classTableColumns} ${dragging?.list === 'truck' && dragging.index === idx ? 'border-cyan-400 opacity-70' : 'border-slate-800'}`}>
+          <div key={tc.id} data-reorder-list="truck" data-reorder-index={idx} className={`grid gap-2 bg-panel p-2.5 rounded-lg border transition sm:items-end ${classTableColumns} ${dragging?.list === 'truck' && dragging.index === idx ? 'border-cyan-400 opacity-70' : 'border-slate-800'}`}>
             <input
               type="text"
               placeholder="Class Name"
               value={tc.name}
               onChange={(e) => updateTruckClass(idx, { name: e.target.value })}
-              className="w-full bg-[#080c14] border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
+              className="w-full bg-canvas border border-slate-700 rounded px-2.5 py-1.5 text-white text-xs"
             />
-              <label className="text-[10px] text-slate-400">Rate {rateUnit}
+              <label className="text-xs text-slate-400">Rate {rateUnit}
                 <input
                   type="number"
                   value={isMileageMode ? (tc.mileageRate ?? tc.minMileageRate ?? 5) : (tc.hourlyRate ?? tc.rate ?? tc.minRate)}
@@ -303,24 +303,24 @@ export default function PricingTab({
                       ? { mileageRate: rate, minMileageRate: rate, maxMileageRate: rate }
                       : { hourlyRate: rate, rate, minRate: rate, maxRate: rate });
                   }}
-                  className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
+                  className="mt-1 w-full bg-canvas border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
                 />
               </label>
-              {!isMileageMode && <label className="text-[10px] text-slate-400">Drive buffer %
+              {!isMileageMode && <label className="text-xs text-slate-400">Drive buffer %
                 <input
                   type="number"
                   step="1"
                   value={tc.drive_time_buffer ?? 10}
                   onChange={(e) => updateTruckClass(idx, { drive_time_buffer: parseFloat(e.target.value) || 0 })}
-                  className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
+                  className="mt-1 w-full bg-canvas border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
                 />
               </label>}
-              {!isMileageMode && <label className="text-[10px] text-slate-400">Load mins
+              {!isMileageMode && <label className="text-xs text-slate-400">Load mins
                 <input
                   type="number"
                   value={tc.load_unload_base_mins ?? 30}
                   onChange={(e) => updateTruckClass(idx, { load_unload_base_mins: parseInt(e.target.value, 10) || 0 })}
-                  className="mt-1 w-full bg-[#080c14] border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
+                  className="mt-1 w-full bg-canvas border border-slate-700 rounded px-2 py-1.5 text-white text-xs font-mono"
                 />
               </label>}
               <div className="flex items-center justify-end gap-1">

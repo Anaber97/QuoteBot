@@ -251,7 +251,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   };
 
   return (
-    <div className="bg-[#0c1019] border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-6 min-w-0">
+    <div className="bg-sunken border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-6 min-w-0">
       {client && <CoBranding
         companyLogoPath={companyRates?.branding?.logo_path}
         clientLogoPath={client.logo_path}
@@ -295,7 +295,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
                 setSerialNumber('');
               }}
               placeholder="e.g. Caterpillar 320, CAT320-001..."
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
+              className="w-full bg-canvas border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
             <button
               type="button"
@@ -309,13 +309,13 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
 
           {/* Autocomplete Dropdown */}
           {isSearching && (
-            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0f1523] border border-slate-700 rounded-xl px-4 py-2 text-xs text-slate-400">
+            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-sunken border border-slate-700 rounded-xl px-4 py-2 text-xs text-slate-400">
               {searchStatus || 'Searching equipment specs...'}
             </div>
           )}
 
           {!isSearching && searchResults.length > 0 && (
-            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0f1523] border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-56 overflow-y-auto">
+            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-sunken border border-slate-700 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
               {searchResults.map((item) => (
                 <button
                   key={item.id}
@@ -326,17 +326,17 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
                   <div className="opacity-70">
                     <p className="text-xs font-semibold text-slate-300 flex items-center gap-2">
                       {item.make} {item.model}
-                      <span className="inline-flex items-center gap-1 text-[9px] uppercase tracking-wide text-slate-400">
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-400">
                         <span className={`h-2 w-2 rounded-full ${verificationStyles[item.confidence] || verificationStyles.LOW}`} />
                         {item.confidence || 'LOW'}
                       </span>
                     </p>
-                    <p className="text-[10px] text-slate-400">{item.confidence_reason}</p>
+                    <p className="text-xs text-slate-400">{item.confidence_reason}</p>
                     {item.serial_number && (
-                      <p className="text-[10px] text-slate-500">SN: {item.serial_number}</p>
+                      <p className="text-xs text-slate-500">SN: {item.serial_number}</p>
                     )}
                   </div>
-                  <span className="text-[11px] font-mono text-blue-400/70">
+                  <span className="text-xs font-mono text-blue-400/70">
                     {Number(item.operating_weight_lbs || 0).toLocaleString()} lbs · {item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : 0)} in W × {item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : 0)} in H
                   </span>
                 </button>
@@ -344,7 +344,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             </div>
           )}
           {!isSearching && searchStatus && searchResults.length === 0 && (
-            <p className={`mt-2 text-[11px] ${searchStatus.startsWith('Search issue:') ? 'text-red-400' : 'text-slate-400'}`}>
+            <p className={`mt-2 text-xs ${searchStatus.startsWith('Search issue:') ? 'text-red-400' : 'text-slate-400'}`}>
               {searchStatus}
             </p>
           )}
@@ -366,36 +366,36 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         {/* Equipment Identity Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label htmlFor="equipment-make" className="block text-[11px] text-slate-400 mb-1">Make</label>
+            <label htmlFor="equipment-make" className="block text-xs text-slate-400 mb-1">Make</label>
             <input
               id="equipment-make"
               type="text"
               value={make}
               onChange={(e) => setMake(e.target.value)}
               placeholder="Caterpillar"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
+              className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
           </div>
           <div>
-            <label htmlFor="equipment-model" className="block text-[11px] text-slate-400 mb-1">Model</label>
+            <label htmlFor="equipment-model" className="block text-xs text-slate-400 mb-1">Model</label>
             <input
               id="equipment-model"
               type="text"
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder="320"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
+              className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
           </div>
           <div>
-            <label htmlFor="equipment-serial-number" className="block text-[11px] text-slate-400 mb-1">Serial Number</label>
+            <label htmlFor="equipment-serial-number" className="block text-xs text-slate-400 mb-1">Serial Number</label>
             <input
               id="equipment-serial-number"
               type="text"
               value={serialNumber}
               onChange={(e) => setSerialNumber(e.target.value)}
               placeholder="SN-00123"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
+              className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
           </div>
         </div>
@@ -403,18 +403,18 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         {/* Equipment Dimension Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label htmlFor="equipment-weight" className="block text-[11px] text-slate-400 mb-1">Operating Weight (lbs)</label>
+            <label htmlFor="equipment-weight" className="block text-xs text-slate-400 mb-1">Operating Weight (lbs)</label>
             <input
               id="equipment-weight"
               type="number"
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
               placeholder="45000"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
+              className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
             />
           </div>
           <div>
-            <label htmlFor="equipment-width" className="block text-[11px] text-slate-400 mb-1">Width (in)</label>
+            <label htmlFor="equipment-width" className="block text-xs text-slate-400 mb-1">Width (in)</label>
             <input
               id="equipment-width"
               type="number"
@@ -422,11 +422,11 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={width}
               onChange={(e) => setWidth(e.target.value)}
               placeholder="102"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
+              className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
             />
           </div>
           <div>
-            <label htmlFor="equipment-height" className="block text-[11px] text-slate-400 mb-1">Height (in)</label>
+            <label htmlFor="equipment-height" className="block text-xs text-slate-400 mb-1">Height (in)</label>
             <input
               id="equipment-height"
               type="number"
@@ -434,7 +434,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={height}
               onChange={(e) => setHeight(e.target.value)}
               placeholder="138"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
+              className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
             />
           </div>
         </div>
@@ -445,29 +445,29 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             className="rounded-lg border border-blue-500/30 bg-blue-600/20 px-3 py-2 text-xs font-semibold text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed">
             {isSavingEquipment ? 'Saving equipment…' : 'Save to my equipment'}
           </button>
-          <p className="text-[11px] text-slate-400">Saves these specs to your account.</p>
+          <p className="text-xs text-slate-400">Saves these specs to your account.</p>
           {equipmentSaveStatus && <p role="status" className="text-xs text-slate-300">{equipmentSaveStatus}</p>}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Attachment Type</label>
+            <label className="block text-xs text-slate-400 mb-1">Attachment Type</label>
             <input
               type="text"
               value={attachmentType}
               onChange={(e) => setAttachmentType(e.target.value)}
               placeholder="bucket, hammer, grapple..."
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
+              className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
           </div>
           <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Attachment Weight (lbs)</label>
+            <label className="block text-xs text-slate-400 mb-1">Attachment Weight (lbs)</label>
             <input
               type="number"
               value={attachmentWeight}
               onChange={(e) => setAttachmentWeight(e.target.value)}
               placeholder="8000"
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
+              className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500 font-mono"
             />
           </div>
         </div>
@@ -486,13 +486,13 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               aria-invalid={Boolean(pickupError)}
               aria-describedby={pickupError ? 'pickup-error' : undefined}
               placeholder="Business, address, city, or municipality..."
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
+              className="w-full bg-canvas border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
             {pickupError && <p id="pickup-error" role="alert" className="mt-1 text-xs font-medium text-red-400">{pickupError}</p>}
           </div>
           {waypoints.map((waypoint, index) => (
             <div key={index} className="flex gap-2">
-              <input type="text" value={waypoint} onChange={(e) => setWaypoints((current) => current.map((item, itemIndex) => itemIndex === index ? e.target.value : item))} placeholder={`Waypoint ${index + 1}`} className="flex-1 bg-[#080c14] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500" />
+              <input type="text" value={waypoint} onChange={(e) => setWaypoints((current) => current.map((item, itemIndex) => itemIndex === index ? e.target.value : item))} placeholder={`Waypoint ${index + 1}`} className="flex-1 bg-canvas border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500" />
               <button type="button" onClick={() => setWaypoints((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="rounded-xl border border-slate-700 px-3 text-xs text-slate-400 hover:text-red-400">Delete</button>
             </div>
           ))}
@@ -507,7 +507,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
               value={dropoffAddr}
               onChange={(e) => setDropoffAddr(e.target.value)}
               placeholder="Business, address, city, or municipality..."
-              className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
+              className="w-full bg-canvas border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500/70 focus:outline-none focus:border-blue-500"
             />
           </div>
         </div>
@@ -520,7 +520,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             </div>
             <ul className="space-y-1">
               {permitInfo.flags.map((flag, idx) => (
-                <li key={idx} className="text-[11px] text-amber-200/90 flex items-center gap-1.5 font-medium">
+                <li key={idx} className="text-xs text-amber-200/90 flex items-center gap-1.5 font-medium">
                   • {flag}
                 </li>
               ))}
@@ -538,7 +538,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         <button
           type="submit"
           disabled={isCalculating}
-          className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-sm py-3 rounded-xl transition shadow-lg cursor-pointer disabled:opacity-50"
+          className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-accent-ink font-bold text-sm py-3 rounded-xl transition cursor-pointer disabled:opacity-50"
         >
           {isCalculating ? 'Calculating Live Route & Rates...' : 'Calculate Quote'}
         </button>

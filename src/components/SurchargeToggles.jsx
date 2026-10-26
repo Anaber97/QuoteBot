@@ -10,14 +10,14 @@ export default function SurchargeToggles({ state, dispatch, companyRates = {} })
       {(companyRates.pricing?.custom_surcharges || []).filter((item) => item.active !== false).map((item) => {
         const inputId = `custom-surcharge-${item.id}`;
         const checked = state.pendingCustomSurcharges?.[item.id] === true;
-        return <div key={item.id} className="flex items-center gap-3 bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5">
+        return <div key={item.id} className="flex items-center gap-3 bg-canvas border border-slate-800 rounded-xl px-3.5 py-2.5">
           <input type="checkbox" id={inputId} checked={checked} onChange={() => dispatch({ type: 'SET_PENDING_CUSTOM_SURCHARGES', payload: { ...(state.pendingCustomSurcharges || {}), [item.id]: !checked } })} className="w-4 h-4 accent-blue-500" />
           <label htmlFor={inputId} className="text-xs font-medium text-slate-200 cursor-pointer flex-1">{item.name} ({item.feeType === 'percent' ? `${item.value}%` : `$${item.value}`})</label>
         </div>;
       })}
 
       {/* Metro Zone */}
-      <div className="flex items-center gap-3 bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 cursor-pointer select-none hover:border-slate-700 transition">
+      <div className="flex items-center gap-3 bg-canvas border border-slate-800 rounded-xl px-3.5 py-2.5 cursor-pointer select-none hover:border-slate-700 transition">
         <input
           type="checkbox"
           id="metro"
@@ -31,7 +31,7 @@ export default function SurchargeToggles({ state, dispatch, companyRates = {} })
       </div>
 
       {/* Hazard Zone */}
-      <div className="flex items-center gap-3 bg-[#080c14] border border-slate-800 rounded-xl px-3.5 py-2.5 cursor-pointer select-none hover:border-slate-700 transition">
+      <div className="flex items-center gap-3 bg-canvas border border-slate-800 rounded-xl px-3.5 py-2.5 cursor-pointer select-none hover:border-slate-700 transition">
         <input
           type="checkbox"
           id="hazard"

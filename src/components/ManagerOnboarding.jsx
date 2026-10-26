@@ -61,7 +61,7 @@ export default function ManagerOnboarding({ profile }) {
   };
 
   return (
-    <div className="space-y-6 bg-[#080c14] border border-slate-800 rounded-2xl p-6">
+    <div className="space-y-6 bg-canvas border border-slate-800 rounded-2xl p-6">
       <div className="flex items-center justify-between border-b border-slate-800 pb-4">
         <div>
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -72,7 +72,7 @@ export default function ManagerOnboarding({ profile }) {
             Manage external corporate clients who utilize your company's quoting portal.
           </p>
         </div>
-        <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-lg">
+        <span className="text-xs font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-lg">
           Company ID: {profile?.company_id ? 'Active Workspace' : 'Loading...'}
         </span>
       </div>
@@ -84,33 +84,33 @@ export default function ManagerOnboarding({ profile }) {
       )}
 
       {/* Add Client Form */}
-      <form onSubmit={handleAddClient} className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#121824] p-4 rounded-xl border border-slate-800">
+      <form onSubmit={handleAddClient} className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-panel p-4 rounded-xl border border-slate-800">
         <div>
-          <label className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">Client / Business Name</label>
+          <label className="text-xs font-semibold text-slate-400 block mb-1">Client / Business Name</label>
           <input
             type="text"
             required
             placeholder="e.g. ACME Corp."
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
-            className="w-full bg-[#080c14] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-canvas border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
-          <label className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">Contact Email</label>
+          <label className="text-xs font-semibold text-slate-400 block mb-1">Contact Email</label>
           <input
             type="email"
             placeholder="contact@acme.com"
             value={clientEmail}
             onChange={(e) => setClientEmail(e.target.value)}
-            className="w-full bg-[#080c14] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-canvas border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div className="flex items-end">
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+            className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-accent-ink font-bold text-xs rounded-lg transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
           >
             <Plus className="w-3.5 h-3.5" />
             Add Client Account
@@ -120,21 +120,21 @@ export default function ManagerOnboarding({ profile }) {
 
       {/* Client List */}
       <div className="space-y-2">
-        <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Active Client Sub-Accounts</h4>
+        <h4 className="text-xs font-bold text-slate-300">Active Client Sub-Accounts</h4>
         {clients.length === 0 ? (
-          <p className="text-xs text-slate-500 italic py-4 text-center bg-[#121824] rounded-xl border border-slate-800/60">
+          <p className="text-xs text-slate-500 italic py-4 text-center bg-panel rounded-xl border border-slate-800/60">
             No client sub-accounts created yet. Add a client above to get started!
           </p>
         ) : (
           <div className="space-y-2">
             {clients.map((client) => (
-              <div key={client.id} className="flex items-center justify-between bg-[#121824] border border-slate-800 p-3 rounded-xl">
+              <div key={client.id} className="flex items-center justify-between bg-panel border border-slate-800 p-3 rounded-xl">
                 <div>
                   <h5 className="text-xs font-bold text-white flex items-center gap-2">
                     <Users className="w-3.5 h-3.5 text-emerald-400" />
                     {client.client_name}
                   </h5>
-                  <p className="text-[11px] text-slate-400">{client.contact_email || 'No email provided'}</p>
+                  <p className="text-xs text-slate-400">{client.contact_email || 'No email provided'}</p>
                 </div>
                 <button
                   type="button"

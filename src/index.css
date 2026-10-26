@@ -1,13 +1,152 @@
 @import "tailwindcss";
+
+/*
+ * Design tokens. Components use Tailwind's slate/blue names and a few semantic
+ * surfaces (canvas, panel, sunken, raised); both themes are defined here only.
+ */
 :root {
   color-scheme: dark;
-  --surface-dialog: #101621;
+  --tc-canvas: #0e100c;
+  --tc-panel: #171a14;
+  --tc-sunken: #0b0d09;
+  --tc-raised: #20241c;
+  --tc-dialog: #1b1f18;
+  --tc-ink: #f4f6f0;
+  --tc-slate-50: #f6f7f3;
+  --tc-slate-100: #eef0ea;
+  --tc-slate-200: #dde0d6;
+  --tc-slate-300: #c3c8ba;
+  --tc-slate-400: #a8af9d;
+  --tc-slate-500: #8b9280;
+  --tc-slate-600: #646b5c;
+  --tc-slate-700: #3d4337;
+  --tc-slate-800: #2b3026;
+  --tc-slate-900: #1d2119;
+  --tc-slate-950: #12140f;
+  --tc-accent: #afda00;
+  --tc-accent-strong: #c4ee17;
+  --tc-accent-ink: #12140f;
+  --tc-accent-text: #c4ee17;
+  --tc-good: #4ade80;
+  --tc-warn: #fbbf24;
+  --tc-bad: #f87171;
+  --surface-dialog: var(--tc-dialog);
 }
+
 html[data-theme='light'] {
   color-scheme: light;
-  --surface-dialog: #ffffff;
+  --tc-canvas: #f1f2ed;
+  --tc-panel: #ffffff;
+  --tc-sunken: #e8eae3;
+  --tc-raised: #ffffff;
+  --tc-dialog: #ffffff;
+  --tc-ink: #121410;
+  --tc-slate-50: #0b0d09;
+  --tc-slate-100: #121410;
+  --tc-slate-200: #1d2119;
+  --tc-slate-300: #2b3026;
+  --tc-slate-400: #4d5248;
+  --tc-slate-500: #5b6155;
+  --tc-slate-600: #81887a;
+  --tc-slate-700: #c3c8ba;
+  --tc-slate-800: #d9dcd2;
+  --tc-slate-900: #e9ebe4;
+  --tc-slate-950: #f3f4f0;
+  --tc-accent: #afda00;
+  --tc-accent-strong: #9cc400;
+  --tc-accent-ink: #12140f;
+  --tc-accent-text: #4e6b00;
+  --tc-good: #047857;
+  --tc-warn: #92400e;
+  --tc-bad: #b91c1c;
 }
+
+@theme inline {
+  --font-sans: 'Schibsted Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.35;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.4;
+  --radius-2xl: 0.75rem;
+  --radius-xl: 0.625rem;
+
+  --color-canvas: var(--tc-canvas);
+  --color-panel: var(--tc-panel);
+  --color-sunken: var(--tc-sunken);
+  --color-raised: var(--tc-raised);
+  --color-ink: var(--tc-ink);
+  --color-accent: var(--tc-accent);
+  --color-accent-strong: var(--tc-accent-strong);
+  --color-accent-ink: var(--tc-accent-ink);
+  --color-accent-text: var(--tc-accent-text);
+
+  --color-slate-50: var(--tc-slate-50);
+  --color-slate-100: var(--tc-slate-100);
+  --color-slate-200: var(--tc-slate-200);
+  --color-slate-300: var(--tc-slate-300);
+  --color-slate-400: var(--tc-slate-400);
+  --color-slate-500: var(--tc-slate-500);
+  --color-slate-600: var(--tc-slate-600);
+  --color-slate-700: var(--tc-slate-700);
+  --color-slate-800: var(--tc-slate-800);
+  --color-slate-900: var(--tc-slate-900);
+  --color-slate-950: var(--tc-slate-950);
+
+  /* The old blue/violet/cyan accents all become the brand accent. */
+  --color-blue-200: var(--tc-accent-text);
+  --color-blue-300: var(--tc-accent-text);
+  --color-blue-400: var(--tc-accent-text);
+  --color-blue-500: var(--tc-accent);
+  --color-blue-600: var(--tc-accent);
+  --color-blue-700: var(--tc-accent-strong);
+  --color-indigo-300: var(--tc-accent-text);
+  --color-indigo-400: var(--tc-accent-text);
+  --color-indigo-500: var(--tc-accent);
+  --color-violet-300: var(--tc-slate-300);
+  --color-violet-400: var(--tc-slate-300);
+  --color-violet-500: var(--tc-slate-500);
+  --color-purple-300: var(--tc-slate-300);
+  --color-purple-400: var(--tc-slate-300);
+  --color-purple-500: var(--tc-slate-500);
+  --color-cyan-200: var(--tc-accent-text);
+  --color-cyan-300: var(--tc-accent-text);
+  --color-cyan-400: var(--tc-accent-text);
+  --color-cyan-500: var(--tc-accent);
+  --color-sky-400: var(--tc-accent-text);
+
+  --color-emerald-300: var(--tc-good);
+  --color-emerald-400: var(--tc-good);
+  --color-amber-300: var(--tc-warn);
+  --color-amber-400: var(--tc-warn);
+  --color-red-300: var(--tc-bad);
+  --color-red-400: var(--tc-bad);
+}
+
+/* Light theme: white text on neutral surfaces becomes ink; filled status buttons keep white. */
+html[data-theme='light'] .text-white { color: var(--tc-ink); }
+html[data-theme='light'] :is([class*='bg-red-6'], [class*='bg-emerald-6'], [class*='bg-amber-6']).text-white { color: #ffffff; }
+
+body {
+  background-color: var(--tc-canvas);
+  color: var(--tc-ink);
+  font-family: var(--font-sans);
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+}
+
 button:disabled { cursor: not-allowed; }
+
+*:focus-visible {
+  outline: 3px solid var(--tc-accent);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--tc-accent); color: var(--tc-accent-ink); }
+
+.font-heading { font-family: var(--font-sans); font-weight: 800; letter-spacing: -0.03em; }
+
+.tabular, .font-mono { font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -15,215 +154,6 @@ button:disabled { cursor: not-allowed; }
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-}
-body {
-  background-color: #0b0f17;
-  color: #f1f5f9;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-}
-
-*:focus-visible {
-  outline: 3px solid rgb(96 165 250 / 0.7);
-  outline-offset: 2px;
-}
-
-.font-heading {
-  font-family: "Arial Narrow", "Roboto Condensed", Impact, system-ui, sans-serif;
-}
-
-html[data-theme='light'] body,
-html[data-theme='light'] .app-shell {
-  background: #f1f5f9 !important;
-  color: #0f172a !important;
-}
-
-html[data-theme='light'] .app-shell [class*='bg-[#080c14]'],
-html[data-theme='light'] .app-shell [class*='bg-[#0b0f17]'],
-html[data-theme='light'] .app-shell [class*='bg-[#0c1019]'],
-html[data-theme='light'] .app-shell [class*='bg-[#0f1523]'],
-html[data-theme='light'] .app-shell [class*='bg-[#101621]'],
-html[data-theme='light'] .app-shell [class*='bg-[#121824]'] {
-  background-color: #ffffff !important;
-}
-
-html[data-theme='light'] .app-shell .text-white,
-html[data-theme='light'] .app-shell .text-slate-100,
-html[data-theme='light'] .app-shell .text-slate-200,
-html[data-theme='light'] .app-shell .text-slate-300 {
-  color: #0f172a !important;
-}
-
-html[data-theme='light'] .app-shell .text-slate-400,
-html[data-theme='light'] .app-shell .text-slate-500 {
-  color: #475569 !important;
-}
-
-html[data-theme='light'] .app-shell :is(.text-emerald-300, .text-emerald-400) { color: #047857 !important; }
-html[data-theme='light'] .app-shell :is(.text-purple-300, .text-purple-400) { color: #7e22ce !important; }
-html[data-theme='light'] .app-shell :is(.text-amber-300, .text-amber-400) { color: #92400e !important; }
-html[data-theme='light'] .app-shell :is(.text-red-300, .text-red-400) { color: #b91c1c !important; }
-html[data-theme='light'] .app-shell :is(.text-blue-300, .text-blue-400) { color: #1d4ed8 !important; }
-
-html[data-theme='light'] .app-shell [class*='border-slate-8'],
-html[data-theme='light'] .app-shell [class*='border-slate-7'] {
-  border-color: #cbd5e1 !important;
-}
-
-html[data-theme='light'] .app-shell input,
-html[data-theme='light'] .app-shell select,
-html[data-theme='light'] .app-shell textarea {
-  color: #0f172a !important;
-}
-
-/* Light-mode controls use an intentionally brighter palette. Dark mode keeps
-   the component-level Tailwind colors unchanged. */
-html[data-theme='light'] .app-shell .brand-logo-surface {
-  background: linear-gradient(145deg, #111827, #1e293b);
-  border: 1px solid #334155;
-  box-shadow: 0 8px 22px rgb(15 23 42 / 0.18);
-}
-
-html[data-theme='light'] .app-shell button {
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
-}
-
-html[data-theme='light'] .app-shell button[class*='bg-blue-600']:not([class*='/']) {
-  background: linear-gradient(135deg, #2563eb, #4f46e5) !important;
-  border-color: #4338ca !important;
-  color: #ffffff !important;
-  box-shadow: 0 5px 14px rgb(37 99 235 / 0.24);
-}
-
-html[data-theme='light'] .app-shell button[class*='bg-blue-600']:not([class*='/']):hover {
-  background: linear-gradient(135deg, #1d4ed8, #4338ca) !important;
-}
-
-html[data-theme='light'] .app-shell button[class*='bg-emerald-600'] {
-  background: linear-gradient(135deg, #059669, #0d9488) !important;
-  border-color: #047857 !important;
-  color: #ffffff !important;
-  box-shadow: 0 5px 14px rgb(5 150 105 / 0.22);
-}
-
-html[data-theme='light'] .app-shell button[class*='bg-emerald-600']:hover {
-  background: linear-gradient(135deg, #047857, #0f766e) !important;
-}
-
-html[data-theme='light'] .app-shell button[class*='bg-red-600'] {
-  background: linear-gradient(135deg, #dc2626, #e11d48) !important;
-  color: #ffffff !important;
-}
-
-html[data-theme='light'] .app-shell button[class*='bg-slate-700'] {
-  background: #475569 !important;
-  border-color: #334155 !important;
-  color: #ffffff !important;
-}
-
-html[data-theme='light'] .app-shell button[class*='bg-blue-600/'],
-html[data-theme='light'] .app-shell button[class*='bg-blue-500/'] {
-  background: #e0e7ff !important;
-  border-color: #a5b4fc !important;
-  color: #3730a3 !important;
-}
-
-html[data-theme='light'] .app-shell button[class*='border-blue-500']:not([class*='bg-blue-600']) {
-  background-color: #eef2ff !important;
-  border-color: #a5b4fc !important;
-  color: #3730a3 !important;
-}
-
-html[data-theme='light'] .app-shell button[class*='border-red-500']:not([class*='bg-red-600']) {
-  background-color: #fff1f2 !important;
-  border-color: #fda4af !important;
-  color: #be123c !important;
-}
-
-html[data-theme='light'] .app-shell button:disabled {
-  box-shadow: none !important;
-  opacity: 0.55;
-}
-
-html[data-theme='light'] .app-shell button:focus-visible {
-  outline: 3px solid rgb(99 102 241 / 0.32);
-  outline-offset: 2px;
-}
-
-html[data-theme='light'] .app-shell .light-reset-button {
-  background: #f8fafc !important;
-  border-color: #cbd5e1 !important;
-  color: #475569 !important;
-}
-
-html[data-theme='light'] .app-shell .light-reset-button:hover {
-  background: #e2e8f0 !important;
-  border-color: #94a3b8 !important;
-  color: #1e293b !important;
-}
-
-html[data-theme='light'] .app-shell .light-surcharge-type-toggle {
-  background: #f8fafc !important;
-  border-color: #cbd5e1 !important;
-  color: #475569 !important;
-}
-
-html[data-theme='light'] .app-shell .light-surcharge-type-toggle:hover {
-  background: #eef2ff !important;
-  border-color: #a5b4fc !important;
-  color: #3730a3 !important;
-}
-
-html[data-theme='light'] .app-shell .light-save-portal {
-  background: linear-gradient(135deg, #047857, #0f766e) !important;
-  border-color: #065f46 !important;
-  color: #ffffff !important;
-  box-shadow: 0 5px 14px rgb(4 120 87 / 0.24);
-}
-
-html[data-theme='light'] .app-shell .light-save-portal:hover {
-  background: linear-gradient(135deg, #065f46, #115e59) !important;
-}
-
-html[data-theme='light'] .app-shell .settings-tab[data-active='false'] {
-  background: transparent !important;
-  color: #64748b !important;
-  box-shadow: none;
-}
-
-html[data-theme='light'] .app-shell .settings-tab[data-active='false']:hover {
-  background: #e0e7ff !important;
-  color: #3730a3 !important;
-}
-
-html[data-theme='light'] .app-shell .settings-tab[data-active='true'] {
-  background: #eef2ff !important;
-  border-color: #4f46e5 !important;
-  color: #4338ca !important;
-  box-shadow: none;
-}
-
-html[data-theme='light'] .app-shell .surcharge-status[data-enabled='false'] {
-  background: #f1f5f9 !important;
-  border-color: #cbd5e1 !important;
-  color: #64748b !important;
-  box-shadow: none;
-}
-
-html[data-theme='light'] .app-shell .surcharge-status[data-enabled='false']:hover {
-  background: #e2e8f0 !important;
-  border-color: #94a3b8 !important;
-  color: #334155 !important;
-}
-
-html[data-theme='light'] .app-shell .surcharge-status[data-enabled='true'] {
-  background: #ecfdf5 !important;
-  border-color: #6ee7b7 !important;
-  color: #047857 !important;
-  box-shadow: none;
-}
-
-html[data-theme='light'] .app-shell .surcharge-status[data-enabled='true']:hover {
-  background: #d1fae5 !important;
 }
 
 @media (max-width: 480px) {

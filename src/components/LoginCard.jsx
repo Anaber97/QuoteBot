@@ -1,10 +1,11 @@
 // src/components/LoginCard.jsx
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Mail, Lock, LogIn, CheckCircle2, UserPlus, HelpCircle } from 'lucide-react';
+import { Mail, Lock, LogIn, CheckCircle2, HelpCircle } from 'lucide-react';
 
 export default function LoginCard() {
-  const [mode, setMode] = useState('login'); // 'login' | 'request'
+  // towcalc.com links to /?request to open the access-request form directly.
+  const [mode, setMode] = useState(() => (new URLSearchParams(window.location.search).has('request') ? 'request' : 'login')); // 'login' | 'request'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   
@@ -113,12 +114,9 @@ export default function LoginCard() {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto bg-[#121824] border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
-      <div className="text-center space-y-2">
-        <div className="w-12 h-12 bg-blue-600/10 border border-blue-500/20 rounded-full flex items-center justify-center mx-auto text-blue-400">
-          {mode === 'request' ? <UserPlus className="w-6 h-6" /> : <LogIn className="w-6 h-6" />}
-        </div>
-        <h2 className="text-xl font-bold text-white">
+    <div className="w-full max-w-md mx-auto bg-panel border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-6">
+      <div className="space-y-2">
+        <h2 className="text-2xl font-extrabold tracking-tight text-white">
           {mode === 'request' ? 'Request Access' : 'Sign In'}
         </h2>
         <p className="text-xs text-slate-400">
@@ -139,7 +137,7 @@ export default function LoginCard() {
               setSuccessMessage('');
               setMode('login');
             }}
-            className="text-[11px] text-slate-400 hover:text-white underline pt-2 cursor-pointer block mx-auto"
+            className="text-xs text-slate-400 hover:text-white underline pt-2 cursor-pointer block mx-auto"
           >
             Back to Sign In
           </button>
@@ -156,7 +154,7 @@ export default function LoginCard() {
           {mode === 'login' && (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
-                <label className="text-[11px] font-semibold uppercase text-slate-400 block mb-1">Email Address</label>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Email Address</label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
                   <input
@@ -165,14 +163,14 @@ export default function LoginCard() {
                     placeholder="dispatcher@towco.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-[#080c14] border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-canvas border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               {/* Password */}
               <div>
-                <label className="text-[11px] font-semibold uppercase text-slate-400 block mb-1">Password</label>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Password</label>
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
                   <input
@@ -181,7 +179,7 @@ export default function LoginCard() {
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-[#080c14] border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-canvas border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -189,7 +187,7 @@ export default function LoginCard() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-white rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-accent-ink rounded-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {loading ? 'Authenticating...' : <>Sign In <LogIn className="w-4 h-4" /></>}
               </button>
@@ -197,7 +195,7 @@ export default function LoginCard() {
                 type="button"
                 onClick={handlePasswordReset}
                 disabled={loading}
-                className="w-full text-center text-[11px] text-blue-400 transition hover:text-blue-300 disabled:opacity-60"
+                className="w-full text-center text-xs text-blue-400 transition hover:text-blue-300 disabled:opacity-60"
               >
                 Forgot your password?
               </button>
@@ -208,50 +206,50 @@ export default function LoginCard() {
           {mode === 'request' && (
             <form onSubmit={handleRequestAccount} className="space-y-3.5">
               <div>
-                <label className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">Your Full Name</label>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Your Full Name</label>
                 <input
                   type="text"
                   required
                   placeholder="Dave Smith"
                   value={requestName}
                   onChange={(e) => setRequestName(e.target.value)}
-                  className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">Company / Fleet Name</label>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Company / Fleet Name</label>
                 <input
                   type="text"
                   required
                   placeholder="Apex Towing & Recovery"
                   value={requestCompanyName}
                   onChange={(e) => setRequestCompanyName(e.target.value)}
-                  className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">Work Email</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Work Email</label>
                   <input
                     type="email"
                     required
                     placeholder="dave@apextow.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">Phone Number</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Phone Number</label>
                   <input
                     type="tel"
                     required
                     placeholder="555-0199"
                     value={requestPhone}
                     onChange={(e) => setRequestPhone(e.target.value)}
-                    className="w-full bg-[#080c14] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-canvas border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -259,7 +257,7 @@ export default function LoginCard() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-white rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 mt-2"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-accent-ink rounded-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
               >
                 {loading ? 'Submitting...' : 'Submit Access Request'}
               </button>

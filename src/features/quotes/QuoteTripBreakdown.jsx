@@ -19,8 +19,8 @@ export default function QuoteTripBreakdown({
   escort
 }) {
   return (
-    <div className="bg-[#080c14] border border-slate-800 rounded-xl p-4 space-y-2.5 text-xs mb-5 shadow-inner text-left">
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+    <div className="bg-canvas border border-slate-800 rounded-xl p-4 space-y-2.5 text-xs mb-5 shadow-inner text-left">
+              <h3 className="text-xs font-bold text-slate-400 mb-2">
                 Route & {isMileageQuote ? 'Mileage' : 'Time'} Breakdown
               </h3>
               <div className="space-y-2 border-b border-slate-800/60 pb-3 mb-3 text-xs">
@@ -49,11 +49,11 @@ export default function QuoteTripBreakdown({
                         }}
                         className="min-w-0 w-full appearance-none bg-transparent text-right font-medium tabular-nums text-slate-200 placeholder:text-slate-200 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
-                      <span className="w-7 shrink-0 text-right text-[10px] text-slate-500">{field.suffix}</span>
+                      <span className="w-7 shrink-0 text-right text-xs text-slate-500">{field.suffix}</span>
                     </span>
                   </label>
                 ))}
-                <p className="text-[10px] text-slate-500">Edit values for this quote only.</p>
+                <p className="text-xs text-slate-500">Edit values for this quote only.</p>
               </div>
               {routeLegs.map((leg, index) => (
                 <div
@@ -120,7 +120,7 @@ export default function QuoteTripBreakdown({
                 <section key={row.state} aria-label={`${row.state} permit notes`} className="rounded-lg border border-amber-500/20 p-3 space-y-2 text-xs text-slate-300">
                   <h5 className="font-bold text-amber-300">{row.state}: {[...(row.reasons || []), ...(row.triggers || [])].join(', ')}</h5>
                   {row.notes.map((note, index) => <p key={index}>{note}</p>)}
-                  <p className="text-[11px] text-slate-400">Dispatch review guidance · {row.sourceAgency} · {row.retrievedAt}</p>
+                  <p className="text-xs text-slate-400">Dispatch review guidance · {row.sourceAgency} · {row.retrievedAt}</p>
                   {/^https?:\/\//i.test(row.sourceUrl || '') && <a href={row.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-300 underline">State source</a>}
                 </section>
               ))}
