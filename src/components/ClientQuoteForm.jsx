@@ -168,8 +168,8 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
     setModel(item.model || '');
     setSerialNumber(item.source === 'my equipment' ? item.serial_number || '' : '');
     setWeight(useSpecs ? item.operating_weight_lbs || '' : '');
-    setWidth(useSpecs ? item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : '') || '' : '');
-    setHeight(useSpecs ? item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : '') || '' : '');
+    setWidth(useSpecs ? (item.width_in ?? (item.width_ft != null ? Number(item.width_ft) * 12 : '')) || '' : '');
+    setHeight(useSpecs ? (item.height_in ?? (item.height_ft != null ? Number(item.height_ft) * 12 : '')) || '' : '');
     setSearchResults([]);
   };
 

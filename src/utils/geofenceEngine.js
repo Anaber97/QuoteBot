@@ -1,4 +1,5 @@
 import { resolveZoneCharge } from '../../shared/pricing/zoneCharge.js';
+import { addressNamesZoneCity } from '../../shared/geo/addressMatch.js';
 // src/utils/geofenceEngine.js
 // @ts-check
 import { GEOFENCES, HAZARD_ZONES } from "../config/geofences.js";
@@ -36,9 +37,7 @@ export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList =
   };
 
   // Check city name keywords in addresses
-  const hasKeyword = cleanAddresses.some((addr) =>
-    (zoneConfig.cities || []).some((city) => addr.toLowerCase().includes(city.toLowerCase()))
-  );
+  const hasKeyword = cleanAddresses.some((addr) => addressNamesZoneCity(addr, zoneConfig));
   if (hasKeyword) return true;
 
   // Check geocoded points

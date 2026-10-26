@@ -1,4 +1,5 @@
 import { resolveZoneCharge } from '../shared/pricing/zoneCharge.js';
+import { addressNamesZoneCity } from '../shared/geo/addressMatch.js';
 import { GEOFENCES, HAZARD_ZONES, METRO_CODE_BY_ZONE_ID } from '../src/config/geofences.js';
 import { selectHighestPriorityZones } from '../src/utils/geofencePriority.js';
 import {
@@ -65,12 +66,11 @@ const pointInPolygon = (point, polygon) => {
   return inside;
 };
 
-const normalizeText = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 function findConfiguredZones(zones, addresses, routePoints, config, field) {
   const disabled = new Set((config?.geofences?.disabledZones || []).map(String));
   return Object.values(zones).filter((zone) => {
     if (disabled.has(String(zone.id))) return false;
-    const keywordHit = addresses.some((address) => (zone.cities || []).some((city) => normalizeText(address).includes(normalizeText(city))));
+    const keywordHit = addresses.some((address) => addressNamesZoneCity(address, zone));
     return keywordHit || routePoints.some((point) => pointInBox(point, zone.box));
   }).map((zone) => ({ ...zone, charge: resolveZoneCharge(zone, config, field) }));
 }
