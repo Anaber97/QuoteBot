@@ -152,7 +152,7 @@ export default function Home() {
             <p>{copy.hero.text}</p>
             <div className="hero-actions">
               <a className="button" href={DEMO_URL}>{copy.hero.button}</a>
-              <a className="text-link" href="#demo">{copy.hero.secondary}</a>
+              <a className="text-link demo-link" href="#demo">{copy.hero.secondary}</a>
             </div>
           </div>
           <div className="hero-stage" id="demo">

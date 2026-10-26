@@ -46,6 +46,9 @@ ol, ul { padding: 0; list-style: none; }
 }
 .button:active { transform: scale(0.97); }
 .button-small { min-height: 44px; padding: 0 18px; font-size: var(--step-small); }
+/* The live quote sits beside the headline on desktop, so this link only shows once it stacks below. */
+.demo-link { display: none; }
+.demo-link::after { content: ' ↓'; }
 .text-link { font-weight: 600; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 0.25em; transition: text-decoration-color 180ms ease; }
 @media (hover: hover) and (pointer: fine) {
   .button:hover { background: var(--accent-strong); }
@@ -202,6 +205,7 @@ ol, ul { padding: 0; list-style: none; }
   .nav nav a:not(:last-child) { display: none; }
   .hero-copy, .hero-stage { grid-column: 1 / -1; }
   .hero-stage { margin-top: 24px; }
+  .demo-link { display: inline; }
   .leak h3, .leak p { grid-column: 1 / -1; }
   .built h2, .built p { grid-column: 1 / -1; }
   .setup-steps { grid-template-columns: 1fr; gap: 32px; }

@@ -24,7 +24,7 @@ export const copy = {
     headlineLine2: 'like you’d price it.',
     text: 'Your rates, your yards and your after-hours rules behind every quote, so dispatchers price each call the way you would, even when you’re not the one on the phone.',
     button: 'Book a 15-minute demo',
-    secondary: 'Try a live quote ↓',
+    secondary: 'Try a live quote',
   },
   demo: {
     label: 'Live quote · try it',
