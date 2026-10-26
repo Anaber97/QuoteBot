@@ -1,5 +1,6 @@
 // src/services/equipmentSpecs.js
 import { authenticatedFetch } from '../lib/api';
+import { addressState } from '../../shared/geo/addressMatch.js';
 
 export function googleSpecsUrl(make, model, query = '') {
   const identity = [make, model].filter((value) => value?.trim()).join(' ').trim() || query.trim();
@@ -88,12 +89,10 @@ export async function searchEquipmentSpecs(query) {
 }
 
 /**
- * Extract US State code (e.g. "TX", "OK") from address strings
+ * Extract US State code (e.g. "TX", "OK") from the end of an address
  */
 export function extractStateFromAddress(address = '') {
-  if (!address) return '';
-  const match = address.match(/\b([A-Z]{2})\b/);
-  return match ? match[1] : '';
+  return addressState(address);
 }
 
 /**

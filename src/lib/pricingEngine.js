@@ -7,6 +7,8 @@
  * No Google Maps calls, no async operations, no side effects.
  */
 
+import { addressState } from '../../shared/geo/addressMatch.js';
+
 const toFinite = (value, fallback = 0) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -251,9 +253,8 @@ export function calculatePermitRequirements({
   dropoffAddress = '',
   baseFee = 150,
 }) {
-  const state = (address) => String(address || '').match(/\b([A-Z]{2})\b/)?.[1] || '';
-  const pickupState = state(pickupAddress);
-  const dropoffState = state(dropoffAddress);
+  const pickupState = addressState(pickupAddress);
+  const dropoffState = addressState(dropoffAddress);
   const isInterstate = Boolean(pickupState && dropoffState && pickupState !== dropoffState);
   
   const flags = [];
