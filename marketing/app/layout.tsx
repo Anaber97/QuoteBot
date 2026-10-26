@@ -4,10 +4,10 @@ import './globals.css';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://towcalc.com'),
-  title: 'TowCalc — Same job. Same price.',
-  description: 'Quoting software for towing and heavy haul. Your rates, yards and service areas turn into a consistent quote in seconds.',
-  openGraph: { title: 'TowCalc — Same job. Same price.', description: 'Quoting software for towing and heavy haul.', images: [{ url: '/og.png', width: 1200, height: 630, alt: 'TowCalc' }] },
-  twitter: { card: 'summary_large_image', title: 'TowCalc — Same job. Same price.', description: 'Quoting software for towing and heavy haul.', images: ['/og.png'] },
+  title: 'TowCalc — Quoting software for towing and heavy haul',
+  description: 'Your rates, yards and after-hours rules behind every quote, so dispatchers price each call the way you would.',
+  openGraph: { title: 'TowCalc — Quoting software for towing and heavy haul', description: 'Quoting software for towing and heavy haul.', images: [{ url: '/og.png', width: 1200, height: 630, alt: 'TowCalc' }] },
+  twitter: { card: 'summary_large_image', title: 'TowCalc — Quoting software for towing and heavy haul', description: 'Quoting software for towing and heavy haul.', images: ['/og.png'] },
   icons: { icon: '/favicon.png', apple: '/favicon.png' },
 };
 
