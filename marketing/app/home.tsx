@@ -437,7 +437,7 @@ export default function Home() {
             <a href={APP_URL}>Log in</a>
             <a href="mailto:office@towcalc.com">office@towcalc.com</a>
           </nav>
-          <span>© 2026 toolBox Digital Solutions · <a href={`${APP_URL}/privacy`}>Privacy</a> · <a href={`${APP_URL}/terms`}>Terms</a></span>
+          <span>© 2026 TowCalc · <a href={`${APP_URL}/privacy`}>Privacy</a> · <a href={`${APP_URL}/terms`}>Terms</a></span>
         </div>
       </footer>
     </>
