@@ -3,21 +3,28 @@
 // Headlines are short on purpose: each line should fit on a phone.
 // The page layout lives in home.tsx; the sample jobs in the live quote live in quote-model.ts.
 
+const CONTACT_EMAIL = 'office@towcalc.com';
+
 export const copy = {
+  contactEmail: CONTACT_EMAIL,
+  demoEmail: {
+    subject: 'TowCalc demo',
+    body: 'Company name:\nNumber of yards:\nNumber of dispatchers:\nBest time to talk:\n',
+  },
   nav: {
-    features: 'How it works',
+    leaks: 'Why TowCalc',
+    setup: 'Setup',
     trust: 'Your data',
     pricing: 'Pricing',
-    questions: 'Questions',
     logIn: 'Log in',
-    requestAccess: 'Request access',
+    demo: 'Book a demo',
   },
   hero: {
-    headlineLine1: 'Same job.',
-    headlineLine2: 'Same price.',
-    text: 'TowCalc turns your rates, yards and service areas into a quote in seconds, so every dispatcher prices every call the same way.',
-    button: 'Request access',
-    secondary: 'Try the quote →',
+    headlineLine1: 'Every call priced',
+    headlineLine2: 'like you’d price it.',
+    text: 'Your rates, your yards and your after-hours rules behind every quote, so dispatchers price each call the way you would, even when you’re not the one on the phone.',
+    button: 'Book a 15-minute demo',
+    secondary: 'Try a live quote ↓',
   },
   demo: {
     label: 'Live quote · try it',
@@ -28,21 +35,30 @@ export const copy = {
     less: 'less',
     footnote: 'Sample jobs and East Texas distances. Your quotes use live Google routing and your own rates.',
   },
-  features: {
-    heading: 'Built for the way towing is priced',
+  leaks: {
+    heading: 'Where tow money leaks out',
     items: [
-      {
-        title: 'Deadhead, priced every time',
-        text: 'The drive out and back is on every quote, and TowCalc points out when another yard would run the job for less.',
-      },
-      {
-        title: 'Zones and permits handle themselves',
-        text: 'Draw a service area and give it a surcharge, a flat rate or a ceiling. Oversize loads are checked against each state on the route.',
-      },
-      {
-        title: 'Send it however they want it',
-        text: 'A branded PDF, an email, a dispatch request with the bill of lading attached, or a private portal where your clients quote themselves.',
-      },
+      { leak: 'Deadhead nobody charged.', fix: 'The drive from your yard to the pickup and back is on every quote, and TowCalc points out when another yard would run the job for less.' },
+      { leak: 'After-hours at the day rate.', fix: 'Your surcharges sit on the quote where the dispatcher sees them. Removing one is a deliberate click, not something that slips.' },
+      { leak: 'Two dispatchers, two prices.', fix: 'Everyone quotes from the same rates, buffers and rounding, so the same job gets the same price no matter who answers.' },
+      { leak: 'Heavy work priced like a light tow.', fix: 'Truck classes and equipment weight classes carry their own rates, and oversize loads flag permits and escorts before anyone loads.' },
+    ],
+  },
+  built: {
+    heading: 'Built on a live dispatch board.',
+    text: 'TowCalc started as a working dispatcher’s own tool for pricing calls on a busy board. It is built for how dispatch actually runs: a caller waiting, a truck already out, and a price that has to be right the first time.',
+  },
+  setup: {
+    heading: 'Set up with the rates you already quote',
+    steps: [
+      { title: 'Enter your rates', text: 'Truck classes, hourly or per-mile rates, load time and the surcharges you already charge.' },
+      { title: 'Add your yards', text: 'Every yard you dispatch from, so the drive out and back is priced from the right one.' },
+      { title: 'Start quoting', text: 'Dispatchers type the pickup and drop-off, and the quote, PDF and email are ready to send.' },
+    ],
+    fit: [
+      'Works alongside your dispatch software. Accepted jobs arrive by email with the quote PDF and BOL attached.',
+      'Runs in any browser and installs on a phone, for quoting from the truck.',
+      'Optional private portals let repeat customers quote themselves from your rates.',
     ],
   },
   trust: {
@@ -55,21 +71,21 @@ export const copy = {
     ],
   },
   pricing: {
-    heading: 'Pricing',
-    note: 'Early access is open now. Subscriptions start in early 2027; prices shown are provisional.',
+    heading: 'What does one underpriced tow cost you?',
+    note: 'Prices shown are provisional. Subscriptions start in early 2027.',
   },
   questions: {
     heading: 'Questions',
   },
   closing: {
-    headlineLine1: 'Bring your rates.',
-    headlineLine2: 'We’ll do the math.',
-    text: 'Tell us about your company and we’ll set up your workspace with your rates, yards and service areas.',
-    button: 'Request access',
+    headlineLine1: 'See it with',
+    headlineLine2: 'your own rates.',
+    text: 'Fifteen minutes on a call: we put in one of your real jobs and price it with your rates and your yards.',
+    button: 'Book a 15-minute demo',
+    secondary: 'Request access',
   },
   footer: {
     tagline: 'Quoting software for towing and heavy haul',
-    email: 'office@towcalc.com',
     copyright: '© 2026 TowCalc',
   },
 } as const;
@@ -81,7 +97,7 @@ export const plans = [
     period: '/ month',
     annual: 'or $299.99 a year',
     description: 'The quote calculator with your rates and surcharges, quote history, and branded PDF and email quotes. One yard and up to three team members.',
-    cta: 'Request Core access',
+    cta: 'Ask about Core',
   },
   {
     name: 'Business',
@@ -89,7 +105,7 @@ export const plans = [
     period: '/ month',
     annual: 'or $1,199.99 a year',
     description: 'Everything in Core, plus the equipment calculator with permit and escort checks, private client quote portals and geofenced service areas. Up to five yards and twelve team members.',
-    cta: 'Request Business access',
+    cta: 'Ask about Business',
   },
   {
     name: 'Enterprise',
@@ -107,7 +123,11 @@ export const faqs = [
     a: 'Your team, and nobody else. Each company’s workspace is isolated at the database level, and client accounts see only their own quotes. Your rates are used to calculate your quotes and for nothing else.',
   },
   {
-    q: 'Is TowCalc a dispatch system?',
+    q: 'How long does setup take?',
+    a: 'Most of it is entering the rates you already quote: truck classes, hourly or per-mile rates, surcharges and your yards. Service areas and client portals are optional and can come later.',
+  },
+  {
+    q: 'Does it replace our dispatch software?',
     a: 'No. It prices the job and hands it off. Dispatch requests arrive by email with the quote PDF and any bill of lading attached, and your team takes it from there.',
   },
   {
@@ -121,9 +141,5 @@ export const faqs = [
   {
     q: 'How does it handle oversize loads?',
     a: 'Enter the weight and dimensions and TowCalc checks them against each state on the route, flags permits and escorts, and adds your costs. Confirm requirements with each state before the move.',
-  },
-  {
-    q: 'When can we subscribe?',
-    a: 'Subscriptions start in early 2027. Until then, access is by request and early companies help decide what ships next.',
   },
 ] as const;

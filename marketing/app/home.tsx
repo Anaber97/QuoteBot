@@ -6,6 +6,7 @@ import { copy, faqs, plans } from './site-content';
 
 const APP_URL = 'https://app.towcalc.com';
 const REQUEST_URL = `${APP_URL}/?request`;
+const DEMO_URL = `mailto:${copy.contactEmail}?subject=${encodeURIComponent(copy.demoEmail.subject)}&body=${encodeURIComponent(copy.demoEmail.body)}`;
 
 function useReveal() {
   useEffect(() => {
@@ -100,42 +101,6 @@ function LiveQuote() {
   );
 }
 
-function YardFragment() {
-  return (
-    <div className="frag frag-yard" data-ui aria-hidden="true">
-      <p><b>Tyler yard</b> would quote <em>$75 less</em> · 34 min less driving.</p>
-      <span className="frag-button">Quote from Tyler yard</span>
-    </div>
-  );
-}
-
-function ChargesFragment() {
-  return (
-    <div className="frag" data-ui aria-hidden="true">
-      <div className="frag-chips">
-        <span className="chip is-on">Dallas core zone +15%</span>
-        <span className="chip is-on">After hours +25%</span>
-        <span className="chip">Winch out +$75</span>
-      </div>
-      <div className="frag-permit"><span>Permit flag</span><b>Oversize width · TX, LA</b></div>
-    </div>
-  );
-}
-
-function SendFragment() {
-  return (
-    <div className="frag frag-send" data-ui aria-hidden="true">
-      <span className="frag-title">Send quote Q-2611-0427</span>
-      <span className="frag-option is-on">Branded PDF</span>
-      <span className="frag-option">Email to customer</span>
-      <span className="frag-option">Dispatch request + BOL</span>
-      <span className="frag-option">Client portal</span>
-    </div>
-  );
-}
-
-const FRAGMENTS = [YardFragment, ChargesFragment, SendFragment];
-
 function Pricing() {
   const [selected, setSelected] = useState(1);
   const plan = plans[selected];
@@ -156,7 +121,7 @@ function Pricing() {
         <p className="pricing-figure"><span className="num">{plan.price}</span>{plan.period && <small>{plan.period}</small>}</p>
         <p className="pricing-annual">{plan.annual}</p>
         <p className="pricing-body">{plan.description}</p>
-        <a className="button" href={REQUEST_URL}>{plan.cta}</a>
+        <a className="button" href={DEMO_URL}>{plan.cta}</a>
       </div>
     </section>
   );
@@ -171,13 +136,13 @@ export default function Home() {
           <img src="/towcalc_fulllogo_light.svg" width={150} height={46} alt="TowCalc Pro" />
         </a>
         <nav aria-label="Main">
-          <a href="#features">{copy.nav.features}</a>
+          <a href="#leaks">{copy.nav.leaks}</a>
+          <a href="#setup">{copy.nav.setup}</a>
           <a href="#trust">{copy.nav.trust}</a>
           <a href="#pricing">{copy.nav.pricing}</a>
-          <a href="#questions">{copy.nav.questions}</a>
           <a href={APP_URL}>{copy.nav.logIn}</a>
         </nav>
-        <a className="button button-small" href={REQUEST_URL}>{copy.nav.requestAccess}</a>
+        <a className="button button-small" href={DEMO_URL}>{copy.nav.demo}</a>
       </header>
 
       <main id="top">
@@ -186,7 +151,7 @@ export default function Home() {
             <h1 id="hero-title">{copy.hero.headlineLine1}<br />{copy.hero.headlineLine2}</h1>
             <p>{copy.hero.text}</p>
             <div className="hero-actions">
-              <a className="button" href={REQUEST_URL}>{copy.hero.button}</a>
+              <a className="button" href={DEMO_URL}>{copy.hero.button}</a>
               <a className="text-link" href="#demo">{copy.hero.secondary}</a>
             </div>
           </div>
@@ -196,22 +161,38 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="features frame" id="features" aria-labelledby="features-title">
-          <h2 id="features-title" className="section-heading" data-reveal><span>{copy.features.heading}</span></h2>
-          <div className="feature-list">
-            {copy.features.items.map((item, index) => {
-              const Fragment = FRAGMENTS[index];
-              return (
-                <article key={item.title} className="feature" data-reveal>
-                  <div className="feature-copy">
-                    <h3>{item.title}</h3>
-                    <p>{item.text}</p>
-                  </div>
-                  <Fragment />
-                </article>
-              );
-            })}
+        <section className="leaks frame" id="leaks" aria-labelledby="leaks-title">
+          <h2 id="leaks-title" className="section-heading" data-reveal>{copy.leaks.heading}</h2>
+          <ul className="leak-list">
+            {copy.leaks.items.map((item) => (
+              <li key={item.leak} className="leak" data-reveal>
+                <h3>{item.leak}</h3>
+                <p>{item.fix}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="built" aria-labelledby="built-title">
+          <div className="frame built-inner" data-reveal>
+            <h2 id="built-title">{copy.built.heading}</h2>
+            <p>{copy.built.text}</p>
           </div>
+        </section>
+
+        <section className="setup frame" id="setup" aria-labelledby="setup-title">
+          <h2 id="setup-title" className="section-heading" data-reveal>{copy.setup.heading}</h2>
+          <ol className="setup-steps" data-reveal>
+            {copy.setup.steps.map((step) => (
+              <li key={step.title}>
+                <h3>{step.title}</h3>
+                <p>{step.text}</p>
+              </li>
+            ))}
+          </ol>
+          <ul className="setup-fit" data-reveal>
+            {copy.setup.fit.map((line) => <li key={line}>{line}</li>)}
+          </ul>
         </section>
 
         <section className="trust" id="trust" aria-labelledby="trust-title">
@@ -244,7 +225,10 @@ export default function Home() {
           <h2 id="closing-title">{copy.closing.headlineLine1}<br />{copy.closing.headlineLine2}</h2>
           <div className="closing-side">
             <p>{copy.closing.text}</p>
-            <a className="button" href={REQUEST_URL}>{copy.closing.button}</a>
+            <div className="hero-actions">
+              <a className="button" href={DEMO_URL}>{copy.closing.button}</a>
+              <a className="text-link" href={REQUEST_URL}>{copy.closing.secondary}</a>
+            </div>
           </div>
         </section>
       </main>
@@ -253,7 +237,7 @@ export default function Home() {
         <span>{copy.footer.tagline}</span>
         <nav aria-label="Footer">
           <a href={APP_URL}>{copy.nav.logIn}</a>
-          <a href={`mailto:${copy.footer.email}`}>{copy.footer.email}</a>
+          <a href={`mailto:${copy.contactEmail}`}>{copy.contactEmail}</a>
         </nav>
         <span>{copy.footer.copyright} · <a href={`${APP_URL}/privacy`}>Privacy</a> · <a href={`${APP_URL}/terms`}>Terms</a></span>
       </footer>
