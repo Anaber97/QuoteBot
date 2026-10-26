@@ -1,5 +1,63 @@
-// EDIT THIS FILE to change the plans, provisional prices or common questions.
-// Keep each value inside its quotes. The page layout lives in home.tsx.
+// EDIT THIS FILE to change the wording on towcalc.com: headlines, paragraphs,
+// buttons, plans, prices and common questions. Keep each value inside its quotes.
+// Headlines are short on purpose: each line should fit on a phone.
+// The page layout lives in home.tsx; the sample quotes it shows live in quote-model.ts.
+
+export const copy = {
+  nav: {
+    product: 'Product',
+    rules: 'Rules',
+    pricing: 'Pricing',
+    questions: 'Questions',
+    logIn: 'Log in',
+    requestAccess: 'Request access',
+  },
+  hero: {
+    headlineLine1: 'Price the tow',
+    headlineLine2: 'while they wait.',
+    text: 'TowCalc applies your rates, zones and permit rules to every call, so each dispatcher quotes the same job the same way.',
+    button: 'Request access',
+  },
+  showcase: {
+    heading: 'One quote, sent four ways',
+    text: 'Every quote becomes a branded PDF, an email your customer can forward, a dispatch request with the bill of lading attached, or a price your client builds in their own portal.',
+  },
+  howItWorks: {
+    heading: 'From call to quote',
+    steps: ['First, enter your rates once.', 'Then take the call.', 'Last, send it before they hang up.'],
+  },
+  photoCaption: 'A 50-ton rotator on a winter recovery. The quote was the easy part.',
+  rules: {
+    heading: 'Your rules, applied',
+    pricingMode: {
+      heading: 'Charge by the hour or by the mile.',
+      text: 'Hourly quotes use drive time plus your buffer and load time. Mileage quotes use the full loop from your yard and back.',
+    },
+    zones: {
+      heading: 'Zones charge for themselves.',
+      text: 'Draw a service area on the map and give it a surcharge, a flat rate or a ceiling. Routes that pass through it pick it up automatically.',
+    },
+    oversize: {
+      heading: 'Oversize loads flag their permits.',
+      text: 'Weight and dimensions are checked against the states on the route. Permits and escorts are added at your cost before anyone loads.',
+    },
+    rounding: {
+      heading: 'Round the way you round.',
+      text: 'Every total lands on your increment, so two dispatchers never quote the same job $12 apart.',
+    },
+  },
+  closing: {
+    headlineLine1: 'Bring your rates.',
+    headlineLine2: 'We do the math.',
+    text: 'Tell us about your company and we’ll set up your workspace with your rates, yards and service areas.',
+    button: 'Request access',
+  },
+  footer: {
+    tagline: 'Quoting software for towing',
+    email: 'office@towcalc.com',
+    copyright: '© 2026 TowCalc',
+  },
+} as const;
 
 export const plans = [
   {

@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState } from 'react';
 import { BASE_YARD, JOBS, duration, escortsFor, money, quote, type Job, type QuoteOptions } from './quote-model';
-import { faqs, plans } from './site-content';
+import { copy, faqs, plans } from './site-content';
 
 const APP_URL = 'https://app.towcalc.com';
 const REQUEST_URL = `${APP_URL}/?request`;
@@ -197,7 +197,7 @@ function Showcase() {
   return (
     <section className="showcase frame" id="product" aria-labelledby="showcase-title">
       <div className="showcase-index" data-reveal>
-        <h2 id="showcase-title" className="lead-text">One quote, sent four ways</h2>
+        <h2 id="showcase-title" className="lead-text">{copy.showcase.heading}</h2>
         <div className="output-list" role="tablist" aria-label="Quote outputs">
           {outputs.map((name) => (
             <button key={name} type="button" role="tab" aria-selected={name === output} onClick={() => setOutput(name)} onFocus={() => setOutput(name)}>
@@ -205,7 +205,7 @@ function Showcase() {
             </button>
           ))}
         </div>
-        <p>Every quote becomes a branded PDF, an email your customer can forward, a dispatch request with the bill of lading attached, or a price your client builds in their own portal.</p>
+        <p>{copy.showcase.text}</p>
       </div>
       <div className="showcase-stage">
         <div key={output} className="sheet-swap"><OutputSheet output={output} /></div>
@@ -219,9 +219,9 @@ function HowItWorks() {
   return (
     <section className="how" id="how" aria-labelledby="how-title">
       <div className="how-column frame">
-        <h2 id="how-title" className="head-text" data-reveal>From call to quote</h2>
+        <h2 id="how-title" className="head-text" data-reveal>{copy.howItWorks.heading}</h2>
         <div className="exchange" data-reveal>
-          <p className="exchange-say">First, enter your rates once.</p>
+          <p className="exchange-say">{copy.howItWorks.steps[0]}</p>
           <div className="call" data-ui>
             <div className="rate-row"><span>Light duty</span><b className="num">$125 / h</b></div>
             <div className="rate-row"><span>Medium duty</span><b className="num">$165 / h</b></div>
@@ -232,7 +232,7 @@ function HowItWorks() {
           <div className="response" data-ui><span className="ok-dot" aria-hidden="true" />Saved. Every dispatcher now quotes from these.</div>
         </div>
         <div className="exchange" data-reveal>
-          <p className="exchange-say">Then take the call.</p>
+          <p className="exchange-say">{copy.howItWorks.steps[1]}</p>
           <div className="call" data-ui>
             <label className="typed">Pickup<span>{job.pickup}</span></label>
             <label className="typed">Drop-off<span>{job.dropoff}</span></label>
@@ -244,7 +244,7 @@ function HowItWorks() {
           </div>
         </div>
         <div className="exchange exchange-final" data-reveal>
-          <p className="exchange-say">Last, send it before they hang up.</p>
+          <p className="exchange-say">{copy.howItWorks.steps[2]}</p>
           <div className="final" data-ui>
             <div className="final-head"><span>{job.vehicle}</span><span>{job.customer} · (903) 555-0118</span></div>
             <QuotePanel job={job} compact />
@@ -274,19 +274,19 @@ function Rules() {
           </div>
         </div>
       </div>
-      <h2 id="rules-title" className="head-text rules-title">Your rules, applied</h2>
+      <h2 id="rules-title" className="head-text rules-title">{copy.rules.heading}</h2>
       <div className="rules-copy">
         <div className="rule-block">
-          <h3 className="lead-text">Charge by the hour or by the mile.</h3>
-          <p>Hourly quotes use drive time plus your buffer and load time. Mileage quotes use the full loop from your yard and back.</p>
+          <h3 className="lead-text">{copy.rules.pricingMode.heading}</h3>
+          <p>{copy.rules.pricingMode.text}</p>
           <div className="seg seg-light" role="radiogroup" aria-label="Pricing mode">
             <button type="button" role="radio" aria-checked={mode === 'hourly'} onClick={() => setMode('hourly')}>Hourly</button>
             <button type="button" role="radio" aria-checked={mode === 'mileage'} onClick={() => setMode('mileage')}>Per mile</button>
           </div>
         </div>
         <div className="rule-block">
-          <h3 className="lead-text">Zones charge for themselves.</h3>
-          <p>Draw a service area on the map and give it a surcharge, a flat rate or a ceiling. Routes that pass through it pick it up automatically.</p>
+          <h3 className="lead-text">{copy.rules.zones.heading}</h3>
+          <p>{copy.rules.zones.text}</p>
           <label className="switch switch-light">
             <input type="checkbox" checked={zone} onChange={(event) => setZone(event.target.checked)} />
             <span aria-hidden="true" />
@@ -297,8 +297,8 @@ function Rules() {
           </figure>
         </div>
         <div className="rule-block">
-          <h3 className="lead-text">Oversize loads flag their permits.</h3>
-          <p>Weight and dimensions are checked against the states on the route. Permits and escorts are added at your cost before anyone loads.</p>
+          <h3 className="lead-text">{copy.rules.oversize.heading}</h3>
+          <p>{copy.rules.oversize.text}</p>
           <label htmlFor={widthId} className="range-label">Load width <b className="num">{width} in</b> {escort.vehicles ? `· ${escort.vehicles} escort${escort.vehicles > 1 ? 's' : ''}` : width > 102 ? '· permit' : '· legal'}</label>
           <input id={widthId} className="range" type="range" min={84} max={180} step={2} value={width} onChange={(event) => setWidth(Number(event.target.value))} />
           <figure className="rule-photo">
@@ -306,8 +306,8 @@ function Rules() {
           </figure>
         </div>
         <div className="rule-block">
-          <h3 className="lead-text">Round the way you round.</h3>
-          <p>Every total lands on your increment, so two dispatchers never quote the same job $12 apart.</p>
+          <h3 className="lead-text">{copy.rules.rounding.heading}</h3>
+          <p>{copy.rules.rounding.text}</p>
           <div className="seg seg-light" role="radiogroup" aria-label="Round to">
             {[5, 25, 50].map((value) => (
               <button key={value} type="button" role="radio" aria-checked={rounding === value} onClick={() => setRounding(value)}>${value}</button>
@@ -382,21 +382,21 @@ export default function Home() {
           <img src="/towcalc_fulllogo_dark.svg" width={150} height={46} alt="TowCalc Pro" />
         </a>
         <nav aria-label="Main">
-          <a href="#product">Product</a>
-          <a href="#rules">Rules</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#questions">Questions</a>
-          <a href={APP_URL}>Log in</a>
+          <a href="#product">{copy.nav.product}</a>
+          <a href="#rules">{copy.nav.rules}</a>
+          <a href="#pricing">{copy.nav.pricing}</a>
+          <a href="#questions">{copy.nav.questions}</a>
+          <a href={APP_URL}>{copy.nav.logIn}</a>
         </nav>
-        <a className="button button-small" href={REQUEST_URL}>Request access</a>
+        <a className="button button-small" href={REQUEST_URL}>{copy.nav.requestAccess}</a>
       </header>
 
       <main id="top">
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy frame">
-            <h1 id="hero-title" className="display-text">Price the tow<br /> while they wait.</h1>
-            <p className="lead-text">TowCalc applies your rates, zones and permit rules to every call, so each dispatcher quotes the same job the same way.</p>
-            <a className="button" href={REQUEST_URL}>Request access</a>
+            <h1 id="hero-title" className="display-text">{copy.hero.headlineLine1}<br /> {copy.hero.headlineLine2}</h1>
+            <p className="lead-text">{copy.hero.text}</p>
+            <a className="button" href={REQUEST_URL}>{copy.hero.button}</a>
           </div>
           <div className="hero-stage">
             <HeroFragment />
@@ -408,7 +408,7 @@ export default function Home() {
 
         <figure className="band shutter">
           <img src="/assets/hth-winter-recovery.jpg" width={1800} height={1200} alt="A heavy rotator wrecker working a roadside recovery at night in a snowstorm" loading="eager" decoding="async" />
-          <figcaption className="frame">A 50-ton rotator on a winter recovery. The quote was the easy part.</figcaption>
+          <figcaption className="frame">{copy.photoCaption}</figcaption>
         </figure>
 
         <Rules />
@@ -417,10 +417,10 @@ export default function Home() {
 
         <section className="cta" id="access" aria-labelledby="cta-title">
           <div className="frame cta-inner">
-            <h2 id="cta-title" className="display-text">Bring your rates.<br /> We do the math.</h2>
+            <h2 id="cta-title" className="display-text">{copy.closing.headlineLine1}<br /> {copy.closing.headlineLine2}</h2>
             <div className="cta-side">
-              <p>Tell us about your company and we&rsquo;ll set up your workspace with your rates, yards and service areas.</p>
-              <a className="button button-ink" href={REQUEST_URL}>Request access</a>
+              <p>{copy.closing.text}</p>
+              <a className="button button-ink" href={REQUEST_URL}>{copy.closing.button}</a>
             </div>
           </div>
           <figure className="cta-photo">
@@ -432,12 +432,12 @@ export default function Home() {
       <footer className="footer frame">
         <p className="credits">Photographs: &ldquo;HTH Winter Recovery&rdquo; by Great Pacific TV (CC BY 4.0); &ldquo;Kenworth T650 tow truck&rdquo; by Bidgee (CC BY-SA 3.0 AU); &ldquo;Globe Trailers detachable gooseneck trailer&rdquo; by Leighketchum (CC BY-SA 3.0); &ldquo;Bush Turnpike at US75&rdquo; by Danazar (CC BY-SA 4.0); all via Wikimedia Commons. Sample companies and prices are illustrative.</p>
         <div className="footer-line">
-          <span>Quoting software for towing</span>
+          <span>{copy.footer.tagline}</span>
           <nav aria-label="Footer">
-            <a href={APP_URL}>Log in</a>
-            <a href="mailto:office@towcalc.com">office@towcalc.com</a>
+            <a href={APP_URL}>{copy.nav.logIn}</a>
+            <a href={`mailto:${copy.footer.email}`}>{copy.footer.email}</a>
           </nav>
-          <span>© 2026 TowCalc · <a href={`${APP_URL}/privacy`}>Privacy</a> · <a href={`${APP_URL}/terms`}>Terms</a></span>
+          <span>{copy.footer.copyright} · <a href={`${APP_URL}/privacy`}>Privacy</a> · <a href={`${APP_URL}/terms`}>Terms</a></span>
         </div>
       </footer>
     </>

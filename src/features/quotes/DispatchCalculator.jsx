@@ -156,7 +156,7 @@ export default function DispatchCalculator({
               <h2 id="quote-empty-title" className="m-0 text-sm font-semibold text-slate-400">Quote</h2>
               <div aria-hidden="true" className="mt-2 text-6xl font-extrabold leading-none tracking-tight text-slate-800">$—</div>
               <p className="m-0 mt-4 max-w-md text-sm text-slate-400">
-                Enter a pickup and press <strong className="text-slate-200">Calculate Quote</strong>. The price, the time it takes and the cheapest yard for the job appear here.
+                Enter a pickup and press <strong className="text-slate-200">Calculate Quote</strong>. The price, trip breakdown and, with more than one yard, the cheapest yard for the job appear here.
               </p>
             </section>
           )}

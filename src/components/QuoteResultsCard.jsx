@@ -4,7 +4,6 @@ import QuoteTripBreakdown from '../features/quotes/QuoteTripBreakdown';
 import React from 'react';
 import { ChevronDown } from 'lucide-react';
 import QuoteSaveForm from '../features/quotes/QuoteSaveForm';
-import TimeRibbon from '../features/quotes/TimeRibbon';
 import { quoteTotals } from '../features/quotes/quoteTotal';
 import { summarizeHighestOsowFlag } from '../lib/osow.js';
 import { estimateDisclaimer } from '../legal/legalContent';
@@ -149,10 +148,6 @@ export default function QuoteResultsCard({
           <span className="font-semibold text-white">Estimate notice: </span>
           {companyRates?.client_portal?.disclosure || estimateDisclaimer}
         </p>
-      )}
-
-      {isDispatcherView && (
-        <TimeRibbon legs={routeLegs} loadUnloadMinutes={timeMetrics?.loadUnloadMinutes} bufferPercent={timeMetrics?.driveTimeBufferPercent} />
       )}
 
       {isDispatcherView && (
