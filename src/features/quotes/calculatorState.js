@@ -1,3 +1,12 @@
+// The trip breakdown opens by default and remembers the dispatcher's last choice in this browser.
+const BREAKDOWN_KEY = 'towcalc_trip_breakdown';
+const savedShowDetails = () => {
+  try { return localStorage.getItem(BREAKDOWN_KEY) !== 'closed'; } catch { return true; }
+};
+const rememberShowDetails = (open) => {
+  try { localStorage.setItem(BREAKDOWN_KEY, open ? 'open' : 'closed'); } catch { /* preference only */ }
+};
+
 const getInitialBaseId = () => {
   const savedBase = localStorage.getItem('dispatch_default_base');
   return savedBase || '';
@@ -16,7 +25,7 @@ export const initialState = {
   isHazard: false,
   activeOverrides: { afterHours: true, roadClub: true, metro: true, hazard: true, customSurcharges: {} },
   pendingCustomSurcharges: {},
-  showDetails: false,
+  showDetails: savedShowDetails(),
   customerName: '',
   customerPhone: '',
   quoteMake: '',
@@ -64,6 +73,7 @@ export function appReducer(state, action) {
         },
       };
     case 'TOGGLE_DETAILS':
+      rememberShowDetails(!state.showDetails);
       return { ...state, showDetails: !state.showDetails };
     case 'SET_CUSTOMER_INFO':
       return { ...state, [action.payload.field]: action.payload.value };
@@ -102,6 +112,7 @@ export function appReducer(state, action) {
     case 'RESET_FORM':
       return {
         ...initialState,
+        showDetails: savedShowDetails(),
         waypoints: ['', ''],
         activeTab: state.activeTab,
         selectedBaseId: state.selectedBaseId,
