@@ -2,6 +2,7 @@ import { requestId, fingerprint, assertSameRequest } from './_idempotency.js';
 import { readStoredConfig } from '../shared/config/storage.js';
 import { calculateAuthoritativeQuote } from './_quoteEngine.js';
 import { computeServerRoute, resolveGoogleLocalities } from './_routes.js';
+import { compareYardLegs } from './_yardMatrix.js';
 import { enforceRateLimit, requireUser, sendApiError } from './_security.js';
 
 const text = (value, maximum = 240) => String(value || '').trim().slice(0, maximum);
@@ -42,11 +43,26 @@ export function normalizeQuoteInput(body, profile) {
   };
 }
 
+// Staff-only: drive time from each yard, so the calculator can suggest the cheapest one.
+async function handleCompareYards(res, admin, profile, body) {
+  if (profile.role === 'client') return res.status(403).json({ error: 'Yard comparison is available to staff only.' });
+  await enforceRateLimit(admin, `compare-yards:${profile.id}`, { limit: 120, windowMs: 60 * 60 * 1000 });
+  const waypoints = (Array.isArray(body.waypoints) ? body.waypoints : []).map((value) => text(value, 500)).filter(Boolean).slice(0, 24);
+  if (waypoints.length < 1) throw Object.assign(new Error('A pickup address is required.'), { status: 400 });
+  const { data: configRow, error } = await admin.from('app_config').select('*').eq('company_id', profile.company_id).single();
+  if (error || !configRow) throw Object.assign(new Error('Company pricing is not configured.'), { status: 400 });
+  const bases = readStoredConfig(configRow).bases;
+  const yards = await compareYardLegs(Array.isArray(bases) ? bases : [], waypoints[0], waypoints.at(-1));
+  res.setHeader('Cache-Control', 'private, no-store');
+  return res.status(200).json({ success: true, yards });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
     const { admin, profile } = await requireUser(req);
+    if (body.compareYards === true) return await handleCompareYards(res, admin, profile, body);
     await enforceRateLimit(admin, `create-quote:${profile.id}`, { limit: 60, windowMs: 60 * 60 * 1000 });
     const input = normalizeQuoteInput(body, profile);
     const preview = body.preview === true;

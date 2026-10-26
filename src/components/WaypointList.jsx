@@ -6,7 +6,7 @@ const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRe
   const isPickUp = index === 0;
   const isDropOff = index === totalWaypoints - 1;
   const isWaypoint = !isPickUp && !isDropOff;
-  const label = isPickUp ? 'Pick-up Location' : isDropOff ? 'Drop-off Location (Optional)' : `Stop ${index} (Waypoint)`;
+  const label = isPickUp ? 'Pickup' : isDropOff ? 'Drop-off (optional)' : `Stop ${index}`;
 
   const internalInputRef = useRef(null);
   const onChangeRef = useRef(onChange);
@@ -85,64 +85,64 @@ const WaypointInput = React.memo(({ index, totalWaypoints, value, onChange, onRe
   };
 
   return (
-    <div className="w-full">
-      <label className="block text-xs font-semibold text-slate-400 mb-1.5">
-        {label}
-      </label>
-      <div className="flex items-center gap-2 w-full">
+    <li className="relative flex gap-3">
+      <span aria-hidden="true" className={`relative z-10 mt-[13px] h-3.5 w-3.5 shrink-0 rounded-full border-2 ${isPickUp || isDropOff ? 'border-accent bg-accent' : 'border-slate-500 bg-canvas'}`} />
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <input
           aria-label={label}
           ref={setRef}
           type="text"
-          placeholder={isPickUp ? 'Business, address, city, or municipality...' : isDropOff ? 'Business, address, city, or municipality...' : `Enter ${label.toLowerCase()}...`}
+          placeholder={isPickUp ? 'Pickup: business, address or city' : isDropOff ? 'Drop-off: business, address or city' : 'Extra stop address'}
           value={value}
           onChange={(e) => onChange(index, e.target.value)}
-          className="w-full flex-1 bg-canvas border border-slate-800 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 focus:outline-none text-sm shadow-inner"
+          className="min-h-11 w-full flex-1 rounded-lg border border-slate-800 bg-canvas px-3.5 text-[15px] text-white placeholder-slate-500 focus:border-accent focus:outline-none"
         />
         {isWaypoint && (
           <button
             type="button"
             onClick={() => onRemove(index)}
             aria-label={`Remove waypoint ${index}`}
-            className="bg-red-950/40 hover:bg-red-900/50 text-red-400 w-11 h-11 shrink-0 rounded-xl border border-red-800/50 font-bold text-lg flex items-center justify-center transition cursor-pointer"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-500/10 hover:text-red-400 cursor-pointer"
           >
             ✕
           </button>
         )}
       </div>
-    </div>
+    </li>
   );
 });
 
-export default function WaypointList({ waypoints, inputRefs, onChange, onRemove, onAdd, onReset }) {
+export default function WaypointList({ waypoints, inputRefs, onChange, onRemove, onAdd, onReset, yardName = 'Yard' }) {
+  const yardRow = (text) => (
+    <li className="relative flex items-center gap-3 py-1 text-sm text-slate-400">
+      <span aria-hidden="true" className="relative z-10 h-3.5 w-3.5 shrink-0 rounded-sm bg-slate-600" />
+      {text}
+    </li>
+  );
   return (
     <div className="space-y-3">
-      {waypoints.map((waypoint, index) => (
-        <WaypointInput
-          key={index}
-          index={index}
-          totalWaypoints={waypoints.length}
-          value={waypoint}
-          onChange={onChange}
-          onRemove={onRemove}
-          inputRef={(el) => (inputRefs.current[index] = el)}
-        />
-      ))}
-
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onAdd}
-          className="w-3/4 py-2 bg-slate-800/60 hover:bg-slate-800 text-blue-400 font-semibold text-xs rounded-xl border border-blue-500/30 transition cursor-pointer"
-        >
-          + Add Extra Stop
+      <ol className="relative m-0 list-none space-y-2 p-0" aria-label="Route stops">
+        <span aria-hidden="true" className="absolute bottom-3 left-[6px] top-3 w-0.5 bg-slate-800" />
+        {yardRow(`From ${yardName}`)}
+        {waypoints.map((waypoint, index) => (
+          <WaypointInput
+            key={index}
+            index={index}
+            totalWaypoints={waypoints.length}
+            value={waypoint}
+            onChange={onChange}
+            onRemove={onRemove}
+            inputRef={(el) => (inputRefs.current[index] = el)}
+          />
+        ))}
+        {yardRow(`Back to ${yardName}`)}
+      </ol>
+      <div className="flex items-center gap-4 pl-[26px]">
+        <button type="button" onClick={onAdd} className="text-sm font-semibold text-accent-text hover:underline cursor-pointer">
+          + Add stop
         </button>
-        <button
-          type="button"
-          onClick={onReset}
-          className="light-reset-button w-1/4 py-2 bg-slate-900/80 hover:bg-slate-900 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition cursor-pointer"
-        >
-          RESET
+        <button type="button" onClick={onReset} className="text-sm font-semibold text-slate-400 hover:text-slate-200 cursor-pointer">
+          Clear route
         </button>
       </div>
     </div>

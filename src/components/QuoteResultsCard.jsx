@@ -3,41 +3,28 @@ import QuoteTripBreakdown from '../features/quotes/QuoteTripBreakdown';
 // src/components/QuoteResultsCard.jsx
 import React from 'react';
 import QuoteSaveForm from '../features/quotes/QuoteSaveForm';
-import { calculateFinalQuotes } from '../services/quoteCalculator';
+import TimeRibbon from '../features/quotes/TimeRibbon';
+import { quoteTotals } from '../features/quotes/quoteTotal';
 import { summarizeHighestOsowFlag } from '../lib/osow.js';
 import { estimateDisclaimer } from '../legal/legalContent';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-const BADGE_STYLES = {
-  afterHours: {
-    active: 'bg-amber-500/15 border-amber-500/40 text-amber-300',
-    disabled: 'bg-slate-900/60 border-slate-800 text-slate-500',
-    label: 'After Hours (+25%)',
-  },
-  roadClub: {
-    active: 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300',
-    disabled: 'bg-slate-900/60 border-slate-800 text-slate-500',
-    label: 'Road Club (+15%)',
-  },
-  metro: {
-    active: 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300',
-    disabled: 'bg-slate-900/60 border-slate-800 text-slate-500',
-    label: 'Metro Zone',
-  },
-  hazard: {
-    active: 'bg-rose-500/15 border-rose-500/40 text-rose-300',
-    disabled: 'bg-slate-900/60 border-slate-800 text-slate-500',
-    label: 'Hazard Zone (+40%)',
-  },
-  custom: {
-    active: 'border-violet-500/30 bg-violet-500/10 text-violet-300',
-    disabled: 'border-slate-700 bg-slate-900/60 text-slate-500',
-    label: 'Custom Zone',
-  },
+const CHARGE_LABELS = {
+  afterHours: 'After hours (+25%)',
+  roadClub: 'Road club (+15%)',
+  hazard: 'Hazard zone (+40%)',
+  custom: 'Custom zone',
 };
 
-// Distinct surcharge badge styling
+const chipClass = (active) => `inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition cursor-pointer ${
+  active ? 'border-accent/40 bg-accent/10 text-accent-text' : 'border-slate-800 text-slate-500 hover:text-slate-300'
+}`;
+
+const Mark = ({ active }) => (
+  <span className="text-xs font-black opacity-70">{active ? '✕' : '↻'}</span>
+);
+
 export default function QuoteResultsCard({
   state,
   dispatch,
@@ -47,26 +34,14 @@ export default function QuoteResultsCard({
   onAcceptQuote,
   companyRates = {},
   isDispatcherView = false,
+  yardSuggestion = null,
 }) {
-  const {
-    quoteData,
-    activeOverrides,
-  } = state || {};
+  const { quoteData, activeOverrides } = state || {};
   const showDetails = Boolean(state?.showDetails);
 
   if (!quoteData) return null;
 
-  const { currentMinQuote, customCalculatedQuote, timeMetrics, effectiveRate, effectiveBaseQuote } = calculateFinalQuotes(
-    quoteData,
-    activeOverrides,
-    state?.customRateInput ?? state?.customRate ?? 0,
-    companyRates,
-    state?.customLoadUnloadMins ?? null,
-    isDispatcherView,
-    state?.customDriveTimeBufferPercent ?? null
-  );
-  const permitFee = Number(quoteData?.equipmentMeta?.permitFee || quoteData?.permitFee || 0);
-  const osow = quoteData?.osow || quoteData?.equipmentMeta?.osow;
+  const { total: clientPrice, timeMetrics, effectiveRate, effectiveBaseQuote, permitFee, osow } = quoteTotals(quoteData, state, companyRates, isDispatcherView);
   // Client estimates do not present OSOW screening. Dispatchers see it only
   // when the regular equipment calculator identifies an actual permit need.
   const shouldShowOsowEstimate = isDispatcherView && osow?.needsPermit === true;
@@ -76,10 +51,6 @@ export default function QuoteResultsCard({
     : permitFee;
   const osowFlagSummary = shouldShowOsowEstimate ? summarizeHighestOsowFlag(osow?.states) : null;
   const attachmentWeight = Number(quoteData?.equipmentMeta?.attachmentWeight || 0);
-  const effectiveMinQuote = !isDispatcherView && Number.isFinite(quoteData.authoritativeTotal)
-    ? quoteData.authoritativeTotal
-    : (isDispatcherView ? customCalculatedQuote ?? currentMinQuote : currentMinQuote) + (osow ? 0 : permitFee);
-  const clientPrice = effectiveMinQuote;
   const isFixedEquipmentQuote = quoteData?.pricingMode === 'equipment-weight-tier';
   const isMileageQuote = (quoteData?.pricingRateMode || quoteData?.pricingMode) === 'mileage';
   const dispatcherSurcharges = [
@@ -93,29 +64,27 @@ export default function QuoteResultsCard({
   const availableCustomSurcharges = (companyRates.pricing?.custom_surcharges || []).filter((item) =>
     item.active !== false && quoteCustomSurcharges[item.id] === true
   );
+  const hasCharges = dispatcherSurcharges.length > 0 || availableCustomSurcharges.length > 0;
   const hasAppliedSurcharges = dispatcherSurcharges.some((item) => item.active === true)
     || availableCustomSurcharges.some((item) => activeOverrides?.customSurcharges?.[item.id] === true);
   const metroCodes = Array.isArray(quoteData?.metroCodes) && quoteData.metroCodes.length > 0 ? quoteData.metroCodes : [];
   const metroCharge = quoteData.metroMatches?.[0]?.charge ?? resolveZoneCharge({ multiplier: 1.2857 }, companyRates, 'metro_multiplier');
-  const metroBadgeLabel = 'Metro Zone (' + formatZoneCharge(metroCharge) + ')';
   const routeLegs = Array.isArray(quoteData?.legsDetails) ? quoteData.legsDetails : [];
+  const rateUnit = isMileageQuote ? 'mi' : 'h';
+  const summary = [
+    isMileageQuote ? `${Number(quoteData.totalMiles || 0).toFixed(1)} mi` : `${Number(timeMetrics?.rawTotalHours || 0).toFixed(2)} h`,
+    !isMileageQuote && quoteData.totalMiles ? `${Math.round(quoteData.totalMiles)} mi` : null,
+    `$${Number(effectiveRate || 0).toFixed(isMileageQuote ? 2 : 0)}/${rateUnit}`,
+    isFixedEquipmentQuote ? quoteData.weightTierLabel || 'Equipment weight class' : null,
+  ].filter(Boolean).join(' · ');
 
   // Dispatcher map should show the full base-to-base route; client map should show pickup-to-dropoff.
   const routeAddresses = isDispatcherView
-    ? (Array.isArray(quoteData?.routeAddresses) && quoteData.routeAddresses.length > 0
-      ? quoteData.routeAddresses.filter(Boolean)
-      : [])
-    : (Array.isArray(quoteData?.cleanWaypoints) && quoteData.cleanWaypoints.length > 0
-      ? quoteData.cleanWaypoints.filter(Boolean)
-      : []);
-
+    ? (Array.isArray(quoteData?.routeAddresses) ? quoteData.routeAddresses.filter(Boolean) : [])
+    : (Array.isArray(quoteData?.cleanWaypoints) ? quoteData.cleanWaypoints.filter(Boolean) : []);
   const origin = encodeURIComponent(routeAddresses[0] || '');
   const destination = encodeURIComponent(routeAddresses[routeAddresses.length - 1] || '');
-  const intermediateWaypoints = routeAddresses
-    .slice(1, -1)
-    .map((wp) => encodeURIComponent(wp))
-    .join('|');
-
+  const intermediateWaypoints = routeAddresses.slice(1, -1).map((wp) => encodeURIComponent(wp)).join('|');
   const mapEmbedUrl =
     routeAddresses.length >= 2 && GOOGLE_MAPS_API_KEY
       ? `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_API_KEY}&origin=${origin}&destination=${destination}${
@@ -132,98 +101,98 @@ export default function QuoteResultsCard({
       type: 'SET_OVERRIDE',
       payload: {
         key: 'customSurcharges',
-        value: {
-          ...(activeOverrides?.customSurcharges || {}),
-          [id]: activeOverrides?.customSurcharges?.[id] !== true,
-        },
+        value: { ...(activeOverrides?.customSurcharges || {}), [id]: activeOverrides?.customSurcharges?.[id] !== true },
       },
     });
   };
 
   return (
-    <div
+    <section
       ref={resultsRef}
-      className="mt-6 lg:mt-0 bg-sunken border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-5 transition-all min-w-0"
+      aria-labelledby="quote-ticket-title"
+      className="min-w-0 space-y-6 rounded-2xl border border-slate-800 bg-panel p-5 sm:p-6"
     >
-      {/* 1. Single Price Display */}
-      <div className="text-center space-y-1">
-        <span className="text-xs font-mono text-slate-400">
-          {isDispatcherView ? 'Estimated Total Quote' : 'Your Estimated Quote'}
-        </span>
-        <div className="text-4xl font-black text-white tracking-tight">${clientPrice}</div>
-        {isDispatcherView && isFixedEquipmentQuote && (
-          <div className="text-xs text-slate-400">
-            {quoteData.weightTierLabel || 'Equipment weight class'} · ${Number(effectiveRate).toFixed(quoteData.pricingRateMode === 'mileage' ? 2 : 0)}/{quoteData.pricingRateMode === 'mileage' ? 'mi' : 'hr'}
-          </div>
+      <header className="space-y-2">
+        <h2 id="quote-ticket-title" className="m-0 text-sm font-semibold text-slate-400">
+          {isDispatcherView ? 'Quote' : 'Your estimated quote'}
+        </h2>
+        <div aria-live="polite" className="text-6xl font-extrabold leading-none tracking-tight text-white tabular-nums">
+          {'$' + Number(clientPrice || 0).toLocaleString('en-US')}
+        </div>
+        {isDispatcherView && <p className="m-0 text-sm text-slate-400 tabular-nums">{summary}</p>}
+        {isDispatcherView && (permitSurcharge > 0 || attachmentWeight > 0 || (!osow && Number(escort.vehicleCount) > 0)) && (
+          <ul className="m-0 flex list-none flex-wrap gap-2 p-0 text-sm">
+            {permitSurcharge > 0 && (
+              <li aria-label="Permit surcharge" title="Permit surcharge included" className="rounded-md bg-amber-500/10 px-2 py-1 font-semibold text-amber-300 tabular-nums">
+                Permit +${permitSurcharge.toFixed(2)}
+              </li>
+            )}
+            {!osow && Number(escort.vehicleCount) > 0 && (
+              <li className="rounded-md bg-slate-800 px-2 py-1 font-semibold text-slate-200 tabular-nums">
+                {escort.vehicleCount} escort vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}: +${Number(escort.surcharge || 0).toFixed(2)}
+              </li>
+            )}
+            {attachmentWeight > 0 && (
+              <li className="rounded-md bg-slate-800 px-2 py-1 font-semibold text-slate-200">
+                Attachment weight included: {attachmentWeight.toLocaleString()} lbs
+              </li>
+            )}
+          </ul>
         )}
-        {isDispatcherView && permitSurcharge > 0 && (
-          <div aria-label="Permit surcharge" title="Permit surcharge included" className="inline-block bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold text-xs px-2.5 py-0.5 rounded-full mt-1">
-            +${permitSurcharge.toFixed(2)}
-          </div>
-        )}
-        {isDispatcherView && !osow && Number(escort.vehicleCount) > 0 && <div className="inline-block rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-bold text-cyan-300">
-          {escort.vehicleCount} escort vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}: +${Number(escort.surcharge || 0).toFixed(2)}
-        </div>}
-        {isDispatcherView && attachmentWeight > 0 && (
-          <div className="inline-block bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-bold text-xs px-2.5 py-0.5 rounded-full mt-1">
-            Attachment weight included: {attachmentWeight.toLocaleString()} lbs
-          </div>
-        )}
-      </div>
+      </header>
+
+      {isDispatcherView && yardSuggestion}
 
       {!isDispatcherView && (
-        <p role="note" className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs leading-5 text-slate-300">
-          <span className="font-semibold text-blue-300">Estimate notice: </span>
+        <p role="note" className="m-0 rounded-xl bg-sunken px-4 py-3 text-sm leading-6 text-slate-300">
+          <span className="font-semibold text-white">Estimate notice: </span>
           {companyRates?.client_portal?.disclosure || estimateDisclaimer}
         </p>
       )}
 
       {isDispatcherView && (
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
-            {dispatcherSurcharges.map(({ key, active }) => {
-              const style = BADGE_STYLES[key];
-              if (!style) return null;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => toggleOverride(key)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition cursor-pointer ${active ? style.active : style.disabled}`}
-                  title={active ? 'Click to remove surcharge' : 'Click to restore surcharge'}
-                  aria-pressed={active}
-                >
-                  <span>{key === 'metro' ? metroBadgeLabel : style.label}</span>
-                  <span className="rounded bg-black/20 px-1 text-xs font-black leading-none opacity-80">
-                    {active ? '✕' : '↻'}
-                  </span>
-                </button>
-              );
-            })}
-            {availableCustomSurcharges.map((item) => {
-              const active = activeOverrides?.customSurcharges?.[item.id] === true;
-              return (
-              <button key={item.id} type="button" onClick={() => toggleCustomSurcharge(item.id)} title={active ? 'Click to remove surcharge' : 'Click to restore surcharge'} aria-pressed={active} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${active ? 'border-violet-500/30 bg-violet-500/10 text-violet-300' : BADGE_STYLES.custom.disabled}`}>
-                <span>{item.name} ({item.feeType === 'percent' ? `+${item.value}%` : `+$${item.value}`})</span>
-                <span className="rounded bg-black/20 px-1 text-xs font-black leading-none opacity-80">{active ? '✕' : '↻'}</span>
-              </button>
-              );
-            })}
-            {!hasAppliedSurcharges && (
-              <span className="text-xs text-slate-500">No surcharge add-ons applied</span>
-            )}
-          </div>
-          <div className="text-center">
-            <button
-              type="button"
-              aria-expanded={showDetails}
-              onClick={() => dispatch?.({ type: 'TOGGLE_DETAILS' })}
-              className="mt-3 text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-4 cursor-pointer transition"
-            >
-              {showDetails ? '▲ Hide Trip Breakdown' : '▼ Show Trip Breakdown'}
-            </button>
-          </div>
+        <TimeRibbon legs={routeLegs} loadUnloadMinutes={timeMetrics?.loadUnloadMinutes} bufferPercent={timeMetrics?.driveTimeBufferPercent} />
+      )}
 
+      {isDispatcherView && (
+        <div className="space-y-2">
+          <h3 className="m-0 text-sm font-semibold text-slate-200">Charges</h3>
+          {hasCharges && (
+            <div className="flex flex-wrap gap-2">
+              {dispatcherSurcharges.map(({ key, active }) => (
+                <button key={key} type="button" onClick={() => toggleOverride(key)} aria-pressed={Boolean(active)}
+                  title={active ? 'Remove this charge from the quote' : 'Restore this charge'} className={chipClass(active)}>
+                  <span>{key === 'metro' ? `Metro zone (${formatZoneCharge(metroCharge)})` : CHARGE_LABELS[key]}</span>
+                  <Mark active={active} />
+                </button>
+              ))}
+              {availableCustomSurcharges.map((item) => {
+                const active = activeOverrides?.customSurcharges?.[item.id] === true;
+                return (
+                  <button key={item.id} type="button" onClick={() => toggleCustomSurcharge(item.id)} aria-pressed={active}
+                    title={active ? 'Remove this charge from the quote' : 'Restore this charge'} className={chipClass(active)}>
+                    <span>{item.name} ({item.feeType === 'percent' ? `+${item.value}%` : `+$${item.value}`})</span>
+                    <Mark active={active} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {!hasAppliedSurcharges && <p className="m-0 text-sm text-slate-500">No surcharge add-ons applied</p>}
+        </div>
+      )}
+
+      {isDispatcherView && (
+        <div className="space-y-3">
+          <button
+            type="button"
+            aria-expanded={showDetails}
+            onClick={() => dispatch?.({ type: 'TOGGLE_DETAILS' })}
+            className="flex w-full items-center justify-between rounded-lg px-0 text-left text-sm font-semibold text-slate-200 hover:text-white cursor-pointer"
+          >
+            <span>{showDetails ? 'Hide trip breakdown' : 'Show trip breakdown'}</span>
+            <span aria-hidden="true" className="text-slate-500">{showDetails ? '−' : '+'}</span>
+          </button>
           {showDetails && <QuoteTripBreakdown
             state={state}
             dispatch={dispatch}
@@ -244,24 +213,14 @@ export default function QuoteResultsCard({
         </div>
       )}
 
-      {/* 2. Google Maps Minimap Preview */}
       {mapEmbedUrl && (
-        <div className="rounded-xl overflow-hidden border border-slate-800 bg-canvas h-52 w-full">
-          <iframe
-            title="Route Map Preview"
-            width="100%"
-            height="100%"
-            style={{ border: 0 }}
-            loading="lazy"
-            allowFullScreen
-            src={mapEmbedUrl}
-          />
+        <div className="h-52 w-full overflow-hidden rounded-xl bg-canvas">
+          <iframe title="Route Map Preview" width="100%" height="100%" style={{ border: 0 }} loading="lazy" allowFullScreen src={mapEmbedUrl} />
         </div>
       )}
 
       <QuoteSaveForm state={state} dispatch={dispatch} isDispatcherView={isDispatcherView}
         onLogQuote={onLogQuote} onSaveForLater={onSaveForLater} onAcceptQuote={onAcceptQuote} />
-
-    </div>
+    </section>
   );
 }

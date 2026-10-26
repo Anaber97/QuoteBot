@@ -12,10 +12,13 @@ import { normalizeConfig } from './lib/configSchema';
 
 import Header from './components/Header';
 import LoginCard from './components/LoginCard';
-import SurchargeToggles from './components/SurchargeToggles';
-import WaypointList from './components/WaypointList';
 import QuoteResultsCard from './components/QuoteResultsCard';
 import ClientQuoteForm from './components/ClientQuoteForm';
+import DispatchCalculator from './features/quotes/DispatchCalculator';
+import YardSuggestion from './features/quotes/YardSuggestion';
+import { useYardComparison } from './features/quotes/useYardComparison';
+import { rankYards } from './features/quotes/yardComparison';
+import { quoteTotals } from './features/quotes/quoteTotal';
 import QuoteReport from './components/QuoteReport';
 const Settings = lazy(() => import('./components/Settings'));
 import Toast from './components/Toast';
@@ -40,6 +43,8 @@ export default function App() {
   const [showEquipmentCalculator, setShowEquipmentCalculator] = useState(false);
   const [openedLoggedQuote, setOpenedLoggedQuote] = useState(null);
   const [error, setError] = useState(null);
+  const [switchingYard, setSwitchingYard] = useState(false);
+  const lastEquipmentPayload = useRef(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -122,8 +127,9 @@ export default function App() {
   const customClasses = companyRates?.pricing?.custom_truck_classes || [];
 
   // Dispatcher Quote Handler
-  const handleCalculate = async (e) => {
+  const handleCalculate = async (e, { baseId } = {}) => {
     if (e) e.preventDefault();
+    const base = baseId ? availableBases.find((item) => String(item.id) === String(baseId)) : currentBase;
     setLoading(true);
     setError(null);
 
@@ -134,12 +140,12 @@ export default function App() {
       if (cleanWaypoints.length < 1) {
         throw new Error('Please enter a Pick-up location.');
       }
-      if (!currentBase?.address) {
+      if (!base?.address) {
         throw new Error('Add a Base Yard in Settings before calculating a quote.');
       }
 
       const data = await calculateQuoteData({
-        currentBase,
+        currentBase: base,
         waypoints: cleanWaypoints.length === 1 ? [cleanWaypoints[0], cleanWaypoints[0]] : cleanWaypoints,
         selectedTruckClassId: state.selectedTruckClassId,
         isHeavy: state.selectedTruckClassId === 'heavy' || state.selectedTruckClassId === '3',
@@ -151,7 +157,7 @@ export default function App() {
       });
 
       dispatch({ type: 'RESET_QUOTE_OVERRIDES' });
-      setQuoteData({ ...data, appliedCustomSurcharges: state.pendingCustomSurcharges });
+      setQuoteData({ ...data, baseId: base.id, appliedCustomSurcharges: state.pendingCustomSurcharges });
       dispatch({ type: 'SET_OVERRIDE', payload: { key: 'customSurcharges', value: { ...state.pendingCustomSurcharges } } });
 
       setTimeout(() => {
@@ -166,7 +172,9 @@ export default function App() {
   };
 
   // Client Portal Quote Handler
-  const handleClientCalculateQuote = async (clientPayload) => {
+  const handleClientCalculateQuote = async (clientPayload, { baseId } = {}) => {
+    const base = baseId ? availableBases.find((item) => String(item.id) === String(baseId)) : currentBase;
+    if (!isClientPortalUser) lastEquipmentPayload.current = clientPayload;
     const {
       pickupAddr,
       dropoffAddr,
@@ -213,7 +221,7 @@ export default function App() {
           approvalRequired: result.estimate.approvalRequired, cleanWaypoints: routeWaypoints };
       } else {
         data = await calculateQuoteData({
-        currentBase,
+        currentBase: base,
         waypoints: routeWaypoints,
         selectedTruckClassId: isHeavy ? 'heavy' : state.selectedTruckClassId,
         isHeavy,
@@ -237,6 +245,7 @@ export default function App() {
       dispatch({ type: 'RESET_QUOTE_OVERRIDES' });
       setQuoteData({
         ...data,
+        baseId: base?.id,
         permitFee,
         equipmentMeta: {
           name: equipmentName,
@@ -337,6 +346,30 @@ export default function App() {
     operation.complete(); saved.complete();
   };
 
+  // Best yard: re-price the current quote from every other yard and offer the cheapest.
+  const yardLegs = useYardComparison({
+    waypoints: quoteData?.cleanWaypoints,
+    yardCount: availableBases.length,
+    enabled: Boolean(quoteData && !isClientPortalUser && quoteData.baseId != null && Array.isArray(quoteData.legsDetails)),
+  });
+  const bestYard = rankYards({
+    yards: yardLegs,
+    currentYardId: quoteData?.baseId,
+    quoteData,
+    priceFor: (candidate) => quoteTotals(candidate, state, companyRates, true).total,
+  })[0] || null;
+
+  const handleSwitchYard = async (baseId) => {
+    dispatch({ type: 'SET_BASE', payload: baseId });
+    setSwitchingYard(true);
+    try {
+      if (showEquipmentCalculator && lastEquipmentPayload.current) await handleClientCalculateQuote(lastEquipmentPayload.current, { baseId });
+      else await handleCalculate(null, { baseId });
+    } finally {
+      setSwitchingYard(false);
+    }
+  };
+
   if (legalRoute === '/privacy') return <LegalPage type="privacy" />;
   if (legalRoute === '/terms') return <LegalPage type="terms" />;
 
@@ -421,134 +454,29 @@ export default function App() {
                 </div>
               ) : (
                 /* DISPATCHER / MANAGER CALCULATOR VIEW */
-                <>
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                    <div className="lg:col-span-7 bg-panel border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-6 min-w-0">
-                    <div className="border-b border-slate-800/80 pb-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <h2 className="text-lg font-bold text-white tracking-tight">{showEquipmentCalculator ? 'Equipment Calculator' : 'Quote Generator'}</h2>
-                        <button type="button" onClick={() => { setShowEquipmentCalculator((current) => !current); setQuoteData(null); setError(null); }} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400 hover:bg-blue-500/10">
-                          {showEquipmentCalculator ? 'Back to Main Calculator' : 'Open Equipment Calculator'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {error && (
-                      <div className="p-3 bg-red-950/40 border border-red-800/50 rounded-xl text-red-400 text-xs font-medium">
-                        {error}
-                      </div>
-                    )}
-
-                    {showEquipmentCalculator ? (
-                      <Suspense fallback={<LoadingPanel />}><ClientQuoteForm companyRates={companyRates} onCalculate={handleClientCalculateQuote} isCalculating={loading} title="Equipment Calculator" isDispatcherView onReset={resetCalculatorState} initialQuote={openedLoggedQuote} /></Suspense>
-                    ) : <form onSubmit={handleCalculate} className="space-y-5">
-                      {/* Base Shop Selector */}
-                      <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1.5">
-                          Base Dispatch Location
-                        </label>
-                        <select
-                          aria-label="Base dispatch location"
-                          value={state.selectedBaseId}
-                          onChange={(e) => dispatch({ type: 'SET_BASE', payload: e.target.value })}
-                          className="w-full bg-canvas border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          {availableBases.length === 0 && <option value="">Add a base yard in Settings</option>}
-                          {availableBases.map((loc) => (
-                            <option key={loc.id} value={loc.id}>
-                              {loc.name} ({loc.address})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Tow Vehicle / Class Selector */}
-                      <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1.5">
-                          Tow Vehicle Class
-                        </label>
-                        <select
-                          aria-label="Tow vehicle class"
-                          value={state.selectedTruckClassId}
-                          onChange={(e) => dispatch({ type: 'SET_TRUCK_CLASS', payload: e.target.value })}
-                          className="w-full bg-canvas border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                        >
-                          <option value="">
-                            Standard Tow / Flatbed (${companyRates?.pricing?.hourly_min || 125}/hr)
-                          </option>
-                          {customClasses.map((cls) => (
-                            <option key={cls.id} value={cls.id}>
-                              {cls.name} (${cls.minRate}/hr)
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-[13px] font-semibold text-slate-400 block mb-1.5">
-                          Route Waypoints
-                        </label>
-                        <WaypointList
-                          waypoints={Array.isArray(state.waypoints) ? state.waypoints : ['', '']}
-                          inputRefs={{ current: [] }}
-                          onChange={(index, value) =>
-                            dispatch({ type: 'UPDATE_WAYPOINT', payload: { index, value } })
-                          }
-                          onRemove={(index) => dispatch({ type: 'REMOVE_WAYPOINT', payload: index })}
-                          onAdd={() => dispatch({ type: 'ADD_WAYPOINT' })}
-                          onReset={resetCalculatorState}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1.5">
-                          Manual Surcharge Overrides
-                        </label>
-                        <SurchargeToggles state={state} dispatch={dispatch} companyRates={companyRates} />
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 font-bold text-xs text-accent-ink rounded-xl transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                      >
-                        {loading ? 'Calculating Route...' : 'Calculate Quote'}
-                      </button>
-                    </form>}
-                    </div>
-
-                    <div className="lg:col-span-5 mt-6 lg:mt-0">
-                      {quoteData ? (
-                        <QuoteResultsCard
-                          state={{
-                            ...state,
-                            activeOverrides: state.activeOverrides,
-                            quoteData,
-                            customRate: state.customRateInput,
-                          }}
-                          dispatch={dispatch}
-                          resultsRef={resultsRef}
-                          onLogQuote={handleLogQuote}
-                          companyRates={companyRates}
-                          isDispatcherView={true}
-                        />
-                      ) : (
-                        <div className="hidden lg:block p-6 bg-panel border border-slate-800 rounded-2xl text-slate-400 space-y-2">
-                          <h4 className="text-sm font-bold text-slate-200">Quote breakdown</h4>
-                          <p className="text-sm max-w-sm">
-                            Enter pick-up/drop-off locations and click <strong className="text-slate-200">Calculate Quote</strong> to display live route estimates here.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-10 border-t border-slate-800/70 pt-5 text-center">
-                    <p className="text-xs text-slate-400">
-                      Quotes are electronically generated estimates and may contain occasional inaccuracies. Final pricing should be confirmed before dispatch.
-                    </p>
-                  </div>
-                </>
+                <DispatchCalculator
+                  state={state}
+                  dispatch={dispatch}
+                  companyRates={companyRates}
+                  bases={availableBases}
+                  currentBase={currentBase}
+                  truckClasses={customClasses}
+                  quoteData={quoteData}
+                  loading={loading}
+                  error={error}
+                  showEquipmentCalculator={showEquipmentCalculator}
+                  onShowEquipmentCalculator={(equipment) => {
+                    if (equipment === showEquipmentCalculator) return;
+                    setShowEquipmentCalculator(equipment); setQuoteData(null); setError(null);
+                  }}
+                  onCalculate={handleCalculate}
+                  onEquipmentCalculate={handleClientCalculateQuote}
+                  onReset={resetCalculatorState}
+                  openedLoggedQuote={openedLoggedQuote}
+                  onLogQuote={handleLogQuote}
+                  resultsRef={resultsRef}
+                  yardSuggestion={<YardSuggestion suggestion={bestYard} onSwitch={handleSwitchYard} busy={switchingYard} />}
+                />
               )
             )}
           </>
