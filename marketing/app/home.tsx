@@ -1,16 +1,17 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
-import { BASE_YARD, JOBS, duration, escortsFor, money, quote, type Job, type QuoteOptions } from './quote-model';
+import { useEffect, useState } from 'react';
+import { JOBS, YARDS, bestYard, duration, money, quote, type YardId } from './quote-model';
 import { copy, faqs, plans } from './site-content';
 
 const APP_URL = 'https://app.towcalc.com';
 const REQUEST_URL = `${APP_URL}/?request`;
+const DEMO_URL = `mailto:${copy.contactEmail}?subject=${encodeURIComponent(copy.demoEmail.subject)}&body=${encodeURIComponent(copy.demoEmail.body)}`;
 
 function useReveal() {
   useEffect(() => {
     document.documentElement.classList.add('js');
-    const targets = document.querySelectorAll('[data-reveal], .shutter');
+    const targets = document.querySelectorAll('[data-reveal]');
     if (!('IntersectionObserver' in window)) {
       targets.forEach((el) => el.classList.add('is-in'));
       return;
@@ -28,294 +29,75 @@ function useReveal() {
   }, []);
 }
 
-function QuotePanel({ job, options, children, compact = false }: { job: Job; options?: QuoteOptions; children?: React.ReactNode; compact?: boolean }) {
-  const result = quote(job, options);
-  return (
-    <div className={`qp${compact ? ' qp-compact' : ''}`}>
-      {children}
-      {!compact && (
-        <ol className="qp-route" aria-label="Route">
-          {job.legs.map((leg, index) => (
-            <li key={`${leg.from}-${leg.to}`} className={index === 0 || index === job.legs.length - 1 ? 'is-deadhead' : ''}>
-              <span>{leg.from} → {leg.to}</span>
-              <span className="num">{leg.miles} mi · {duration(leg.minutes)}</span>
-            </li>
-          ))}
-        </ol>
-      )}
-      <dl className="qp-lines">
-        {result.lines.map((line) => (
-          <div key={line.label}>
-            <dt>{line.label}{line.detail && <small>{line.detail}</small>}</dt>
-            <dd className="num">{money(line.amount, true)}</dd>
-          </div>
-        ))}
-      </dl>
-      <div className="qp-total">
-        <div>
-          <span>Quote</span>
-          <small>{result.miles} mi · {duration(result.driveMinutes)} drive + 10% · rounded to ${result.rounding}</small>
-        </div>
-        <strong className="num" aria-live="polite">{money(result.total)}</strong>
-      </div>
-    </div>
-  );
-}
-
-function HeroFragment() {
+function LiveQuote() {
   const [jobId, setJobId] = useState('sedan');
+  const [yard, setYard] = useState<YardId>('henderson');
   const [afterHours, setAfterHours] = useState(false);
   const job = JOBS.find((item) => item.id === jobId) ?? JOBS[0];
+  const result = quote(job, yard, afterHours);
+  const better = bestYard(job, yard, afterHours);
+
   return (
-    <div className="ui-window" data-ui>
-      <div className="ui-bar">
-        <span>New quote</span>
-        <span className="ui-muted">Base: {BASE_YARD}</span>
-      </div>
-      <div className="ui-body">
-        <div className="seg" role="radiogroup" aria-label="Sample call">
+    <div className="demo" data-ui>
+      <div className="demo-bar">
+        <span>{copy.demo.label}</span>
+        <div className="seg" role="radiogroup" aria-label="Sample job">
           {JOBS.map((item) => (
-            <button key={item.id} type="button" role="radio" aria-checked={item.id === jobId} onClick={() => setJobId(item.id)}>
-              {item.label}
-            </button>
+            <button key={item.id} type="button" role="radio" aria-checked={item.id === jobId} onClick={() => setJobId(item.id)}>{item.label}</button>
           ))}
         </div>
-        <div className="ui-fields">
-          <label>Pickup<span>{job.pickup}</span></label>
-          <label>Drop-off<span>{job.dropoff}</span></label>
-          <label>Vehicle<span>{job.vehicle} · {job.rateClass}</span></label>
-        </div>
-        <label className="switch">
-          <input type="checkbox" checked={afterHours} onChange={(event) => setAfterHours(event.target.checked)} />
-          <span aria-hidden="true" />
-          After-hours call
-        </label>
-        <QuotePanel job={job} options={{ afterHours }} />
       </div>
-    </div>
-  );
-}
 
-const outputs = ['Quote PDF', 'Customer email', 'Dispatch request', 'Client portal'] as const;
-type Output = typeof outputs[number];
+      <div className="demo-body">
+        <div className="demo-total">
+          <div>
+            <span className="demo-vehicle">{job.vehicle}</span>
+            <strong className="num" aria-live="polite">{money(result.total)}</strong>
+            <span className="demo-meta num">{result.hours.toFixed(2)} h · {result.miles} mi · {job.rateClass} ${job.hourlyRate}/h</span>
+          </div>
+        </div>
 
-function OutputSheet({ output }: { output: Output }) {
-  const job = JOBS[1];
-  const result = quote(job);
-  if (output === 'Customer email') {
-    return (
-      <article className="sheet sheet-email" data-ui>
-        <header className="sheet-meta">
-          <span><b>From</b> Pineywoods Heavy Recovery &lt;noreply@towcalc.com&gt;</span>
-          <span><b>To</b> ops@pineywoodssiteworks.com</span>
-          <span><b>Subject</b> Your transport quote - Q-2611-0427</span>
-        </header>
-        <div className="email-head">Pineywoods Heavy Recovery</div>
-        <div className="email-body">
-          <p className="email-tag">Quote ready</p>
-          <h4>Your quote is ready</h4>
-          <p>The complete transport quote is attached as a PDF for easy saving and sharing.</p>
-          <div className="email-box">
-            <span>Q-2611-0427</span>
-            <strong>{money(result.total, true)}</strong>
-            <p><b>Customer:</b> {job.customer}<br /><b>Equipment:</b> {job.vehicle}<br /><b>Route:</b> {job.pickup} to {job.dropoff}<br /><b>Permit flags:</b> Overweight, oversize width</p>
-          </div>
-          <p className="email-attach">Q-2611-0427.pdf · 84 KB</p>
-        </div>
-      </article>
-    );
-  }
-  if (output === 'Dispatch request') {
-    return (
-      <article className="sheet sheet-email" data-ui>
-        <header className="sheet-meta">
-          <span><b>To</b> dispatch@pineywoodsrecovery.com</span>
-          <span><b>Subject</b> Dispatch requested - Q-2611-0431</span>
-        </header>
-        <div className="email-head">Pineywoods Heavy Recovery × Pineywoods Site Works</div>
-        <div className="email-body">
-          <p className="email-tag is-action">Action requested</p>
-          <h4>A client is ready to dispatch</h4>
-          <p>Submitted by Marcus Bell. The estimate and BOL are attached.</p>
-          <div className="email-box">
-            <span>Q-2611-0431</span>
-            <strong>{money(result.total, true)}</strong>
-            <p><b>Equipment:</b> {job.vehicle}<br /><b>Route:</b> {job.pickup} to {job.dropoff}<br /><b>BOL:</b> bol-0431.pdf</p>
-          </div>
-          <p className="email-attach">Q-2611-0431.pdf · bol-0431.pdf</p>
-        </div>
-      </article>
-    );
-  }
-  if (output === 'Client portal') {
-    return (
-      <article className="sheet sheet-portal" data-ui>
-        <div className="portal-top"><span>Pineywoods Heavy Recovery</span><span>Client portal · Pineywoods Site Works</span></div>
-        <h4>Request a quote</h4>
-        <div className="portal-grid">
-          <label>Pickup<span>{job.pickup}</span></label>
-          <label>Drop-off<span>{job.dropoff}</span></label>
-          <label>Equipment<span>CAT 320</span></label>
-          <label>Operating weight<span className="num">50,100 lb</span></label>
-          <label>Width<span className="num">112 in</span></label>
-          <label>Height<span className="num">118 in</span></label>
-        </div>
-        <div className="portal-result">
-          <div><span>Estimated total</span><strong className="num">{money(result.total, true)}</strong></div>
-          <p>Permit required: oversize width. Your request goes to dispatch for approval.</p>
-          <button type="button" tabIndex={-1}>Request dispatch</button>
-        </div>
-      </article>
-    );
-  }
-  return (
-    <article className="sheet sheet-pdf" data-ui>
-      <header className="pdf-head">
-        <div><strong>Pineywoods Heavy Recovery</strong><span>Henderson, TX · (903) 555-0142</span></div>
-        <div className="pdf-ref"><span>Transport quote</span><strong>Q-2611-0427</strong><span>Oct 26, 2026</span></div>
-      </header>
-      <dl className="pdf-facts">
-        <div><dt>Customer</dt><dd>{job.customer}</dd></div>
-        <div><dt>Equipment</dt><dd>{job.vehicle}</dd></div>
-        <div><dt>Pickup</dt><dd>{job.pickup}</dd></div>
-        <div><dt>Drop-off</dt><dd>{job.dropoff}</dd></div>
-      </dl>
-      <table className="pdf-lines">
-        <thead><tr><th>Item</th><th>Detail</th><th>Amount</th></tr></thead>
-        <tbody>
-          {result.lines.map((line) => <tr key={line.label}><td>{line.label}</td><td>{line.detail}</td><td className="num">{money(line.amount, true)}</td></tr>)}
-        </tbody>
-        <tfoot><tr><td colSpan={2}>Total, rounded to $25</td><td className="num">{money(result.total, true)}</td></tr></tfoot>
-      </table>
-      <p className="pdf-note">This non-binding estimate is based on the information submitted. Final pricing may change after verification of the route, equipment weight and dimensions, permits and site access.</p>
-    </article>
-  );
-}
-
-function Showcase() {
-  const [output, setOutput] = useState<Output>('Quote PDF');
-  return (
-    <section className="showcase frame" id="product" aria-labelledby="showcase-title">
-      <div className="showcase-index" data-reveal>
-        <h2 id="showcase-title" className="lead-text">{copy.showcase.heading}</h2>
-        <div className="output-list" role="tablist" aria-label="Quote outputs">
-          {outputs.map((name) => (
-            <button key={name} type="button" role="tab" aria-selected={name === output} onClick={() => setOutput(name)} onFocus={() => setOutput(name)}>
-              {name}
-            </button>
-          ))}
-        </div>
-        <p>{copy.showcase.text}</p>
-      </div>
-      <div className="showcase-stage">
-        <div key={output} className="sheet-swap"><OutputSheet output={output} /></div>
-      </div>
-    </section>
-  );
-}
-
-function HowItWorks() {
-  const job = JOBS[0];
-  return (
-    <section className="how" id="how" aria-labelledby="how-title">
-      <div className="how-column frame">
-        <h2 id="how-title" className="head-text" data-reveal>{copy.howItWorks.heading}</h2>
-        <div className="exchange" data-reveal>
-          <p className="exchange-say">{copy.howItWorks.steps[0]}</p>
-          <div className="call" data-ui>
-            <div className="rate-row"><span>Light duty</span><b className="num">$125 / h</b></div>
-            <div className="rate-row"><span>Medium duty</span><b className="num">$165 / h</b></div>
-            <div className="rate-row"><span>Heavy haul</span><b className="num">$200 / h</b></div>
-            <div className="rate-row"><span>Drive-time buffer</span><b className="num">10%</b></div>
-            <div className="rate-row"><span>Round quotes to</span><b className="num">$25</b></div>
-          </div>
-          <div className="response" data-ui><span className="ok-dot" aria-hidden="true" />Saved. Every dispatcher now quotes from these.</div>
-        </div>
-        <div className="exchange" data-reveal>
-          <p className="exchange-say">{copy.howItWorks.steps[1]}</p>
-          <div className="call" data-ui>
-            <label className="typed">Pickup<span>{job.pickup}</span></label>
-            <label className="typed">Drop-off<span>{job.dropoff}</span></label>
-          </div>
-          <div className="response" data-ui>
-            <ol className="leg-list">
-              {job.legs.map((leg) => <li key={leg.to}><span>{leg.from} → {leg.to}</span><span className="num">{leg.miles} mi · {duration(leg.minutes)}</span></li>)}
-            </ol>
-          </div>
-        </div>
-        <div className="exchange exchange-final" data-reveal>
-          <p className="exchange-say">{copy.howItWorks.steps[2]}</p>
-          <div className="final" data-ui>
-            <div className="final-head"><span>{job.vehicle}</span><span>{job.customer} · (903) 555-0118</span></div>
-            <QuotePanel job={job} compact />
-            <div className="final-actions"><button type="button" tabIndex={-1}>Email quote</button><button type="button" tabIndex={-1}>Download PDF</button><button type="button" tabIndex={-1}>Save to log</button></div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Rules() {
-  const job = JOBS[1];
-  const [mode, setMode] = useState<'hourly' | 'mileage'>('hourly');
-  const [zone, setZone] = useState(false);
-  const [width, setWidth] = useState(job.widthIn);
-  const [rounding, setRounding] = useState(25);
-  const widthId = useId();
-  const escort = escortsFor(width);
-  return (
-    <section className="rules" id="rules" aria-labelledby="rules-title">
-      <div className="rules-field" aria-label="Quote that updates as you change the rules">
-        <div className="rules-output" data-ui>
-          <div className="ui-bar"><span>{job.vehicle}</span><span className="ui-muted">{job.customer}</span></div>
-          <div className="ui-body">
-            <QuotePanel job={job} options={{ mode, zoneSurcharge: zone, widthIn: width, rounding }} />
-          </div>
-        </div>
-      </div>
-      <h2 id="rules-title" className="head-text rules-title">{copy.rules.heading}</h2>
-      <div className="rules-copy">
-        <div className="rule-block">
-          <h3 className="lead-text">{copy.rules.pricingMode.heading}</h3>
-          <p>{copy.rules.pricingMode.text}</p>
-          <div className="seg seg-light" role="radiogroup" aria-label="Pricing mode">
-            <button type="button" role="radio" aria-checked={mode === 'hourly'} onClick={() => setMode('hourly')}>Hourly</button>
-            <button type="button" role="radio" aria-checked={mode === 'mileage'} onClick={() => setMode('mileage')}>Per mile</button>
-          </div>
-        </div>
-        <div className="rule-block">
-          <h3 className="lead-text">{copy.rules.zones.heading}</h3>
-          <p>{copy.rules.zones.text}</p>
-          <label className="switch switch-light">
-            <input type="checkbox" checked={zone} onChange={(event) => setZone(event.target.checked)} />
-            <span aria-hidden="true" />
-            Route passes through the Dallas core zone
-          </label>
-          <figure className="rule-photo">
-            <img src="/assets/bush-turnpike-at-us75-february-2020.jpg" width={1920} height={1265} alt="The Bush Turnpike interchange with US 75 in north Dallas" loading="lazy" decoding="async" />
-          </figure>
-        </div>
-        <div className="rule-block">
-          <h3 className="lead-text">{copy.rules.oversize.heading}</h3>
-          <p>{copy.rules.oversize.text}</p>
-          <label htmlFor={widthId} className="range-label">Load width <b className="num">{width} in</b> {escort.vehicles ? `· ${escort.vehicles} escort${escort.vehicles > 1 ? 's' : ''}` : width > 102 ? '· permit' : '· legal'}</label>
-          <input id={widthId} className="range" type="range" min={84} max={180} step={2} value={width} onChange={(event) => setWidth(Number(event.target.value))} />
-          <figure className="rule-photo">
-            <img src="/assets/globe-trailers-detachable-gooseneck-trailer.jpg" width={1000} height={461} alt="A Komatsu PC400 excavator loaded on a detachable gooseneck trailer" loading="lazy" decoding="async" />
-          </figure>
-        </div>
-        <div className="rule-block">
-          <h3 className="lead-text">{copy.rules.rounding.heading}</h3>
-          <p>{copy.rules.rounding.text}</p>
-          <div className="seg seg-light" role="radiogroup" aria-label="Round to">
-            {[5, 25, 50].map((value) => (
-              <button key={value} type="button" role="radio" aria-checked={rounding === value} onClick={() => setRounding(value)}>${value}</button>
+        <div className="demo-row">
+          <span className="demo-label">{copy.demo.yardLabel}</span>
+          <div className="seg seg-yards" role="radiogroup" aria-label={copy.demo.yardLabel}>
+            {YARDS.map((item) => (
+              <button key={item.id} type="button" role="radio" aria-checked={item.id === yard} onClick={() => setYard(item.id)}>{item.name.replace(' yard', '')}</button>
             ))}
           </div>
         </div>
+
+        {better && (
+          <div className="demo-suggest" role="status">
+            <p><b>{better.name}</b> {copy.demo.wouldQuote} <em>{money(better.savings)} {copy.demo.less}</em>{better.minutesSaved > 0 ? ` · ${better.minutesSaved} min less driving` : ''}.</p>
+            <button type="button" onClick={() => setYard(better.id)}>{copy.demo.switchYard} {better.name}</button>
+          </div>
+        )}
+
+        <label className="switch">
+          <input type="checkbox" checked={afterHours} onChange={(event) => setAfterHours(event.target.checked)} />
+          <span aria-hidden="true" />
+          {copy.demo.afterHours}
+        </label>
+
+        <ol className="demo-route" aria-label="Route">
+          {result.legs.map((item) => (
+            <li key={`${item.from}-${item.to}`} className={item.deadhead ? 'is-deadhead' : ''}>
+              <span>{item.from} → {item.to}</span>
+              <span className="num">{item.miles} mi · {duration(item.minutes)}</span>
+            </li>
+          ))}
+        </ol>
+
+        <dl className="demo-lines">
+          {result.lines.map((line) => (
+            <div key={line.label}>
+              <dt>{line.label} <small>{line.detail}</small></dt>
+              <dd className="num">{money(line.amount, true)}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -324,50 +106,22 @@ function Pricing() {
   const plan = plans[selected];
   return (
     <section className="pricing frame" id="pricing" aria-labelledby="pricing-title">
-      <h2 id="pricing-title" className="sr-heading">Plans</h2>
-      <div className="plan-names" role="tablist" aria-label="Plans">
-        {plans.map((item, index) => (
-          <div key={item.name} className="plan-item">
-            <button type="button" role="tab" aria-selected={index === selected} onClick={() => setSelected(index)} onFocus={() => setSelected(index)}>
+      <div className="pricing-names">
+        <h2 id="pricing-title" className="section-label">{copy.pricing.heading}</h2>
+        <div role="tablist" aria-label="Plans">
+          {plans.map((item, index) => (
+            <button key={item.name} type="button" role="tab" aria-selected={index === selected} onClick={() => setSelected(index)} onFocus={() => setSelected(index)}>
               {item.name}
             </button>
-            {index === selected && <PlanStage plan={item} className="plan-stage-inline" />}
-          </div>
-        ))}
+          ))}
+        </div>
+        <p className="pricing-note">{copy.pricing.note}</p>
       </div>
-      <PlanStage key={plan.name} plan={plan} className="plan-stage" />
-    </section>
-  );
-}
-
-function PlanStage({ plan, className }: { plan: typeof plans[number]; className: string }) {
-  return (
-    <div className={className}>
-      <p className="plan-price"><span className="display-text num">{plan.price}</span>{plan.period && <span className="plan-period">{plan.period}</span>}</p>
-      <p className="plan-annual">{plan.annual}</p>
-      <p className="plan-body">{plan.description}</p>
-      <a className="button" href={REQUEST_URL}>{plan.cta}</a>
-    </div>
-  );
-}
-
-function Questions() {
-  const [selected, setSelected] = useState(0);
-  return (
-    <section className="faq frame" id="questions" aria-labelledby="faq-title">
-      <div className="faq-list">
-        <h2 id="faq-title" className="faq-heading">Common questions</h2>
-        {faqs.map((item, index) => (
-          <div key={item.q} className="faq-item">
-            <button type="button" aria-expanded={index === selected} onClick={() => setSelected(index)} onFocus={() => setSelected(index)} onMouseEnter={() => setSelected(index)}>
-              <span className="dot" aria-hidden="true" />{item.q}
-            </button>
-            {index === selected && <p className="faq-inline">{item.a}</p>}
-          </div>
-        ))}
-      </div>
-      <div className="faq-pane" aria-live="polite">
-        <p key={selected} className="faq-answer">{faqs[selected].a}</p>
+      <div key={plan.name} className="pricing-stage">
+        <p className="pricing-figure"><span className="num">{plan.price}</span>{plan.period && <small>{plan.period}</small>}</p>
+        <p className="pricing-annual">{plan.annual}</p>
+        <p className="pricing-body">{plan.description}</p>
+        <a className="button" href={DEMO_URL}>{plan.cta}</a>
       </div>
     </section>
   );
@@ -379,66 +133,113 @@ export default function Home() {
     <>
       <header className="nav frame">
         <a href="#top" className="wordmark" aria-label="TowCalc home">
-          <img src="/towcalc_fulllogo_dark.svg" width={150} height={46} alt="TowCalc Pro" />
+          <img src="/towcalc_fulllogo_light.svg" width={150} height={46} alt="TowCalc Pro" />
         </a>
         <nav aria-label="Main">
-          <a href="#product">{copy.nav.product}</a>
-          <a href="#rules">{copy.nav.rules}</a>
+          <a href="#leaks">{copy.nav.leaks}</a>
+          <a href="#setup">{copy.nav.setup}</a>
+          <a href="#trust">{copy.nav.trust}</a>
           <a href="#pricing">{copy.nav.pricing}</a>
-          <a href="#questions">{copy.nav.questions}</a>
           <a href={APP_URL}>{copy.nav.logIn}</a>
         </nav>
-        <a className="button button-small" href={REQUEST_URL}>{copy.nav.requestAccess}</a>
+        <a className="button button-small" href={DEMO_URL}>{copy.nav.demo}</a>
       </header>
 
       <main id="top">
-        <section className="hero" aria-labelledby="hero-title">
-          <div className="hero-copy frame">
-            <h1 id="hero-title" className="display-text">{copy.hero.headlineLine1}<br /> {copy.hero.headlineLine2}</h1>
-            <p className="lead-text">{copy.hero.text}</p>
-            <a className="button" href={REQUEST_URL}>{copy.hero.button}</a>
+        <section className="hero frame" aria-labelledby="hero-title">
+          <div className="hero-copy">
+            <h1 id="hero-title">{copy.hero.headlineLine1}<br />{copy.hero.headlineLine2}</h1>
+            <p>{copy.hero.text}</p>
+            <div className="hero-actions">
+              <a className="button" href={DEMO_URL}>{copy.hero.button}</a>
+              <a className="text-link demo-link" href="#demo">{copy.hero.secondary}</a>
+            </div>
           </div>
-          <div className="hero-stage">
-            <HeroFragment />
+          <div className="hero-stage" id="demo">
+            <LiveQuote />
+            <p className="demo-footnote">{copy.demo.footnote}</p>
           </div>
         </section>
 
-        <Showcase />
-        <HowItWorks />
+        <section className="leaks frame" id="leaks" aria-labelledby="leaks-title">
+          <h2 id="leaks-title" className="section-heading" data-reveal>{copy.leaks.heading}</h2>
+          <ul className="leak-list">
+            {copy.leaks.items.map((item) => (
+              <li key={item.leak} className="leak" data-reveal>
+                <h3>{item.leak}</h3>
+                <p>{item.fix}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
 
-        <figure className="band shutter">
-          <img src="/assets/hth-winter-recovery.jpg" width={1800} height={1200} alt="A heavy rotator wrecker working a roadside recovery at night in a snowstorm" loading="eager" decoding="async" />
-          <figcaption className="frame">{copy.photoCaption}</figcaption>
-        </figure>
+        <section className="built" aria-labelledby="built-title">
+          <div className="frame built-inner" data-reveal>
+            <h2 id="built-title">{copy.built.heading}</h2>
+            <p>{copy.built.text}</p>
+          </div>
+        </section>
 
-        <Rules />
+        <section className="setup frame" id="setup" aria-labelledby="setup-title">
+          <h2 id="setup-title" className="section-heading" data-reveal>{copy.setup.heading}</h2>
+          <ol className="setup-steps" data-reveal>
+            {copy.setup.steps.map((step) => (
+              <li key={step.title}>
+                <h3>{step.title}</h3>
+                <p>{step.text}</p>
+              </li>
+            ))}
+          </ol>
+          <ul className="setup-fit" data-reveal>
+            {copy.setup.fit.map((line) => <li key={line}>{line}</li>)}
+          </ul>
+        </section>
+
+        <section className="trust" id="trust" aria-labelledby="trust-title">
+          <div className="frame trust-inner" data-reveal>
+            <div>
+              <h2 id="trust-title">{copy.trust.heading}</h2>
+              <p>{copy.trust.text}</p>
+            </div>
+            <ul>
+              {copy.trust.points.map((point) => <li key={point}>{point}</li>)}
+            </ul>
+          </div>
+        </section>
+
         <Pricing />
-        <Questions />
 
-        <section className="cta" id="access" aria-labelledby="cta-title">
-          <div className="frame cta-inner">
-            <h2 id="cta-title" className="display-text">{copy.closing.headlineLine1}<br /> {copy.closing.headlineLine2}</h2>
-            <div className="cta-side">
-              <p>{copy.closing.text}</p>
-              <a className="button button-ink" href={REQUEST_URL}>{copy.closing.button}</a>
+        <section className="faq frame" id="questions" aria-labelledby="faq-title">
+          <h2 id="faq-title" className="section-label">{copy.questions.heading}</h2>
+          <div className="faq-list">
+            {faqs.map((item, index) => (
+              <details key={item.q} open={index === 0}>
+                <summary>{item.q}</summary>
+                <p>{item.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section className="closing frame" aria-labelledby="closing-title">
+          <h2 id="closing-title">{copy.closing.headlineLine1}<br />{copy.closing.headlineLine2}</h2>
+          <div className="closing-side">
+            <p>{copy.closing.text}</p>
+            <div className="hero-actions">
+              <a className="button" href={DEMO_URL}>{copy.closing.button}</a>
+              <a className="text-link" href={REQUEST_URL}>{copy.closing.secondary}</a>
             </div>
           </div>
-          <figure className="cta-photo">
-            <img src="/assets/kenworth-t650-tow-truck.jpg" width={1920} height={1280} alt="A white and blue Kenworth T650 heavy recovery truck parked on grass" loading="eager" decoding="async" />
-          </figure>
         </section>
       </main>
 
       <footer className="footer frame">
-        <p className="credits">Photographs: &ldquo;HTH Winter Recovery&rdquo; by Great Pacific TV (CC BY 4.0); &ldquo;Kenworth T650 tow truck&rdquo; by Bidgee (CC BY-SA 3.0 AU); &ldquo;Globe Trailers detachable gooseneck trailer&rdquo; by Leighketchum (CC BY-SA 3.0); &ldquo;Bush Turnpike at US75&rdquo; by Danazar (CC BY-SA 4.0); all via Wikimedia Commons. Sample companies and prices are illustrative.</p>
-        <div className="footer-line">
-          <span>{copy.footer.tagline}</span>
-          <nav aria-label="Footer">
-            <a href={APP_URL}>{copy.nav.logIn}</a>
-            <a href={`mailto:${copy.footer.email}`}>{copy.footer.email}</a>
-          </nav>
-          <span>{copy.footer.copyright} · <a href={`${APP_URL}/privacy`}>Privacy</a> · <a href={`${APP_URL}/terms`}>Terms</a></span>
-        </div>
+        <span>{copy.footer.tagline}</span>
+        <nav aria-label="Footer">
+          <a href={APP_URL}>{copy.nav.logIn}</a>
+          <a href={`mailto:${copy.contactEmail}`}>{copy.contactEmail}</a>
+        </nav>
+        <span>{copy.footer.copyright} · <a href={`${APP_URL}/privacy`}>Privacy</a> · <a href={`${APP_URL}/terms`}>Terms</a></span>
       </footer>
     </>
   );

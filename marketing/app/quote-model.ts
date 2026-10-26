@@ -1,137 +1,99 @@
-// Sample jobs and a simplified copy of TowCalc's pricing formula, used by the
-// interactive fragments on the marketing page. Distances and times are
-// representative East Texas figures, not live routing.
+// Sample jobs and a simplified copy of TowCalc's pricing formula for the live quote
+// on the marketing page. Distances are estimated from coordinates for a handful of
+// East Texas towns; they are representative, not live routing.
 
-export type Leg = { from: string; to: string; miles: number; minutes: number };
+type Place = { name: string; lat: number; lng: number };
+
+const PLACES: Record<string, Place> = {
+  henderson: { name: 'Henderson', lat: 32.153, lng: -94.799 },
+  tyler: { name: 'Tyler', lat: 32.351, lng: -95.301 },
+  longview: { name: 'Longview', lat: 32.5, lng: -94.74 },
+  kilgore: { name: 'Kilgore', lat: 32.386, lng: -94.876 },
+  marshall: { name: 'Marshall', lat: 32.545, lng: -94.367 },
+  dallas: { name: 'Dallas', lat: 32.777, lng: -96.797 },
+};
+
+export const YARDS = [
+  { id: 'henderson', name: 'Henderson yard' },
+  { id: 'tyler', name: 'Tyler yard' },
+  { id: 'longview', name: 'Longview yard' },
+] as const;
+export type YardId = typeof YARDS[number]['id'];
 
 export type Job = {
   id: string;
   label: string;
   vehicle: string;
-  customer: string;
   pickup: string;
   dropoff: string;
-  rateClass: 'Light duty' | 'Medium duty' | 'Heavy haul';
+  pickupAddress: string;
+  dropoffAddress: string;
+  rateClass: string;
   hourlyRate: number;
-  mileageRate: number;
   loadMinutes: number;
   weightLb: number;
   widthIn: number;
-  legs: Leg[];
 };
-
-export const BASE_YARD = 'Henderson yard';
 
 export const JOBS: Job[] = [
   {
-    id: 'sedan',
-    label: 'Sedan',
-    vehicle: '2019 Toyota Camry, non-running',
-    customer: 'Dana Whitfield',
-    pickup: '1200 FM 2276, Kilgore, TX',
-    dropoff: '415 S Broadway Ave, Tyler, TX',
-    rateClass: 'Light duty',
-    hourlyRate: 125,
-    mileageRate: 4.5,
-    loadMinutes: 30,
-    weightLb: 3300,
-    widthIn: 72,
-    legs: [
-      { from: BASE_YARD, to: 'Kilgore', miles: 12, minutes: 16 },
-      { from: 'Kilgore', to: 'Tyler', miles: 30, minutes: 36 },
-      { from: 'Tyler', to: BASE_YARD, miles: 37, minutes: 43 },
-    ],
+    id: 'sedan', label: 'Sedan', vehicle: '2019 Camry, non-running', pickup: 'kilgore', dropoff: 'tyler',
+    pickupAddress: '1200 FM 2276, Kilgore', dropoffAddress: '415 S Broadway Ave, Tyler',
+    rateClass: 'Light duty', hourlyRate: 125, loadMinutes: 30, weightLb: 3300, widthIn: 72,
   },
   {
-    id: 'excavator',
-    label: 'Excavator',
-    vehicle: 'CAT 320 excavator, 50,100 lb',
-    customer: 'Pineywoods Site Works',
-    pickup: '3100 US-259, Longview, TX',
-    dropoff: '2400 E End Blvd N, Marshall, TX',
-    rateClass: 'Heavy haul',
-    hourlyRate: 200,
-    mileageRate: 7,
-    loadMinutes: 60,
-    weightLb: 50100,
-    widthIn: 112,
-    legs: [
-      { from: BASE_YARD, to: 'Longview', miles: 24, minutes: 30 },
-      { from: 'Longview', to: 'Marshall', miles: 24, minutes: 28 },
-      { from: 'Marshall', to: BASE_YARD, miles: 40, minutes: 50 },
-    ],
+    id: 'excavator', label: 'Excavator', vehicle: 'CAT 320 excavator, 112 in wide', pickup: 'longview', dropoff: 'marshall',
+    pickupAddress: '3100 US-259, Longview', dropoffAddress: '2400 E End Blvd N, Marshall',
+    rateClass: 'Heavy haul', hourlyRate: 200, loadMinutes: 60, weightLb: 50100, widthIn: 112,
   },
   {
-    id: 'boxtruck',
-    label: 'Box truck',
-    vehicle: '2021 Isuzu NPR box truck',
-    customer: 'Rusk County Moving Co.',
-    pickup: '600 US-79 N, Henderson, TX',
-    dropoff: '2500 Irving Blvd, Dallas, TX',
-    rateClass: 'Medium duty',
-    hourlyRate: 165,
-    mileageRate: 5.5,
-    loadMinutes: 45,
-    weightLb: 14500,
-    widthIn: 96,
-    legs: [
-      { from: BASE_YARD, to: 'Henderson', miles: 3, minutes: 6 },
-      { from: 'Henderson', to: 'Dallas', miles: 125, minutes: 120 },
-      { from: 'Dallas', to: BASE_YARD, miles: 125, minutes: 120 },
-    ],
+    id: 'boxtruck', label: 'Box truck', vehicle: '2021 Isuzu NPR box truck', pickup: 'henderson', dropoff: 'dallas',
+    pickupAddress: '600 US-79 N, Henderson', dropoffAddress: '2500 Irving Blvd, Dallas',
+    rateClass: 'Medium duty', hourlyRate: 165, loadMinutes: 45, weightLb: 14500, widthIn: 96,
   },
 ];
 
-export type QuoteOptions = {
-  mode?: 'hourly' | 'mileage';
-  afterHours?: boolean;
-  zoneSurcharge?: boolean;
-  widthIn?: number;
-  rounding?: number;
-};
-
-export type QuoteLine = { label: string; detail?: string; amount: number };
-
 const BUFFER = 0.1;
+const ROUND_TO = 25;
 const PERMIT_FEE = 150;
 
-export function escortsFor(widthIn: number) {
-  if (widthIn >= 168) return { vehicles: 2, fee: 700 };
-  if (widthIn >= 144) return { vehicles: 1, fee: 350 };
-  return { vehicles: 0, fee: 0 };
+function leg(from: string, to: string) {
+  const a = PLACES[from];
+  const b = PLACES[to];
+  const rad = Math.PI / 180;
+  const h = Math.sin(((b.lat - a.lat) * rad) / 2) ** 2
+    + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(((b.lng - a.lng) * rad) / 2) ** 2;
+  const miles = Math.max(2, Math.round(3958.8 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)) * 1.25));
+  const minutes = Math.max(4, Math.round((miles / (miles < 40 ? 45 : 58)) * 60));
+  return { miles, minutes };
 }
 
-export function quote(job: Job, options: QuoteOptions = {}) {
-  const { mode = 'hourly', afterHours = false, zoneSurcharge = false, rounding = 25 } = options;
-  const widthIn = options.widthIn ?? job.widthIn;
-  const miles = job.legs.reduce((sum, leg) => sum + leg.miles, 0);
-  const driveMinutes = job.legs.reduce((sum, leg) => sum + leg.minutes, 0);
-  const billableHours = (driveMinutes * (1 + BUFFER) + job.loadMinutes) / 60;
-  const base = mode === 'hourly' ? billableHours * job.hourlyRate : miles * job.mileageRate;
-
-  const lines: QuoteLine[] = [
-    mode === 'hourly'
-      ? { label: 'Time', detail: `${billableHours.toFixed(2)} h × $${job.hourlyRate}`, amount: base }
-      : { label: 'Mileage', detail: `${miles} mi × $${job.mileageRate.toFixed(2)}`, amount: base },
+export function quote(job: Job, yard: YardId, afterHours = false) {
+  const legs = [
+    { from: `${PLACES[yard].name} yard`, to: PLACES[job.pickup].name, ...leg(yard, job.pickup), deadhead: true },
+    { from: PLACES[job.pickup].name, to: PLACES[job.dropoff].name, ...leg(job.pickup, job.dropoff), deadhead: false },
+    { from: PLACES[job.dropoff].name, to: `${PLACES[yard].name} yard`, ...leg(job.dropoff, yard), deadhead: true },
   ];
-  let multiplier = 1;
-  if (afterHours) {
-    multiplier *= 1.25;
-    lines.push({ label: 'After hours', detail: '+25%', amount: base * 0.25 });
-  }
-  if (zoneSurcharge) {
-    lines.push({ label: 'Dallas core zone', detail: '+15%', amount: base * multiplier * 0.15 });
-    multiplier *= 1.15;
-  }
-  const needsPermit = job.weightLb > 45000 || widthIn > 102;
-  const permit = needsPermit ? PERMIT_FEE : 0;
-  if (permit) lines.push({ label: 'Permit', detail: widthIn > 102 ? `Oversize width ${widthIn} in` : 'Overweight', amount: permit });
-  const escort = escortsFor(widthIn);
-  if (escort.fee) lines.push({ label: 'Escort', detail: `${escort.vehicles} vehicle${escort.vehicles > 1 ? 's' : ''}`, amount: escort.fee });
+  const driveMinutes = legs.reduce((sum, item) => sum + item.minutes, 0);
+  const hours = (driveMinutes * (1 + BUFFER) + job.loadMinutes) / 60;
+  const time = hours * job.hourlyRate;
+  const lines = [{ label: 'Time', detail: `${hours.toFixed(2)} h × $${job.hourlyRate}`, amount: time }];
+  if (afterHours) lines.push({ label: 'After hours', detail: '+25%', amount: time * 0.25 });
+  const permit = job.weightLb > 45000 || job.widthIn > 102 ? PERMIT_FEE : 0;
+  if (permit) lines.push({ label: 'Oversize permit', detail: 'Texas', amount: permit });
+  const total = Math.round((time * (afterHours ? 1.25 : 1) + permit) / ROUND_TO) * ROUND_TO;
+  return { legs, hours, miles: legs.reduce((sum, item) => sum + item.miles, 0), lines, total };
+}
 
-  const raw = base * multiplier + permit + escort.fee;
-  const total = Math.round(raw / rounding) * rounding;
-  return { miles, driveMinutes, billableHours, lines, raw, total, rounding };
+/** The cheapest other yard for this job, when one would quote less. */
+export function bestYard(job: Job, current: YardId, afterHours = false) {
+  const here = quote(job, current, afterHours);
+  const options = YARDS.filter((yard) => yard.id !== current).map((yard) => {
+    const there = quote(job, yard.id, afterHours);
+    const minutes = (there.legs[0].minutes + there.legs[2].minutes) - (here.legs[0].minutes + here.legs[2].minutes);
+    return { ...yard, savings: here.total - there.total, minutesSaved: -Math.round(minutes * (1 + BUFFER)) };
+  }).filter((yard) => yard.savings > 0).sort((a, b) => b.savings - a.savings);
+  return options[0] ?? null;
 }
 
 export const money = (value: number, cents = false) =>
@@ -140,5 +102,5 @@ export const money = (value: number, cents = false) =>
 export const duration = (minutes: number) => {
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
-  return h ? `${h} h ${String(m).padStart(2, '0')} m` : `${m} m`;
+  return h ? `${h} h ${String(m).padStart(2, '0')} m` : `${m} min`;
 };
