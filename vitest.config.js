@@ -10,5 +10,11 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./test/components/setupTests.js'],
     include: ['test/components/**/*.test.{jsx,js}'],
+    // CI has no .env; src/lib/supabase.js creates its client at import time
+    // and throws without a URL. Tests never reach the network.
+    env: {
+      VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
+      VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+    },
   },
 });

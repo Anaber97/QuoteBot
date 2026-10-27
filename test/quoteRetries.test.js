@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFakeAdmin, createMockReqRes } from './helpers/mockSupabase.js';
+import { moduleMockOptions } from './helpers/moduleMock.js';
 
 test('preview does not save; retrying a save returns one quote and rejects changed input', async (t) => {
   const rows = [];
@@ -18,15 +19,15 @@ test('preview does not save; retrying a save returns one quote and rejects chang
       return { data: rows.find((row) => Object.entries(state.filters).every(([key, value]) => row[key] === value)) || null };
     },
   } });
-  t.mock.module('../api/_security.js', { exports: {
+  t.mock.module('../api/_security.js', moduleMockOptions({ exports: {
     requireUser: async () => ({ admin, profile }),
     enforceRateLimit: async () => {},
     sendApiError: (res, error) => res.status(error.status || 500).json({ error: error.message }),
-  } });
-  t.mock.module('../api/_routes.js', { exports: {
+  } }));
+  t.mock.module('../api/_routes.js', moduleMockOptions({ exports: {
     computeServerRoute: async () => { routes++; return { totalMeters: 32186, rawDriveMinutes: 40, legs: [], customerRoutePoints: [] }; },
     resolveGoogleLocalities: async () => [],
-  } });
+  } }));
   const { default: handler } = await import('../api/createQuote.js?retries');
   const body = { baseId: 'yard', waypoints: ['Public test pickup', 'Public test dropoff'], equipment: { weight: 5000 }, customRate: 1 };
   const call = async (input) => {

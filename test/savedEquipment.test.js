@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { equipmentScope, scopeEquipmentQuery, normalizeSavedEquipment } from '../api/_savedEquipment.js';
 import { validateEquipment } from '../api/saveEquipment.js';
 import { createFakeAdmin, createMockReqRes } from './helpers/mockSupabase.js';
+import { moduleMockOptions } from './helpers/moduleMock.js';
 
 const valid = { make: 'CAT', model: '320', serial_number: 'TEST-1', operating_weight_lbs: 45000, width_in: 102.5, height_in: 138 };
 
@@ -43,10 +44,10 @@ for (const role of ['manager', 'client']) {
       saved_equipment: (state) => { saved = state.payload; return { data: { id: 'id', ...saved } }; },
       equipment_specs: () => { assert.fail('Manual equipment must never enter the shared catalog'); },
     } });
-    t.mock.module('../api/_security.js', { exports: {
+    t.mock.module('../api/_security.js', moduleMockOptions({ exports: {
       requireUser: async () => ({ admin, profile: { id: 'me', role, company_id: 'my-company', client_id: 'my-client' } }),
       enforceRateLimit: async () => {}, sendApiError: (res, error) => res.status(error.status || 500).json({ error: error.message }),
-    } });
+    } }));
     const { default: handler } = await import(`../api/saveEquipment.js?${role}`);
     const { req, res } = createMockReqRes({ method: 'POST', body: { ...valid, company_id: 'other-company', client_id: 'other-client', confidence: 'HIGH' } });
     await handler(req, res);

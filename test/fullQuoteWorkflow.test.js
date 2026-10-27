@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFakeAdmin, createMockReqRes } from './helpers/mockSupabase.js';
 import { canAccessQuote } from '../api/_security.js';
+import { moduleMockOptions } from './helpers/moduleMock.js';
 
 /**
  * FULL WORKFLOW INTEGRATION TEST
@@ -69,20 +70,20 @@ test('sign in -> calculate & save -> reopen -> change status (end-to-end)', asyn
   const managerProfile = { id: 'user-1', role: 'manager', company_id: 'company-a' };
 
   // ----- Step 1: "sign in" is represented by requireUser resolving a profile -----
-  t.mock.module('../api/_security.js', {
+  t.mock.module('../api/_security.js', moduleMockOptions({
     exports: {
       canAccessQuote,
       enforceRateLimit: async () => {},
       sendApiError: (res, error, fallback) => res.status(error?.status || 500).json({ error: error?.status ? error.message : fallback }),
       requireUser: async () => ({ admin: adminFor(store, managerProfile), profile: managerProfile }),
     },
-  });
-  t.mock.module('../api/_routes.js', {
+  }));
+  t.mock.module('../api/_routes.js', moduleMockOptions({
     exports: {
       computeServerRoute: async () => ({ totalMeters: 32186.9, rawDriveMinutes: 45, customerRoutePoints: [], legs: [] }),
       resolveGoogleLocalities: async () => [],
     },
-  });
+  }));
   // ----- Step 2: calculate & save a quote -----
   const { default: createQuoteHandler } = await freshImport('../api/createQuote.js');
   const { req: createReq, res: createRes } = createMockReqRes({
@@ -125,20 +126,20 @@ test('workflow rejects a second manager from a different company trying to reope
   const managerProfile = { id: 'user-1', role: 'manager', company_id: 'company-a' };
   const outsiderProfile = { id: 'user-2', role: 'manager', company_id: 'company-b' };
 
-  t.mock.module('../api/_security.js', {
+  t.mock.module('../api/_security.js', moduleMockOptions({
     exports: {
       canAccessQuote,
       enforceRateLimit: async () => {},
       sendApiError: (res, error, fallback) => res.status(error?.status || 500).json({ error: error?.status ? error.message : fallback }),
       requireUser: async () => ({ admin: adminFor(store, managerProfile), profile: managerProfile }),
     },
-  });
-  t.mock.module('../api/_routes.js', {
+  }));
+  t.mock.module('../api/_routes.js', moduleMockOptions({
     exports: {
       computeServerRoute: async () => ({ totalMeters: 16093.4, rawDriveMinutes: 20, customerRoutePoints: [], legs: [] }),
       resolveGoogleLocalities: async () => [],
     },
-  });
+  }));
   const { default: createQuoteHandler } = await freshImport('../api/createQuote.js');
   const { req: createReq, res: createRes } = createMockReqRes({
     method: 'POST',

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFakeAdmin, createMockReqRes } from './helpers/mockSupabase.js';
 import { canAccessQuote } from '../api/_security.js';
+import { moduleMockOptions } from './helpers/moduleMock.js';
 
 /**
  * API AUTHORIZATION MATRIX
@@ -35,13 +36,13 @@ function mockSecurityModule(overrides = {}) {
 // ===== inviteUser.js: manager-only =====
 
 test('inviteUser is rejected before reaching business logic when caller is not a manager', async (t) => {
-  t.mock.module('../api/_security.js', mockSecurityModule({
+  t.mock.module('../api/_security.js', moduleMockOptions(mockSecurityModule({
     requireUser: async () => {
       const error = new Error('Manager access required.');
       error.status = 403;
       throw error;
     },
-  }));
+  })));
   const { default: handler } = await freshImport('../api/inviteUser.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { email: 'a@b.com', role: 'dispatch', company_id: 'company-a' } });
   await handler(req, res);
@@ -49,9 +50,9 @@ test('inviteUser is rejected before reaching business logic when caller is not a
 });
 
 test('inviteUser rejects an invalid role before any database access', async (t) => {
-  t.mock.module('../api/_security.js', mockSecurityModule({
+  t.mock.module('../api/_security.js', moduleMockOptions(mockSecurityModule({
     requireUser: async () => ({ admin: createFakeAdmin(), profile: { id: 'u1', role: 'manager', company_id: 'company-a' } }),
-  }));
+  })));
   const { default: handler } = await freshImport('../api/inviteUser.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { email: 'a@b.com', role: 'superadmin', company_id: 'company-a' } });
   await handler(req, res);
@@ -59,14 +60,14 @@ test('inviteUser rejects an invalid role before any database access', async (t) 
 });
 
 test('inviteUser succeeds for a manager inviting a dispatcher in their own company', async (t) => {
-  t.mock.module('../api/_security.js', mockSecurityModule({
+  t.mock.module('../api/_security.js', moduleMockOptions(mockSecurityModule({
     requireUser: async () => ({
       admin: createFakeAdmin({
         tableResponders: { company_invites: () => ({ data: [{ id: 'invite-1' }], error: null }) },
       }),
       profile: { id: 'u1', role: 'manager', company_id: 'company-a' },
     }),
-  }));
+  })));
   const { default: handler } = await freshImport('../api/inviteUser.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { email: 'a@b.com', role: 'dispatch', company_id: 'company-a' } });
   await handler(req, res);
@@ -77,13 +78,13 @@ test('inviteUser succeeds for a manager inviting a dispatcher in their own compa
 // ===== appConfig.js GET: tenant isolation =====
 
 test('appConfig GET rejects fetching another company\'s configuration', async (t) => {
-  t.mock.module('../api/_security.js', mockSecurityModule({
+  t.mock.module('../api/_security.js', moduleMockOptions(mockSecurityModule({
     requireUser: async () => {
       const error = new Error('You do not have access to this company.');
       error.status = 403;
       throw error;
     },
-  }));
+  })));
   const { default: handler } = await freshImport('../api/appConfig.js');
   const { req, res } = createMockReqRes({ method: 'GET', query: { company_id: 'company-b' } });
   await handler(req, res);
@@ -91,7 +92,7 @@ test('appConfig GET rejects fetching another company\'s configuration', async (t
 });
 
 test('appConfig GET returns merged config for an authorized caller', async (t) => {
-  t.mock.module('../api/_security.js', mockSecurityModule({
+  t.mock.module('../api/_security.js', moduleMockOptions(mockSecurityModule({
     requireUser: async () => ({
       admin: createFakeAdmin({
         tableResponders: {
@@ -100,7 +101,7 @@ test('appConfig GET returns merged config for an authorized caller', async (t) =
       }),
       profile: { id: 'u1', role: 'manager', company_id: 'company-a' },
     }),
-  }));
+  })));
   const { default: handler } = await freshImport('../api/appConfig.js');
   const { req, res } = createMockReqRes({ method: 'GET', query: { company_id: 'company-a' } });
   await handler(req, res);
@@ -112,13 +113,13 @@ test('appConfig GET returns merged config for an authorized caller', async (t) =
 // ===== appConfig.js POST: manager-only enforcement at the handler level =====
 
 test('appConfig POST rejects a non-manager even with a perfectly valid config body', async (t) => {
-  t.mock.module('../api/_security.js', mockSecurityModule({
+  t.mock.module('../api/_security.js', moduleMockOptions(mockSecurityModule({
     requireUser: async () => {
       const error = new Error('Manager access required.');
       error.status = 403;
       throw error;
     },
-  }));
+  })));
   const { default: handler } = await freshImport('../api/appConfig.js');
   const { req, res } = createMockReqRes({
     method: 'POST',
@@ -133,12 +134,12 @@ test('appConfig POST rejects a non-manager even with a perfectly valid config bo
 
 test('sendQuoteEmail rejects when the quote belongs to a different client account', async (t) => {
   const quote = { id: 'q1', company_id: 'company-a', client_id: 'client-a', quote_source: 'client_portal', applied_surcharges: {} };
-  t.mock.module('../api/_security.js', mockSecurityModule({
+  t.mock.module('../api/_security.js', moduleMockOptions(mockSecurityModule({
     requireUser: async () => ({
       admin: createFakeAdmin({ tableResponders: { quote_logs: () => ({ data: quote, error: null }) } }),
       profile: { id: 'u1', role: 'client', company_id: 'company-a', client_id: 'client-other' },
     }),
-  }));
+  })));
   const { default: handler } = await freshImport('../api/sendQuoteEmail.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { quoteId: quote.id, action: 'action' } });
   await handler(req, res);
