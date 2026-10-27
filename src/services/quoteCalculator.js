@@ -13,6 +13,7 @@ import {
   getMaxOverride,
   calculateFinalQuotes as calculateFinalQuotesPure,
   resolveEscortRequirement,
+  findWeightTier,
 } from '../lib/pricingEngine';
 
 import { evaluateOsow } from '../lib/osow.js';
@@ -164,11 +165,7 @@ export async function calculateQuoteData({
   const clientWeightTiers = clientConfig?.pricing?.use_custom_pricing && Array.isArray(clientConfig?.pricing?.weight_tiers)
     ? clientConfig.pricing.weight_tiers
     : companyRates?.client_portal?.weight_tiers || [];
-  const matchingTier = clientWeightTiers.find((tier) => {
-    const min = Number(tier.minWeight ?? 0) || 0;
-    const max = Number(tier.maxWeight ?? 999999) || 999999;
-    return clientWeight >= min && clientWeight <= max;
-  });
+  const matchingTier = findWeightTier(clientWeightTiers, clientWeight);
 
   if (useWeightTierPricing && !matchingTier) {
     throw new Error(`No equipment weight class is configured for ${Number(clientWeight || 0).toLocaleString()} lbs.`);
@@ -205,6 +202,9 @@ export async function calculateQuoteData({
     pricing,
     config: companyRates,
   });
+  if (useWeightTierPricing && !(baseMinRate > 0)) {
+    throw new Error(`The ${matchingTier.label || 'matching'} weight class has no rate set.`);
+  }
 
   const legsDetails = routeLegs.map((leg, index) => {
     const durationMinutes = Number(((leg.duration?.value || 0) / 60).toFixed(1));
@@ -231,7 +231,7 @@ export async function calculateQuoteData({
   let osow = null;
   if (useWeightTierPricing && companyRates.client_portal?.osow_pricing?.enabled) {
     const { resolveRouteStates } = await import('../lib/routeStates.js');
-    const companyTier = (companyRates.client_portal.weight_tiers || []).find((item) => clientWeight >= Number(item.minWeight) && clientWeight <= Number(item.maxWeight));
+    const companyTier = findWeightTier(companyRates.client_portal.weight_tiers, clientWeight);
     osow = evaluateOsow({ weight: clientWeight, width: equipmentWidth, height: equipmentHeight,
       lengthFt: equipmentLengthFt, overhangFt: equipmentOverhangFt,
       tier: { ...matchingTier, permitCost: matchingTier?.permitCost ?? pricing.base_permit_fee ?? 150, averageClearanceIn: companyTier?.averageClearanceIn, averageVehicleWeightLbs: companyTier?.averageVehicleWeightLbs },
@@ -348,8 +348,8 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
-    surchargeFlatSum: flatSum + (quoteData.osow ? 0 : Number(quoteData?.escort?.surcharge || 0)),
-    permitFee: quoteData.osow ? Number(quoteData.osow.permitFee || 0) + Number(quoteData.escort?.surcharge || 0) : 0,
+    surchargeFlatSum: flatSum,
+    permitFee: (quoteData.osow ? Number(quoteData.osow.permitFee || 0) : 0) + Number(quoteData.escort?.surcharge || 0),
     rounding: quoteData.osow ? Number(quoteData.roundingInterval || roundingInterval) : roundingInterval,
     customRate: customRate != null ? customRate : null,
     customQuantity: effectivePricingQuantity,

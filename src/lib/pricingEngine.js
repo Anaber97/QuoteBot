@@ -205,39 +205,31 @@ export function calculateFinalQuotes({
   flatOverride = 0,
   maxOverride = 0,
 }) {
-  const applyMaximum = (value) => maxOverride > 0 ? Math.min(value, maxOverride) : value;
+  // permitFee carries pass-through costs (permits, escorts). Flat-rate and
+  // capped zones price the haul only; those costs are always added on top.
+  const total = (haul) => roundToNearest((maxOverride > 0 ? Math.min(haul, maxOverride) : haul) + permitFee, rounding);
   if (flatOverride > 0) {
-    const overriddenQuote = roundToNearest(flatOverride, rounding) + permitFee;
-    return {
-      minQuote: applyMaximum(overriddenQuote),
-      maxQuote: applyMaximum(overriddenQuote),
-      customQuote: applyMaximum(overriddenQuote),
-    };
+    const overriddenQuote = total(roundToNearest(flatOverride, rounding));
+    return { minQuote: overriddenQuote, maxQuote: overriddenQuote, customQuote: overriddenQuote };
   }
-
-  const minQuote = roundToNearest(
-    pricingQuantity * minRate * surchargeMultiplier + surchargeFlatSum + permitFee,
-    rounding
-  );
-
-  const maxQuote = roundToNearest(
-    pricingQuantity * maxRate * surchargeMultiplier + surchargeFlatSum + permitFee,
-    rounding
-  );
 
   let customQuote = null;
   if (customRate != null && toFinite(customRate) > 0 && customQuantity != null) {
-    customQuote = roundToNearest(
-      toFinite(customQuantity) * toFinite(customRate) * surchargeMultiplier + surchargeFlatSum + permitFee,
-      rounding
-    );
+    customQuote = total(toFinite(customQuantity) * toFinite(customRate) * surchargeMultiplier + surchargeFlatSum);
   }
 
   return {
-    minQuote: applyMaximum(minQuote),
-    maxQuote: applyMaximum(maxQuote),
-    customQuote: customQuote == null ? null : applyMaximum(customQuote),
+    minQuote: total(pricingQuantity * minRate * surchargeMultiplier + surchargeFlatSum),
+    maxQuote: total(pricingQuantity * maxRate * surchargeMultiplier + surchargeFlatSum),
+    customQuote,
   };
+}
+
+/** Matches on whole pounds, so 20,000.5 lbs lands in the 20,001+ class instead of between classes. */
+export function findWeightTier(tiers = [], weight = 0) {
+  const pounds = Math.ceil(toFinite(weight));
+  return (Array.isArray(tiers) ? tiers : []).find((tier) =>
+    pounds >= toFinite(tier?.minWeight, 0) && pounds <= toFinite(tier?.maxWeight, 999999));
 }
 
 /**

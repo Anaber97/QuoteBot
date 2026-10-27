@@ -12,6 +12,7 @@ import {
   calculateFinalQuotes as calculateFinalQuotesPure,
   calculatePermitRequirements as calculatePermitPure,
   resolveEscortRequirement,
+  findWeightTier,
 } from '../src/lib/pricingEngine.js';
 
 import { evaluateOsow } from '../src/lib/osow.js';
@@ -122,7 +123,10 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const useWeightTierPricing = role === 'client' || input.quoteSource === 'equipment_calculator';
   const tiers = clientConfig?.pricing?.use_custom_pricing && Array.isArray(clientConfig?.pricing?.weight_tiers)
     ? clientConfig.pricing.weight_tiers : config?.client_portal?.weight_tiers || [];
-  const tier = tiers.find((item) => totalWeight >= toFinite(item.minWeight) && totalWeight <= toFinite(item.maxWeight, 999999));
+  const tier = findWeightTier(tiers, totalWeight);
+  if (useWeightTierPricing && !(totalWeight > 0 && toFinite(input.equipment?.width) > 0 && toFinite(input.equipment?.height) > 0)) {
+    throw Object.assign(new Error('Enter the equipment operating weight, width, and height to get a quote.'), { status: 400 });
+  }
   if (useWeightTierPricing && !tier) throw Object.assign(new Error(`No equipment weight class is configured for ${totalWeight.toLocaleString()} lbs.`), { status: 400 });
 
   // Use shared time metrics calculation
@@ -150,6 +154,9 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     pricing,
     config,
   });
+  if (useWeightTierPricing && !(minRate > 0)) {
+    throw Object.assign(new Error(`The ${tier.label || 'matching'} weight class has no rate set.`), { status: 400 });
+  }
 
   // Set up overrides appropriately
   const overrides = role === 'client' ? { afterHours: false, roadClub: false, metro: true, hazard: true, customSurcharges: {} } : input.activeOverrides || {};
@@ -188,7 +195,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
 
   let osow = null;
   if (useWeightTierPricing && config.client_portal?.osow_pricing?.enabled) {
-    const companyTier = (config.client_portal.weight_tiers || []).find((item) => totalWeight >= toFinite(item.minWeight) && totalWeight <= toFinite(item.maxWeight, 999999));
+    const companyTier = findWeightTier(config.client_portal.weight_tiers, totalWeight);
     osow = evaluateOsow({ weight: totalWeight, width: input.equipment?.width, height: input.equipment?.height,
       lengthFt: input.equipment?.lengthFt, overhangFt: input.equipment?.overhangFt,
       tier: { ...tier, permitCost: tier?.permitCost ?? pricing.base_permit_fee ?? 150, averageClearanceIn: companyTier?.averageClearanceIn, averageVehicleWeightLbs: companyTier?.averageVehicleWeightLbs },
@@ -210,8 +217,8 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
-    surchargeFlatSum: flatSum + (osow ? 0 : escort.surcharge),
-    permitFee: permit.permitFee + (osow ? escort.surcharge : 0),
+    surchargeFlatSum: flatSum,
+    permitFee: permit.permitFee + escort.surcharge,
     rounding: interval,
     customRate: role !== 'client' ? toFinite(input.customRate) : null,
     customQuantity: role !== 'client' ? effectivePricingQuantity : null,

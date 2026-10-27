@@ -101,3 +101,23 @@ test('manual save requires complete specs, submits entered values, and reports p
  expect(saveEquipmentSpecs).toHaveBeenLastCalledWith({make:'Tico',model:'Prospotter',serial_number:'',operating_weight_lbs:15000,width_in:96,height_in:120});
  expect(await screen.findByRole('status')).toHaveTextContent('Saved to your client account equipment');
 });
+
+test('a quote needs weight, width, and height before it is calculated', async () => {
+  const onCalculate = vi.fn();
+  const user = userEvent.setup();
+  render(<ClientQuoteForm companyRates={{}} onCalculate={onCalculate} isCalculating={false} />);
+  await user.type(screen.getByLabelText('Width (in)'), '96');
+  await user.click(screen.getByRole('button', { name: /calculate quote/i }));
+  expect(screen.getByText('Enter the operating weight, width, and height to get a quote.')).toHaveAttribute('role', 'alert');
+  expect(screen.getByLabelText('Operating Weight (lbs)')).toHaveFocus();
+  expect(onCalculate).not.toHaveBeenCalled();
+});
+
+test('the permit estimate uses the client weight classes and counts the attachment', async () => {
+  const tiers = [{ minWeight: 0, maxWeight: 999999, rate: 200, permitCost: 275 }];
+  const user = userEvent.setup();
+  render(<ClientQuoteForm companyRates={{}} onCalculate={vi.fn()} client={{ pricing: { use_custom_pricing: true, weight_tiers: tiers } }} />);
+  await user.type(screen.getByLabelText('Operating Weight (lbs)'), '40000');
+  await user.type(screen.getByLabelText(/attachment weight/i), '6000');
+  expect(calculatePermitRequirements).toHaveBeenLastCalledWith(expect.objectContaining({ weight: 46000, tiers }));
+});

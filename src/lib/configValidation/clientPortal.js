@@ -45,8 +45,36 @@ const validateWeightTier = (tier, index) => {
   return errors;
 };
 
+/**
+ * Checks a full set of weight classes: each class prices above $0 for the
+ * active pricing mode, and together they cover their range with no gaps or
+ * overlaps (whole pounds: 0–20,000 then 20,001–40,000).
+ */
+export function validateWeightTiers(tiers, { path = 'client_portal.weight_tiers', pricingMode = 'hourly' } = {}) {
+  if (!Array.isArray(tiers)) return [];
+  const errors = tiers.flatMap((tier, index) => validateWeightTier(tier, index)
+    .map((err) => ({ ...err, path: err.path.replace('client_portal.weight_tiers', path) })));
+  const label = (tier, index) => tier?.label || `Class ${index + 1}`;
+  tiers.forEach((tier, index) => {
+    const rate = Number(pricingMode === 'mileage' ? tier?.mileageRate : tier?.hourlyRate ?? tier?.rate);
+    if (!(rate > 0)) errors.push({ message: `${label(tier, index)} needs ${pricingMode === 'mileage' ? 'a mileage' : 'an hourly'} rate above $0`, path: `${path}[${index}]` });
+  });
+  const sorted = tiers.map((tier, index) => ({ tier, index, min: Number(tier?.minWeight ?? 0), max: Number(tier?.maxWeight ?? 999999) }))
+    .filter((item) => Number.isFinite(item.min) && Number.isFinite(item.max))
+    .sort((a, b) => a.min - b.min);
+  sorted.slice(1).forEach((item, i) => {
+    const previous = sorted[i];
+    if (item.min <= previous.max) {
+      errors.push({ message: `${label(item.tier, item.index)} overlaps ${label(previous.tier, previous.index)}`, path: `${path}[${item.index}].minWeight` });
+    } else if (item.min > previous.max + 1) {
+      errors.push({ message: `No class covers ${(previous.max + 1).toLocaleString('en-US')}–${(item.min - 1).toLocaleString('en-US')} lbs`, path: `${path}[${item.index}].minWeight` });
+    }
+  });
+  return errors;
+}
+
 /** Validates config.client_portal in place, appending any errors to `result`. */
-export function validateClientPortalSection(portal, result) {
+export function validateClientPortalSection(portal, result, { pricingMode } = {}) {
   if (!portal || typeof portal !== 'object') return;
 
   if (portal.contact_email) {
@@ -74,9 +102,7 @@ export function validateClientPortalSection(portal, result) {
     if (portal.weight_tiers.length > LIMITS.MAX_WEIGHT_TIERS) {
       addError(result, `Too many weight tiers (max ${LIMITS.MAX_WEIGHT_TIERS})`, 'client_portal.weight_tiers');
     }
-    portal.weight_tiers.forEach((tier, idx) => {
-      validateWeightTier(tier, idx).forEach((err) => addError(result, err.message, err.path));
-    });
+    validateWeightTiers(portal.weight_tiers, { pricingMode }).forEach((err) => addError(result, err.message, err.path));
   }
 
   if (portal.osow_pricing) {

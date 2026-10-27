@@ -47,6 +47,8 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
   const [attachmentType, setAttachmentType] = useState('');
   const [attachmentWeight, setAttachmentWeight] = useState('');
   const [pickupError, setPickupError] = useState('');
+  const [specsError, setSpecsError] = useState('');
+  const weightInputRef = useRef(null);
 
   useEffect(() => {
     if (!initialQuote?.id) return;
@@ -106,19 +108,21 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
       return;
     }
     if (weight || width || height || pickupAddr || dropoffAddr) {
+      // Same weight and weight classes the server prices with, so the fee shown is the fee charged.
       const analysis = calculatePermitRequirements({
-        weight,
+        weight: (Number(weight) || 0) + (Number(attachmentWeight) || 0),
         width,
         height,
         pickupAddr,
         dropoffAddr,
         companyRates,
+        tiers: client?.pricing?.use_custom_pricing && Array.isArray(client.pricing.weight_tiers) ? client.pricing.weight_tiers : undefined,
       });
       setPermitInfo(analysis);
     } else {
       setPermitInfo(null);
     }
-  }, [weight, width, height, pickupAddr, dropoffAddr, companyRates]);
+  }, [weight, attachmentWeight, width, height, pickupAddr, dropoffAddr, companyRates, client]);
 
   useEffect(() => {
     let isMounted = true;
@@ -196,12 +200,18 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Weight classes, permits, and escorts are all priced from these, so a blank one would underquote.
+    const specsMissing = ![weight, width, height].every((value) => Number(value) > 0);
+    setSpecsError(specsMissing ? 'Enter the operating weight, width, and height to get a quote.' : '');
+    setPickupError(pickupAddr ? '' : 'Please enter a pickup location.');
+    if (specsMissing) {
+      weightInputRef.current?.focus();
+      return;
+    }
     if (!pickupAddr) {
-      setPickupError('Please enter a pickup location.');
       pickupInputRef.current?.focus();
       return;
     }
-    setPickupError('');
     const effectiveDropoff = dropoffAddr || pickupAddr;
 
     onCalculate({
@@ -406,7 +416,10 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             <label htmlFor="equipment-weight" className="block text-xs text-slate-400 mb-1">Operating Weight (lbs)</label>
             <input
               id="equipment-weight"
+              ref={weightInputRef}
               type="number"
+              aria-invalid={Boolean(specsError) && !(Number(weight) > 0)}
+              aria-describedby={specsError ? 'specs-error' : undefined}
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
               placeholder="45000"
@@ -438,6 +451,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             />
           </div>
         </div>
+        {specsError && <p id="specs-error" role="alert" className="-mt-3 text-xs font-medium text-red-400">{specsError}</p>}
 
         {/* Attachments */}
         <div className="space-y-2">
@@ -451,8 +465,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Attachment Type</label>
+            <label htmlFor="attachment-type" className="block text-xs text-slate-400 mb-1">Attachment Type</label>
             <input
+              id="attachment-type"
               type="text"
               value={attachmentType}
               onChange={(e) => setAttachmentType(e.target.value)}
@@ -461,8 +476,9 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Attachment Weight (lbs)</label>
+            <label htmlFor="attachment-weight" className="block text-xs text-slate-400 mb-1">Attachment Weight (lbs)</label>
             <input
+              id="attachment-weight"
               type="number"
               value={attachmentWeight}
               onChange={(e) => setAttachmentWeight(e.target.value)}

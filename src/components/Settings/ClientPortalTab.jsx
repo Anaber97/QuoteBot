@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Building, Image, Plus, Save, Trash2, Upload } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { convertSvgLogoToPng } from '../../lib/logoImage';
+import { validateWeightTiers } from '../../lib/configValidation/clientPortal';
 import Dialog from '../Dialog';
 
 const emptyPricing = { use_custom_pricing: false, rounding_interval: 25, weight_tiers: [] };
@@ -94,6 +95,10 @@ export default function ClientPortalTab({ formData, profile, updateClientPortal 
   } : client));
   const saveClient = async (client) => {
     setError(''); setSuccess('');
+    if (client.pricing?.use_custom_pricing) {
+      const [tierError] = validateWeightTiers(client.pricing.weight_tiers, { path: 'weight_tiers', pricingMode: formData.pricing?.pricing_mode });
+      if (tierError) return setError(`${client.client_name}: ${tierError.message}.`);
+    }
     const { error: saveError } = await supabase.from('clients').update({ client_name: client.client_name, contact_email: client.contact_email, contact_phone: client.contact_phone, pricing: client.pricing || emptyPricing }).eq('id', client.id).eq('company_id', profile.company_id);
     if (saveError) setError(saveError.message); else setSuccess(`${client.client_name} saved.`);
   };
