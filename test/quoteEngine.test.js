@@ -138,8 +138,8 @@ test('weight-tier boundaries are inclusive and select the next tier correctly', 
     { minWeight: 0, maxWeight: 10000, rate: 100, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
     { minWeight: 10001, maxWeight: 20000, rate: 200, drive_time_buffer: 10, load_unload_base_mins: 30, rounding_interval: 25 },
   ];
-  assert.equal(quote({ role: 'client', config: tierConfig, input: { equipment: { weight: 10000 } } }).minQuote, 150);
-  assert.equal(quote({ role: 'client', config: tierConfig, input: { equipment: { weight: 10001 } } }).minQuote, 325);
+  assert.equal(quote({ role: 'client', config: tierConfig, input: { equipment: { weight: 10000, width: 96, height: 120 } } }).minQuote, 150);
+  assert.equal(quote({ role: 'client', config: tierConfig, input: { equipment: { weight: 10001, width: 96, height: 120 } } }).minQuote, 325);
 });
 
 test('extra stops add configured on-site time', () => {
@@ -206,7 +206,7 @@ test('attachment weight participates in tier selection and approval', () => {
     { minWeight: 0, maxWeight: 14999, rate: 100 },
     { minWeight: 15000, maxWeight: 999999, rate: 200 },
   ];
-  const result = quote({ role: 'client', config: tierConfig, input: { equipment: { weight: 10000, attachmentWeight: 5000 } } });
+  const result = quote({ role: 'client', config: tierConfig, input: { equipment: { weight: 10000, attachmentWeight: 5000, width: 96, height: 120 } } });
   assert.equal(result.minQuote, 325);
   assert.equal(result.approvalRequired, true);
 });
@@ -421,4 +421,46 @@ test('max-rate zones cap a high quote but do not raise a lower quote', () => {
   const belowCap = quote({ config: maxConfig, route: { ...route, customerRoutePoints: [{ lat: 32.5, lng: -94.5 }, { lat: 32.6, lng: -94.6 }] } });
   assert.equal(belowCap.minQuote, 200);
   assert.equal(belowCap.maxQuote, 200);
+});
+
+const clientQuote = (equipment, adjust = () => {}) => {
+  const clientConfig = structuredClone(config);
+  adjust(clientConfig);
+  return quote({ role: 'client', config: clientConfig, input: { quoteSource: 'client_portal', equipment } });
+};
+
+test('client quotes require weight, width, and height instead of pricing a blank as the lightest class', () => {
+  for (const equipment of [{}, { weight: 0, width: 96, height: 120 }, { weight: 75000, height: 120 }, { weight: 75000, width: 96 }]) {
+    assert.throws(() => clientQuote(equipment), { status: 400, message: /weight, width, and height/ });
+  }
+});
+
+test('fractional weights between whole-pound classes land in the next class', () => {
+  const twoClasses = (cfg) => { cfg.client_portal.weight_tiers = [
+    { minWeight: 0, maxWeight: 10000, rate: 100, rounding_interval: 25 },
+    { minWeight: 10001, maxWeight: 20000, rate: 200, rounding_interval: 25 },
+  ]; };
+  assert.equal(clientQuote({ weight: 10000.5, width: 96, height: 120 }, twoClasses).minQuote, 325);
+  assert.equal(clientQuote({ weight: 9000, attachmentWeight: 1000.4, width: 96, height: 120 }, twoClasses).minQuote, 325);
+});
+
+test('flat-rate and capped zones price the haul; permit and escort are added on top', () => {
+  const shape = [{ lat: 32, lng: -95 }, { lat: 32, lng: -94 }, { lat: 33, lng: -94 }, { lat: 33, lng: -95 }];
+  const zoneRoute = { ...route, customerRoutePoints: [{ lat: 32.5, lng: -94.5 }, { lat: 32.6, lng: -94.6 }] };
+  for (const [pricingMode, haul] of [['flat_rate', 300], ['max_rate', 100]]) {
+    const zoneConfig = structuredClone(config);
+    zoneConfig.client_portal.escort_rules = [{ minWidth: 144, vehicleCount: 1, surcharge: 400 }];
+    zoneConfig.geofences.customZones = [{ id: 'town', name: 'In town', pricingMode, price: haul, shape }];
+    const wide = { weight: 50000, width: 150, height: 120 };
+    const result = quote({ role: 'client', config: zoneConfig, route: zoneRoute, input: { equipment: wide } });
+    assert.equal(result.escort.surcharge, 400);
+    assert.ok(result.quoteDetails.permitFee > 0);
+    assert.equal(result.minQuote, haul + 400 + result.quoteDetails.permitFee, pricingMode);
+  }
+});
+
+test('a weight class with no rate refuses to quote instead of quoting $0', () => {
+  assert.throws(() => clientQuote({ weight: 5000, width: 96, height: 120 }, (cfg) => {
+    cfg.client_portal.weight_tiers = [{ label: 'New class', minWeight: 0, maxWeight: 999999, rate: 0, hourlyRate: 0 }];
+  }), { status: 400, message: /New class weight class has no rate/ });
 });

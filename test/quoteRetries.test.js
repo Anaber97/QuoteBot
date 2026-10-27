@@ -29,7 +29,7 @@ test('preview does not save; retrying a save returns one quote and rejects chang
     resolveGoogleLocalities: async () => [],
   } }));
   const { default: handler } = await import('../api/createQuote.js?retries');
-  const body = { baseId: 'yard', waypoints: ['Public test pickup', 'Public test dropoff'], equipment: { weight: 5000 }, customRate: 1 };
+  const body = { baseId: 'yard', waypoints: ['Public test pickup', 'Public test dropoff'], equipment: { weight: 5000, width: 96, height: 120 }, customRate: 1 };
   const call = async (input) => {
     const { req, res } = createMockReqRes({ method: 'POST', body: input });
     req.headers = { ...req.headers, 'idempotency-key': '12345678-1234-4234-8234-123456789abc' };

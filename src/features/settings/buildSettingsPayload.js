@@ -48,6 +48,8 @@ export function buildSettingsPayload(source, companyId) {
           })),
         },
         geofences: {
+          builtInZoneMode: 'opt_in',
+          enabledZones: configToSave.geofences?.enabledZones || [],
           disabledZones: configToSave.geofences?.disabledZones || [],
           customZoneRates: configToSave.geofences?.customZoneRates || {},
           customZones: (configToSave.geofences?.customZones || []).map((zone) => ({

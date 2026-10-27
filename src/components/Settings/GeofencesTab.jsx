@@ -2,6 +2,23 @@ import React from 'react';
 import { Search, MapPin, ToggleLeft, ToggleRight, Plus } from 'lucide-react';
 import CustomGeofenceEditor from './CustomGeofenceEditor';
 import { METRO_CODE_BY_ZONE_ID } from '../../config/geofences';
+import { resolveZoneCharge, formatZoneCharge } from '../../../shared/pricing/zoneCharge.js';
+
+// Built-in zones offer the same price rules as custom zones.
+const ZONE_RULE_OPTIONS = [
+  ['percent', 'Surcharge (%)'],
+  ['flat', 'Surcharge ($)'],
+  ['min_rate', 'Minimum ($)'],
+  ['max_rate', 'Maximum ($)'],
+  ['flat_rate', 'Flat rate ($)'],
+];
+const ZONE_RULE_HELP = {
+  percent: 'Adds this percent to quotes whose route enters the zone.',
+  flat: 'Adds this dollar amount to quotes whose route enters the zone.',
+  min_rate: 'Quotes whose route enters the zone are raised to at least this amount. Permits and escorts are added on top.',
+  max_rate: 'Jobs picked up and dropped off inside the zone are capped at this amount. Permits and escorts are added on top.',
+  flat_rate: 'Jobs picked up and dropped off inside the zone are priced at this amount. Permits and escorts are added on top.',
+};
 
 export default function GeofencesTab({
   geofenceSearch,
@@ -31,6 +48,11 @@ export default function GeofencesTab({
       .trim()
       .toLowerCase()
       .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const zoneOverride = formData?.geofences?.customZoneRates?.[selectedGeofence?.id] || {};
+  const zoneRule = zoneOverride.pricingMode && zoneOverride.pricingMode !== 'surcharge'
+    ? zoneOverride.pricingMode
+    : (zoneOverride.feeType === 'flat' ? 'flat' : 'percent');
 
   const toDisplayCity = (value) =>
     toTitleCase(String(value || '').split(',')[0]);
@@ -164,10 +186,10 @@ export default function GeofencesTab({
                   <span>Type</span>
                   <span className="capitalize text-slate-300">{selectedGeofence.type}</span>
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>Fee mode</span>
-                  <span className="text-slate-300">{selectedGeofence.feeType === 'flat' ? 'Flat $' : 'Percent %'}</span>
-                </div>
+                {selectedGeofence.type !== 'custom' && <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>Charge</span>
+                  <span className="text-slate-300">{formatZoneCharge(resolveZoneCharge(selectedGeofence, formData, selectedGeofence.type === 'hazard' ? 'hazard_multiplier' : 'metro_multiplier'))}</span>
+                </div>}
               </div>
               <div className="rounded-lg border border-slate-800 bg-panel p-2.5 space-y-2">
                 <div className="flex items-center justify-between text-xs text-slate-400">
@@ -180,26 +202,27 @@ export default function GeofencesTab({
                 </div>
               </div>
               {selectedGeofence.type !== 'custom' && <div className="space-y-2">
-                <label className="text-xs text-slate-400 block">Override geofence charge</label>
+                <label htmlFor="zone-rule" className="text-xs text-slate-400 block">Price rule for this zone</label>
                 <div className="flex gap-2">
                   <select
-                    value={formData?.geofences?.customZoneRates?.[selectedGeofence.id]?.feeType || 'percent'}
-                    onChange={(e) => updateGeofenceOverride(selectedGeofence.id, 'feeType', e.target.value)}
-                    className="w-28 bg-panel border border-slate-700 rounded p-2 text-white text-xs"
+                    id="zone-rule"
+                    value={zoneRule}
+                    onChange={(e) => updateGeofenceOverride(selectedGeofence.id, 'rule', e.target.value)}
+                    className="w-36 bg-panel border border-slate-700 rounded p-2 text-white text-xs"
                   >
-                    <option value="percent">Percent</option>
-                    <option value="flat">Flat</option>
+                    {ZONE_RULE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                   <input
                     type="number"
-                    value={formData?.geofences?.customZoneRates?.[selectedGeofence.id]?.value ?? ''}
+                    aria-label="Price rule amount"
+                    value={zoneOverride.value ?? ''}
                     onChange={(e) => updateGeofenceOverride(selectedGeofence.id, 'value', e.target.value)}
-                    placeholder={formData?.geofences?.customZoneRates?.[selectedGeofence.id]?.feeType === 'flat' ? 'Flat fee' : 'Percent'}
-                    className="flex-1 bg-panel border border-slate-700 rounded p-2 text-white font-mono"
+                    placeholder={zoneRule === 'percent' ? 'Percent' : 'Dollars'}
+                    className="min-w-0 flex-1 bg-panel border border-slate-700 rounded p-2 text-white font-mono"
                   />
                   <button type="button" onClick={() => clearGeofenceOverride(selectedGeofence.id)} className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300">Clear</button>
                 </div>
-                <p className="text-xs text-slate-500">Use percent for a surcharge or flat for a fixed dollar amount when the override applies.</p>
+                <p className="text-xs text-slate-500">{ZONE_RULE_HELP[zoneRule]}</p>
               </div>}
             </>
           )}

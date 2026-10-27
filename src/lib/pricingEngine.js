@@ -133,18 +133,21 @@ export function calculateSurcharges({
     }
   };
 
-  if (allowRouteSurcharges && metroMatches.length > 0 && overrides.metro !== false) {
-    add(metroMatches[0].charge?.feeType || 'percent', metroMatches[0].charge?.value);
+  // Flat-rate, maximum and minimum zone rules are applied in calculateFinalQuotes.
+  const surchargeZones = (zones) => zones.filter((zone) => zoneRuleMode(zone) === 'surcharge');
+  const metroSurcharge = surchargeZones(metroMatches)[0];
+  if (allowRouteSurcharges && metroSurcharge && overrides.metro !== false) {
+    add(metroSurcharge.charge?.feeType || 'percent', metroSurcharge.charge?.value);
   }
 
-  if (allowRouteSurcharges && hazardMatches.length > 0 && overrides.hazard !== false) {
-    hazardMatches.forEach((zone) => {
+  if (allowRouteSurcharges && overrides.hazard !== false) {
+    surchargeZones(hazardMatches).forEach((zone) => {
       add(zone.charge?.feeType || 'percent', zone.charge?.value);
     });
   }
 
   // Custom geofence surcharges (always applied if matched)
-  customMatches.filter((zone) => zone.pricingMode !== 'max_rate').forEach((zone) => {
+  surchargeZones(customMatches).forEach((zone) => {
     add(zone.charge?.feeType || 'percent', zone.charge?.value);
   });
 
@@ -159,21 +162,34 @@ export function calculateSurcharges({
 }
 
 /**
- * Determines if flat custom geofence zones override the calculated quote.
- * @returns {number} Maximum flat rate from custom zones, or 0
+ * How a matched zone prices: 'surcharge', 'flat_rate', 'max_rate' or 'min_rate'.
+ * Matches from older quotes may lack charge.pricingMode; a flat custom zone
+ * (one with a drawn shape) was a flat rate then, and a built-in zone a surcharge.
  */
-export function getFlatOverride(customMatches = []) {
-  return customMatches
-    .filter((zone) => zone.pricingMode === 'flat_rate' || (!zone.pricingMode && zone.charge?.feeType === 'flat'))
-    .reduce((max, zone) => Math.max(max, toFinite(zone.charge?.value, 0)), 0);
+export function zoneRuleMode(zone = {}) {
+  return zone.charge?.pricingMode ?? zone.pricingMode
+    ?? (zone.charge?.feeType === 'max' ? 'max_rate' : zone.charge?.feeType === 'flat' && Array.isArray(zone.shape) ? 'flat_rate' : 'surcharge');
 }
 
-export function getMaxOverride(customMatches = []) {
-  const limits = customMatches
-    .filter((zone) => zone.pricingMode === 'max_rate')
-    .map((zone) => toFinite(zone.charge?.value ?? zone.price, 0))
-    .filter((value) => value > 0);
+const ruleValues = (zones, mode) => zones
+  .filter((zone) => zoneRuleMode(zone) === mode)
+  .map((zone) => toFinite(zone.charge?.value ?? zone.price, 0))
+  .filter((value) => value > 0);
+
+/** The highest flat rate among matched zones, or 0. */
+export function getFlatOverride(zoneMatches = []) {
+  return Math.max(0, ...ruleValues(zoneMatches, 'flat_rate'));
+}
+
+/** The lowest maximum among matched zones, or 0. */
+export function getMaxOverride(zoneMatches = []) {
+  const limits = ruleValues(zoneMatches, 'max_rate');
   return limits.length ? Math.min(...limits) : 0;
+}
+
+/** The highest minimum among matched zones, or 0. */
+export function getMinOverride(zoneMatches = []) {
+  return Math.max(0, ...ruleValues(zoneMatches, 'min_rate'));
 }
 
 /**
@@ -204,40 +220,35 @@ export function calculateFinalQuotes({
   customQuantity = null,
   flatOverride = 0,
   maxOverride = 0,
+  minOverride = 0,
 }) {
-  const applyMaximum = (value) => maxOverride > 0 ? Math.min(value, maxOverride) : value;
+  // permitFee carries pass-through costs (permits, escorts). Flat-rate,
+  // maximum and minimum zones price the haul only; those costs are always
+  // added on top. A minimum wins over a maximum when both match.
+  const limit = (haul) => Math.max(maxOverride > 0 ? Math.min(haul, maxOverride) : haul, minOverride);
+  const total = (haul) => roundToNearest(limit(haul) + permitFee, rounding);
   if (flatOverride > 0) {
-    const overriddenQuote = roundToNearest(flatOverride, rounding) + permitFee;
-    return {
-      minQuote: applyMaximum(overriddenQuote),
-      maxQuote: applyMaximum(overriddenQuote),
-      customQuote: applyMaximum(overriddenQuote),
-    };
+    const overriddenQuote = total(roundToNearest(flatOverride, rounding));
+    return { minQuote: overriddenQuote, maxQuote: overriddenQuote, customQuote: overriddenQuote };
   }
-
-  const minQuote = roundToNearest(
-    pricingQuantity * minRate * surchargeMultiplier + surchargeFlatSum + permitFee,
-    rounding
-  );
-
-  const maxQuote = roundToNearest(
-    pricingQuantity * maxRate * surchargeMultiplier + surchargeFlatSum + permitFee,
-    rounding
-  );
 
   let customQuote = null;
   if (customRate != null && toFinite(customRate) > 0 && customQuantity != null) {
-    customQuote = roundToNearest(
-      toFinite(customQuantity) * toFinite(customRate) * surchargeMultiplier + surchargeFlatSum + permitFee,
-      rounding
-    );
+    customQuote = total(toFinite(customQuantity) * toFinite(customRate) * surchargeMultiplier + surchargeFlatSum);
   }
 
   return {
-    minQuote: applyMaximum(minQuote),
-    maxQuote: applyMaximum(maxQuote),
-    customQuote: customQuote == null ? null : applyMaximum(customQuote),
+    minQuote: total(pricingQuantity * minRate * surchargeMultiplier + surchargeFlatSum),
+    maxQuote: total(pricingQuantity * maxRate * surchargeMultiplier + surchargeFlatSum),
+    customQuote,
   };
+}
+
+/** Matches on whole pounds, so 20,000.5 lbs lands in the 20,001+ class instead of between classes. */
+export function findWeightTier(tiers = [], weight = 0) {
+  const pounds = Math.ceil(toFinite(weight));
+  return (Array.isArray(tiers) ? tiers : []).find((tier) =>
+    pounds >= toFinite(tier?.minWeight, 0) && pounds <= toFinite(tier?.maxWeight, 999999));
 }
 
 /**
@@ -269,8 +280,40 @@ export function calculatePermitRequirements({
   return { needsPermit, isInterstate, flags, permitFee };
 }
 
-/** Resolves the highest escort requirement triggered by width or height. */
-export function resolveEscortRequirement({ width = 0, height = 0, rules = [] } = {}) {
+/** Straight-line miles along a route's points (great-circle distance between consecutive points). */
+export function routeLineMiles(points = []) {
+  const radians = (degrees) => degrees * Math.PI / 180;
+  let miles = 0;
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i - 1];
+    const q = points[i];
+    if (![p?.lat, p?.lng, q?.lat, q?.lng].every(Number.isFinite)) continue;
+    const a = Math.sin(radians(q.lat - p.lat) / 2) ** 2
+      + Math.cos(radians(p.lat)) * Math.cos(radians(q.lat)) * Math.sin(radians(q.lng - p.lng) / 2) ** 2;
+    miles += 7917.6 * Math.asin(Math.min(1, Math.sqrt(a)));
+  }
+  return miles;
+}
+
+/**
+ * Per-mile escort pricing: each escort vehicle costs `perMile` for every mile
+ * it is required, and never less than `minimum`. `milesPerVehicle` lists the
+ * required miles for escort 1, escort 2, and so on. Returns null when the
+ * company has no per-mile rate, so its flat escort prices apply instead.
+ */
+export function priceEscortMiles(milesPerVehicle = [], pricing = {}) {
+  if (pricing?.perMile == null || pricing.perMile === '' || !Number.isFinite(Number(pricing.perMile))) return null;
+  const perMile = Math.max(0, Number(pricing.perMile));
+  const minimum = Math.max(0, toFinite(pricing.minimum, 0));
+  const cost = milesPerVehicle.reduce((sum, miles) => sum + Math.max(perMile * Math.max(0, toFinite(miles)), minimum), 0);
+  return Math.round(cost * 100) / 100;
+}
+
+/**
+ * Resolves the highest escort requirement triggered by width or height. With
+ * per-mile escort pricing, every escort runs the whole customer trip (`miles`).
+ */
+export function resolveEscortRequirement({ width = 0, height = 0, rules = [], miles = 0, pricing = {} } = {}) {
   const numericWidth = toFinite(width);
   const numericHeight = toFinite(height);
   const matches = (Array.isArray(rules) ? rules : []).filter((rule) => {
@@ -283,5 +326,9 @@ export function resolveEscortRequirement({ width = 0, height = 0, rules = [] } =
   const triggeredBy = [];
   if (toFinite(rule.minWidth) > 0 && numericWidth >= toFinite(rule.minWidth)) triggeredBy.push('width');
   if (toFinite(rule.minHeight) > 0 && numericHeight >= toFinite(rule.minHeight)) triggeredBy.push('height');
-  return { vehicleCount: toFinite(rule.vehicleCount), surcharge: toFinite(rule.surcharge), triggeredBy };
+  const vehicleCount = toFinite(rule.vehicleCount);
+  const perMileCost = priceEscortMiles(Array(vehicleCount).fill(miles), pricing);
+  return perMileCost == null
+    ? { vehicleCount, surcharge: toFinite(rule.surcharge), triggeredBy }
+    : { vehicleCount, surcharge: perMileCost, triggeredBy, miles: Array(vehicleCount).fill(Math.round(toFinite(miles) * 10) / 10) };
 }

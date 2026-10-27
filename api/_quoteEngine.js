@@ -1,4 +1,4 @@
-import { resolveZoneCharge } from '../shared/pricing/zoneCharge.js';
+import { resolveZoneCharge, isBuiltInZoneActive, zoneRuleApplies } from '../shared/pricing/zoneCharge.js';
 import { addressNamesZoneCity } from '../shared/geo/addressMatch.js';
 import { GEOFENCES, HAZARD_ZONES, METRO_CODE_BY_ZONE_ID } from '../src/config/geofences.js';
 import { selectHighestPriorityZones } from '../src/utils/geofencePriority.js';
@@ -9,13 +9,16 @@ import {
   calculateSurcharges,
   getFlatOverride,
   getMaxOverride,
+  getMinOverride,
   calculateFinalQuotes as calculateFinalQuotesPure,
   calculatePermitRequirements as calculatePermitPure,
   resolveEscortRequirement,
+  findWeightTier,
+  routeLineMiles,
 } from '../src/lib/pricingEngine.js';
 
 import { evaluateOsow } from '../src/lib/osow.js';
-import { resolveRouteStates } from '../src/lib/routeStates.js';
+import { resolveRouteStates, routeMilesByState } from '../src/lib/routeStates.js';
 
 const toFinite = (value, fallback = 0) => {
   const number = Number(value);
@@ -67,12 +70,14 @@ const pointInPolygon = (point, polygon) => {
 };
 
 function findConfiguredZones(zones, addresses, routePoints, config, field) {
-  const disabled = new Set((config?.geofences?.disabledZones || []).map(String));
-  return Object.values(zones).filter((zone) => {
-    if (disabled.has(String(zone.id))) return false;
+  return Object.values(zones).filter((zone) => isBuiltInZoneActive(zone.id, config?.geofences)).map((zone) => {
     const keywordHit = addresses.some((address) => addressNamesZoneCity(address, zone));
-    return keywordHit || routePoints.some((point) => pointInBox(point, zone.box));
-  }).map((zone) => ({ ...zone, charge: resolveZoneCharge(zone, config, field) }));
+    if (!keywordHit && !routePoints.some((point) => pointInBox(point, zone.box))) return null;
+    const charge = resolveZoneCharge(zone, config, field);
+    const containsPickup = addressNamesZoneCity(addresses[0], zone) || pointInBox(routePoints[0], zone.box);
+    const containsDropoff = addressNamesZoneCity(addresses.at(-1), zone) || pointInBox(routePoints.at(-1), zone.box);
+    return zoneRuleApplies(charge, { containsPickup, containsDropoff }) ? { ...zone, charge } : null;
+  }).filter(Boolean);
 }
 
 function findCustomZones(_localities, routePoints, config) {
@@ -85,14 +90,13 @@ function findCustomZones(_localities, routePoints, config) {
     const pickupHit = routePoints[0] && pointInPolygon(routePoints[0], zone.shape);
     const dropoffHit = routePoints.at(-1) && pointInPolygon(routePoints.at(-1), zone.shape);
     return pickupHit && dropoffHit;
-  }).map((zone) => ({
-    ...zone,
-    charge: (zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) === 'flat_rate'
-      ? { feeType: 'flat', value: toFinite(zone.price ?? zone.value) }
-      : (zone.pricingMode === 'max_rate'
-        ? { feeType: 'max', value: toFinite(zone.price ?? zone.value) }
-        : { feeType: zone.surchargeFeeType === 'flat' ? 'flat' : 'percent', value: toFinite(zone.price ?? zone.value) }),
-  }));
+  }).map((zone) => {
+    const pricingMode = zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge');
+    const value = toFinite(zone.price ?? zone.value);
+    return { ...zone, charge: pricingMode === 'surcharge'
+      ? { pricingMode, feeType: zone.surchargeFeeType === 'flat' ? 'flat' : 'percent', value }
+      : { pricingMode, feeType: pricingMode === 'max_rate' ? 'max' : pricingMode === 'min_rate' ? 'min' : 'flat', value } };
+  });
   return selectHighestPriorityZones(matches);
 }
 
@@ -122,7 +126,10 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   const useWeightTierPricing = role === 'client' || input.quoteSource === 'equipment_calculator';
   const tiers = clientConfig?.pricing?.use_custom_pricing && Array.isArray(clientConfig?.pricing?.weight_tiers)
     ? clientConfig.pricing.weight_tiers : config?.client_portal?.weight_tiers || [];
-  const tier = tiers.find((item) => totalWeight >= toFinite(item.minWeight) && totalWeight <= toFinite(item.maxWeight, 999999));
+  const tier = findWeightTier(tiers, totalWeight);
+  if (useWeightTierPricing && !(totalWeight > 0 && toFinite(input.equipment?.width) > 0 && toFinite(input.equipment?.height) > 0)) {
+    throw Object.assign(new Error('Enter the equipment operating weight, width, and height to get a quote.'), { status: 400 });
+  }
   if (useWeightTierPricing && !tier) throw Object.assign(new Error(`No equipment weight class is configured for ${totalWeight.toLocaleString()} lbs.`), { status: 400 });
 
   // Use shared time metrics calculation
@@ -150,23 +157,31 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     pricing,
     config,
   });
+  if (useWeightTierPricing && !(minRate > 0)) {
+    throw Object.assign(new Error(`The ${tier.label || 'matching'} weight class has no rate set.`), { status: 400 });
+  }
 
   // Set up overrides appropriately
   const overrides = role === 'client' ? { afterHours: false, roadClub: false, metro: true, hazard: true, customSurcharges: {} } : input.activeOverrides || {};
+  // Metro and hazard rules price client and staff quotes alike; only staff can switch them off per quote.
+  const activeMetro = overrides.metro === false ? [] : metroMatches;
+  const activeHazard = overrides.hazard === false ? [] : hazardMatches;
+  const ruleZones = [...customMatches, ...activeMetro, ...activeHazard];
 
   // Use shared surcharge calculation
   const { multiplier, flatSum } = calculateSurcharges({
-    metroMatches,
-    hazardMatches,
+    metroMatches: activeMetro,
+    hazardMatches: activeHazard,
     customMatches,
     customSurcharges: pricing.custom_surcharges || [],
     useWeightTierPricing,
-    allowRouteSurcharges: role !== 'client',
+    allowRouteSurcharges: true,
     overrides,
   });
 
-  const flatOverride = getFlatOverride(customMatches);
-  const maxOverride = getMaxOverride(customMatches);
+  const flatOverride = getFlatOverride(ruleZones);
+  const maxOverride = getMaxOverride(ruleZones);
+  const minOverride = getMinOverride(ruleZones);
   const interval = toFinite(useWeightTierPricing ? tier?.rounding_interval ?? clientPricing.rounding_interval : pricing.rounding_interval, 25);
 
   // Calculate permit fee
@@ -180,20 +195,27 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
       ? toFinite(tier?.permitCost, toFinite(config?.pricing?.base_permit_fee, 150))
       : toFinite(config?.pricing?.base_permit_fee, 150),
   });
+  // Escorts run the customer trip only (pickup to dropoff), never the deadhead from and back to the yard.
+  const customerMiles = (route.legs || []).slice(1, -1).reduce((sum, leg) => sum + toFinite(leg.distanceMeters), 0) * 0.000621371
+    || routeLineMiles(customerRoutePoints);
+  const escortPricing = config?.client_portal?.escort_pricing;
   let escort = resolveEscortRequirement({
     width: toFinite(input.equipment?.width),
     height: toFinite(input.equipment?.height),
     rules: config?.client_portal?.escort_rules,
+    miles: customerMiles,
+    pricing: escortPricing,
   });
 
   let osow = null;
   if (useWeightTierPricing && config.client_portal?.osow_pricing?.enabled) {
-    const companyTier = (config.client_portal.weight_tiers || []).find((item) => totalWeight >= toFinite(item.minWeight) && totalWeight <= toFinite(item.maxWeight, 999999));
+    const companyTier = findWeightTier(config.client_portal.weight_tiers, totalWeight);
     osow = evaluateOsow({ weight: totalWeight, width: input.equipment?.width, height: input.equipment?.height,
       lengthFt: input.equipment?.lengthFt, overhangFt: input.equipment?.overhangFt,
       tier: { ...tier, permitCost: tier?.permitCost ?? pricing.base_permit_fee ?? 150, averageClearanceIn: companyTier?.averageClearanceIn, averageVehicleWeightLbs: companyTier?.averageVehicleWeightLbs },
       states: resolveRouteStates(customerRoutePoints), routeKnown: customerRoutePoints.length > 1,
-      limits: config.state_transport_limits || [], pricing: config.client_portal.osow_pricing });
+      limits: config.state_transport_limits || [], pricing: config.client_portal.osow_pricing,
+      stateMiles: routeMilesByState(customerRoutePoints, customerMiles), escortPricing });
     permit = osow; escort = osow.escort;
   }
 
@@ -210,13 +232,14 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
-    surchargeFlatSum: flatSum + (osow ? 0 : escort.surcharge),
-    permitFee: permit.permitFee + (osow ? escort.surcharge : 0),
+    surchargeFlatSum: flatSum,
+    permitFee: permit.permitFee + escort.surcharge,
     rounding: interval,
     customRate: role !== 'client' ? toFinite(input.customRate) : null,
     customQuantity: role !== 'client' ? effectivePricingQuantity : null,
     flatOverride,
     maxOverride,
+    minOverride,
   });
 
   return {
@@ -232,7 +255,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     osow,
     escort,
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
-    appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(role !== 'client' && metroMatches.length && overrides.metro !== false), hazard: Boolean(role !== 'client' && hazardMatches.length && overrides.hazard !== false), customZone: Boolean(customMatches.length) },
+    appliedSurcharges: { afterHours: false, roadClub: false, metro: activeMetro.length > 0, hazard: activeHazard.length > 0, customZone: Boolean(customMatches.length) },
     routeLegs: route.legs,
     quoteDetails: { ...(input.equipment || {}), osow, driveTimeBufferPercent: timeMetrics.driveTimeBufferPercent, loadUnloadMinutes: timeMetrics.loadUnloadMinutes, permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
   };

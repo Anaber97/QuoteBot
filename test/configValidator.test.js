@@ -494,3 +494,16 @@ test('validation and sanitization work together', () => {
   assert(!('unknownTopField' in sanitized));
   assert(sanitized.geofences.customZones.length === 1);
 });
+
+test('weight classes must price above $0 and cover their range without gaps or overlaps', async () => {
+  const { validateWeightTiers } = await import('../src/lib/configValidation/clientPortal.js');
+  const { DEFAULT_CONFIG } = await import('../src/lib/configSchema.js');
+  assert.deepEqual(validateWeightTiers(DEFAULT_CONFIG.client_portal.weight_tiers), []);
+  const tier = (minWeight, maxWeight, rate = 150) => ({ label: `${minWeight}+`, minWeight, maxWeight, rate, hourlyRate: rate, mileageRate: 5 });
+  const messages = (tiers, pricingMode) => validateWeightTiers(tiers, { pricingMode }).map((error) => error.message);
+  assert.deepEqual(messages([tier(0, 20000), tier(25000, 40000)]), ['No class covers 20,001–24,999 lbs']);
+  assert.deepEqual(messages([tier(0, 20000), tier(20000, 40000)]), ['20000+ overlaps 0+']);
+  assert.deepEqual(messages([tier(0, 999999, 0)]), ['0+ needs an hourly rate above $0']);
+  assert.deepEqual(messages([{ ...tier(0, 999999), mileageRate: 0 }], 'mileage'), ['0+ needs a mileage rate above $0']);
+  assert.deepEqual(messages([tier(20001, 40000), tier(0, 20000)]), [], 'order on screen does not matter');
+});

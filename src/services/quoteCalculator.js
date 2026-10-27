@@ -11,8 +11,11 @@ import {
   calculateSurcharges,
   getFlatOverride,
   getMaxOverride,
+  getMinOverride,
   calculateFinalQuotes as calculateFinalQuotesPure,
   resolveEscortRequirement,
+  findWeightTier,
+  routeLineMiles,
 } from '../lib/pricingEngine';
 
 import { evaluateOsow } from '../lib/osow.js';
@@ -164,11 +167,7 @@ export async function calculateQuoteData({
   const clientWeightTiers = clientConfig?.pricing?.use_custom_pricing && Array.isArray(clientConfig?.pricing?.weight_tiers)
     ? clientConfig.pricing.weight_tiers
     : companyRates?.client_portal?.weight_tiers || [];
-  const matchingTier = clientWeightTiers.find((tier) => {
-    const min = Number(tier.minWeight ?? 0) || 0;
-    const max = Number(tier.maxWeight ?? 999999) || 999999;
-    return clientWeight >= min && clientWeight <= max;
-  });
+  const matchingTier = findWeightTier(clientWeightTiers, clientWeight);
 
   if (useWeightTierPricing && !matchingTier) {
     throw new Error(`No equipment weight class is configured for ${Number(clientWeight || 0).toLocaleString()} lbs.`);
@@ -193,7 +192,6 @@ export async function calculateQuoteData({
     selectedClass,
   });
   const totalMiles = totalMeters * 0.000621371;
-  let escort = resolveEscortRequirement({ width: equipmentWidth, height: equipmentHeight, rules: companyRates?.client_portal?.escort_rules });
 
   // Shared with the server so rate resolution can't silently drift.
   const { minRate: baseMinRate, maxRate: baseMaxRate, standardPricingMode } = resolveBaseRates({
@@ -205,6 +203,9 @@ export async function calculateQuoteData({
     pricing,
     config: companyRates,
   });
+  if (useWeightTierPricing && !(baseMinRate > 0)) {
+    throw new Error(`The ${matchingTier.label || 'matching'} weight class has no rate set.`);
+  }
 
   const legsDetails = routeLegs.map((leg, index) => {
     const durationMinutes = Number(((leg.duration?.value || 0) / 60).toFixed(1));
@@ -228,15 +229,21 @@ export async function calculateQuoteData({
   const customerRoutePoints = routeLegs.slice(1, cleanWaypoints.length).flatMap((leg) =>
     (leg.steps || []).flatMap((step) => (step.path || []).map(toPoint).filter(Boolean))
   );
+  // Escorts run the customer trip only (pickup to dropoff), never the deadhead from and back to the yard.
+  const customerMiles = routeLegs.slice(1, cleanWaypoints.length).reduce((total, leg) => total + Number(leg.distance?.value || 0), 0) * 0.000621371
+    || routeLineMiles(customerRoutePoints);
+  const escortPricing = companyRates?.client_portal?.escort_pricing;
+  let escort = resolveEscortRequirement({ width: equipmentWidth, height: equipmentHeight, rules: companyRates?.client_portal?.escort_rules, miles: customerMiles, pricing: escortPricing });
   let osow = null;
   if (useWeightTierPricing && companyRates.client_portal?.osow_pricing?.enabled) {
-    const { resolveRouteStates } = await import('../lib/routeStates.js');
-    const companyTier = (companyRates.client_portal.weight_tiers || []).find((item) => clientWeight >= Number(item.minWeight) && clientWeight <= Number(item.maxWeight));
+    const { resolveRouteStates, routeMilesByState } = await import('../lib/routeStates.js');
+    const companyTier = findWeightTier(companyRates.client_portal.weight_tiers, clientWeight);
     osow = evaluateOsow({ weight: clientWeight, width: equipmentWidth, height: equipmentHeight,
       lengthFt: equipmentLengthFt, overhangFt: equipmentOverhangFt,
       tier: { ...matchingTier, permitCost: matchingTier?.permitCost ?? pricing.base_permit_fee ?? 150, averageClearanceIn: companyTier?.averageClearanceIn, averageVehicleWeightLbs: companyTier?.averageVehicleWeightLbs },
       states: resolveRouteStates(customerRoutePoints), routeKnown: customerRoutePoints.length > 1,
-      limits: await loadOsowLimits(), pricing: companyRates.client_portal.osow_pricing });
+      limits: await loadOsowLimits(), pricing: companyRates.client_portal.osow_pricing,
+      stateMiles: routeMilesByState(customerRoutePoints, customerMiles), escortPricing });
     escort = osow.escort;
   }
   const metroMatches = await evaluateMetroGeofences(cleanWaypoints, coordsList, companyRates, customerRoutePoints);
@@ -296,7 +303,7 @@ export async function calculateQuoteData({
  * Calculates effective multiplier and final min/max/custom pricing.
  * Uses shared pricingEngine to ensure parity with server calculations.
  */
-export function calculateFinalQuotes(quoteData, activeOverrides, customRate, companyRates = {}, customLoadUnloadMins = null, allowEquipmentRouteSurcharges = false, customDriveTimeBufferPercent = null) {
+export function calculateFinalQuotes(quoteData, activeOverrides, customRate, companyRates = {}, customLoadUnloadMins = null, _isDispatcherView = false, customDriveTimeBufferPercent = null) {
   if (!quoteData) {
     return { currentMinQuote: 0, currentMaxQuote: 0, customCalculatedQuote: null, effectiveMultiplier: 1.0 };
   }
@@ -317,21 +324,26 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
   });
 
   const customMatches = activeOverrides?.custom === false ? [] : quoteData.customMatches || [];
+  // Metro and hazard rules apply to every quote, client and staff alike, as on the server.
+  const metroMatches = quoteData.hasMetroZone && activeOverrides?.metro !== false ? quoteData.metroMatches || [] : [];
+  const hazardMatches = quoteData.hasHazardZone && activeOverrides?.hazard !== false ? quoteData.hazardMatches || [] : [];
+  const ruleZones = [...customMatches, ...metroMatches, ...hazardMatches];
 
   // Calculate surcharges using shared logic
   const { multiplier, flatSum } = calculateSurcharges({
-    metroMatches: quoteData.hasMetroZone ? quoteData.metroMatches : [],
-    hazardMatches: quoteData.hasHazardZone ? quoteData.hazardMatches : [],
+    metroMatches,
+    hazardMatches,
     customMatches,
     customSurcharges: pricing.custom_surcharges || [],
     useWeightTierPricing: quoteData.pricingMode === 'equipment-weight-tier',
-    allowRouteSurcharges: quoteData.pricingMode !== 'equipment-weight-tier' || allowEquipmentRouteSurcharges,
+    allowRouteSurcharges: true,
     overrides: activeOverrides,
   });
 
-  // Check for flat override
-  const flatOverride = getFlatOverride(customMatches);
-  const maxOverride = getMaxOverride(customMatches);
+  // Flat-rate, maximum and minimum zone rules
+  const flatOverride = getFlatOverride(ruleZones);
+  const maxOverride = getMaxOverride(ruleZones);
+  const minOverride = getMinOverride(ruleZones);
 
   const timeMetrics = applyQuoteTimeOverrides({
     rawTotalHours: quoteData.rawTotalHours,
@@ -348,13 +360,15 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
-    surchargeFlatSum: flatSum + (quoteData.osow ? 0 : Number(quoteData?.escort?.surcharge || 0)),
-    permitFee: quoteData.osow ? Number(quoteData.osow.permitFee || 0) + Number(quoteData.escort?.surcharge || 0) : 0,
-    rounding: quoteData.osow ? Number(quoteData.roundingInterval || roundingInterval) : roundingInterval,
+    surchargeFlatSum: flatSum,
+    permitFee: (quoteData.osow ? Number(quoteData.osow.permitFee || 0) : 0) + Number(quoteData.escort?.surcharge || 0),
+    // Weight-class quotes round to the class's interval, as the saved quote does.
+    rounding: quoteData.pricingMode === 'equipment-weight-tier' || quoteData.osow ? Number(quoteData.roundingInterval || roundingInterval) : roundingInterval,
     customRate: customRate != null ? customRate : null,
     customQuantity: effectivePricingQuantity,
     flatOverride,
     maxOverride,
+    minOverride,
   });
 
   return {

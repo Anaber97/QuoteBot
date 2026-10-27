@@ -132,9 +132,14 @@ export default function PricingTab({
       </div>
 
       <div className="rounded-xl border border-slate-800 bg-canvas p-3.5 space-y-3">
+        <div><h4 className="font-bold text-slate-200 text-xs">Escort Pricing</h4><p className="text-xs text-slate-400">Each escort vehicle is charged per mile where it is required, and never less than the minimum; a load needing two escorts pays for two. With state-specific OSOW rules, only miles in states that require the escort count; otherwise every escort runs the whole pickup-to-dropoff trip. Leave the rate blank to use the flat escort prices below.</p></div>
+        <div className="grid gap-3 sm:grid-cols-2">{[['perMile', 'Rate per escort ($ / mile)'], ['minimum', 'Minimum per escort ($)']].map(([field, label]) => <label key={field} className="text-xs text-slate-300">{label}<input aria-label={label} type="number" min="0" step="0.01" value={formData.client_portal?.escort_pricing?.[field] ?? ''} onChange={(e) => updateClientPortal('escort_pricing', { ...formData.client_portal?.escort_pricing, [field]: e.target.value === '' ? null : Number(e.target.value) })} className="mt-1 w-full rounded border border-slate-700 bg-panel p-2 text-white" /></label>)}</div>
+      </div>
+
+      <div className="rounded-xl border border-slate-800 bg-canvas p-3.5 space-y-3">
         <h4 className="font-bold text-slate-200 text-xs">OSOW Permit and Escort Pricing</h4>
         <label className="flex gap-2 text-slate-200"><input type="checkbox" checked={Boolean(formData.client_portal?.osow_pricing?.enabled)} onChange={(e) => updateClientPortal('osow_pricing', { ...formData.client_portal?.osow_pricing, enabled: e.target.checked })} />Use state-specific OSOW rules</label>
-        <p className="text-xs text-slate-400">General permit pricing applies once per affected state. The highest escort requirement applies once per trip; 2-escort pricing is the total for both escorts. Blank general pricing uses the weight class permit price. Unspecified escort prices require review.</p>
+        <p className="text-xs text-slate-400">General permit pricing applies once per affected state. Without a per-mile escort rate, the highest escort requirement applies once per trip at the flat price below; 2-escort pricing is the total for both escorts. Blank general pricing uses the weight class permit price. Unspecified escort prices require review.</p>
         <div className="grid gap-3 sm:grid-cols-3">{[['generalPermit', 'General OSOW ($ / state)'], ['oneEscort', '1 Escort ($ / trip)'], ['twoEscort', '2 Escorts ($ / trip)']].map(([field, label]) => <label key={field} className="text-xs text-slate-300">{label}<input aria-label={label} type="number" min="0" step="0.01" value={formData.client_portal?.osow_pricing?.[field] ?? ''} onChange={(e) => updateClientPortal('osow_pricing', { ...formData.client_portal?.osow_pricing, [field]: e.target.value === '' ? null : Number(e.target.value) })} className="mt-1 w-full rounded border border-slate-700 bg-panel p-2 text-white" /></label>)}</div>
       </div>
       <div className="order-2 bg-canvas p-3.5 rounded-xl border border-slate-800 space-y-3">
@@ -156,7 +161,7 @@ export default function PricingTab({
       </div>
 
       <div className="order-2 bg-canvas p-3.5 rounded-xl border border-slate-800 space-y-3">
-        <div><h4 className="font-bold text-slate-200 text-xs">Escort Vehicle Thresholds</h4><p className="text-xs text-slate-400">Used when state-specific OSOW rules are disabled. Width and height are inches. If either threshold is reached, the highest matching escort rule and its flat surcharge are applied.</p></div>
+        <div><h4 className="font-bold text-slate-200 text-xs">Escort Vehicle Thresholds</h4><p className="text-xs text-slate-400">Used when state-specific OSOW rules are disabled. Width and height are inches. If either threshold is reached, the highest matching escort rule applies, priced per mile under Escort Pricing or at its flat surcharge when no rate is set.</p></div>
         <div className="hidden gap-2 px-2 text-xs font-semibold text-slate-400 sm:grid sm:grid-cols-[0.8fr_1fr_1fr_1fr]"><span>Escorts</span><span>Min Width (in.)</span><span>Min Height (in.)</span><span>Surcharge ($)</span></div>
         {(formData.client_portal?.escort_rules || []).map((rule) => <div key={rule.vehicleCount} className="grid gap-2 rounded-lg border border-slate-800 bg-panel p-2.5 sm:grid-cols-[0.8fr_1fr_1fr_1fr]">
           <div className="flex items-center rounded border border-slate-700 bg-canvas p-2 font-semibold text-white">{rule.vehicleCount} escort{Number(rule.vehicleCount) === 1 ? '' : 's'}</div>

@@ -1,4 +1,6 @@
 // Shared browser/server OSOW estimate. Null source thresholds remain unknown.
+import { priceEscortMiles } from './pricingEngine.js';
+
 const known = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
 const number = (value) => known(value) ? Number(value) : 0;
 
@@ -63,7 +65,7 @@ function evaluateRegulations(rule, measurements, reviewReasons) {
     sourceAgency: rule.source_agency, retrievedAt: rule.retrieved_on };
 }
 
-export function evaluateOsow({ weight, width, height, lengthFt, overhangFt, tier = {}, states = [], limits = [], pricing = {}, routeKnown = true }) {
+export function evaluateOsow({ weight, width, height, lengthFt, overhangFt, tier = {}, states = [], limits = [], pricing = {}, routeKnown = true, stateMiles = {}, escortPricing = {} }) {
   const flags = [];
   const reviewReasons = [];
   const loadedHeight = number(height) + number(tier.averageClearanceIn);
@@ -113,12 +115,17 @@ export function evaluateOsow({ weight, width, height, lengthFt, overhangFt, tier
   const permitStates = results.filter((row) => row.needsPermit);
   const vehicleCount = Math.max(0, ...results.map((row) => row.vehicleCount));
   const general = known(pricing.generalPermit) ? number(pricing.generalPermit) : number(tier.permitCost);
-  const escortRate = vehicleCount ? pricing[vehicleCount === 2 ? 'twoEscort' : 'oneEscort'] : 0;
+  // Per-mile pricing charges escort N only for the miles in states requiring at least N escorts.
+  const milesPerVehicle = Array.from({ length: vehicleCount }, (_, index) => Math.round(results
+    .filter((row) => row.vehicleCount > index)
+    .reduce((sum, row) => sum + number(stateMiles?.[row.state]), 0) * 10) / 10);
+  const perMileCost = vehicleCount ? priceEscortMiles(milesPerVehicle, escortPricing) : null;
+  const escortRate = vehicleCount ? perMileCost ?? pricing[vehicleCount === 2 ? 'twoEscort' : 'oneEscort'] : 0;
   if (permitStates.length && !known(pricing.generalPermit) && !known(tier.permitCost)) reviewReasons.push('General OSOW price is not configured.');
   if (vehicleCount && !known(escortRate)) reviewReasons.push(`${vehicleCount}-escort price is not configured.`);
   const permitFee = general * permitStates.length;
   return { needsPermit: permitStates.length > 0, isInterstate: results.length > 1, flags,
     permitFee, states: results, loadedHeight, grossWeight,
-    escort: { vehicleCount, surcharge: number(escortRate) },
+    escort: { vehicleCount, surcharge: number(escortRate), ...(perMileCost == null ? {} : { miles: milesPerVehicle }) },
     reviewRequired: reviewReasons.length > 0, reviewReasons: [...new Set(reviewReasons)] };
 }

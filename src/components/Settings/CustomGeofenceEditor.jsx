@@ -334,6 +334,7 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
             <option value="surcharge">Surcharge</option>
             <option value="flat_rate">Flat rate ($)</option>
             <option value="max_rate">Max. rate ($)</option>
+            <option value="min_rate">Minimum ($)</option>
           </select>
         </div>
       </div>
@@ -349,12 +350,12 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_8rem]">
         <div>
-          <label className="mb-1 block text-xs text-slate-400">{zone.pricingMode === 'max_rate' ? 'Maximum quote' : 'Charge value'}</label>
+          <label className="mb-1 block text-xs text-slate-400">{zone.pricingMode === 'max_rate' ? 'Maximum quote' : zone.pricingMode === 'min_rate' ? 'Minimum quote' : 'Charge value'}</label>
           <input
             type="number"
             value={zone.price ?? ''}
             onChange={(e) => onChange('price', e.target.value)}
-            placeholder={(zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) === 'flat_rate' || zone.surchargeFeeType === 'flat' ? '75' : '25'}
+            placeholder={(zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) === 'flat_rate' || zone.pricingMode === 'min_rate' || zone.surchargeFeeType === 'flat' ? '75' : '25'}
             className="w-full rounded border border-slate-700 bg-canvas p-2 text-white font-mono"
           />
         </div>
@@ -362,7 +363,7 @@ export default function CustomGeofenceEditor({ zone, bases = [], onChange, onSav
           <label className="mb-1 block text-xs text-slate-400">Priority</label>
           <input aria-label="Priority" type="number" min="0" max="999" step="1" value={zone.priority ?? 0} onChange={(e) => onChange('priority', e.target.value)} className="w-full rounded border border-slate-700 bg-canvas p-2 text-white font-mono" />
         </div>
-        <p className="text-xs text-slate-500 sm:col-span-2">{zone.pricingMode === 'max_rate' ? 'The normal quote is kept when lower, or capped at this amount when higher. ' : ''}Higher priority wins when zones overlap. Zones tied at the highest priority stack together.</p>
+        <p className="text-xs text-slate-500 sm:col-span-2">{zone.pricingMode === 'max_rate' ? 'The normal quote is kept when lower, or capped at this amount when higher. ' : ''}{zone.pricingMode === 'min_rate' ? 'The normal quote is kept when higher, or raised to this amount when lower. ' : ''}Higher priority wins when zones overlap. Zones tied at the highest priority stack together.</p>
       </div>
 
       <div className="space-y-2 rounded-lg border border-slate-700 bg-sunken p-2.5">

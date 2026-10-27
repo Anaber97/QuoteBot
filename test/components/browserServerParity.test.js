@@ -176,4 +176,23 @@ describe('browser vs. server quote parity (real public entry points)', () => {
     expect(browser.currentMinQuote).toBe(server.minQuote);
     expect(browser.currentMaxQuote).toBe(server.maxQuote);
   });
+
+  test('per-mile escort pricing matches, on customer miles only', async () => {
+    installFakeGoogleMaps({ legs: ROUTE_LEGS });
+    const config = { ...sharedConfig, client_portal: { escort_pricing: { perMile: 3, minimum: 20 },
+      escort_rules: [{ vehicleCount: 1, minWidth: 144 }, { vehicleCount: 2, minWidth: 168 }],
+      weight_tiers: [{ minWeight: 0, maxWeight: 999999, rate: 100, rounding_interval: 5 }] } };
+    const { calculateQuoteData, calculateFinalQuotes } = await import('../../src/services/quoteCalculator.js');
+    const data = await calculateQuoteData({ currentBase: sharedConfig.bases[0], waypoints: [PICKUP_ADDRESS, DROPOFF_ADDRESS], companyRates: config,
+      clientWeight: 30000, equipmentWidth: 170, equipmentHeight: 120, useWeightTierPricing: true });
+    const server = calculateAuthoritativeQuote({ role: 'client', config,
+      input: { waypoints: [PICKUP_ADDRESS, DROPOFF_ADDRESS], equipment: { weight: 30000, width: 170, height: 120 } },
+      route: { totalMeters: ROUTE_LEGS.reduce((n, l) => n + l.distance.value, 0), rawDriveMinutes: 40, customerRoutePoints: [],
+        legs: ROUTE_LEGS.map((leg) => ({ durationMinutes: leg.duration.value / 60, distanceMeters: leg.distance.value })) } });
+    // Two escorts over the 10-mile customer leg: 2 x max(3 x 10, 20).
+    expect(data.escort).toEqual({ vehicleCount: 2, surcharge: 60, triggeredBy: ['width'], miles: [10, 10] });
+    expect(server.escort).toEqual(data.escort);
+    // The browser total plus the permit (added by the app from the form) matches the saved quote.
+    expect(calculateFinalQuotes(data, {}, null, config).currentMinQuote + server.quoteDetails.permitFee).toBe(server.minQuote);
+  });
 });

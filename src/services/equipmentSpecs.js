@@ -1,6 +1,7 @@
 // src/services/equipmentSpecs.js
 import { authenticatedFetch } from '../lib/api';
 import { addressState } from '../../shared/geo/addressMatch.js';
+import { findWeightTier } from '../lib/pricingEngine.js';
 
 export function googleSpecsUrl(make, model, query = '') {
   const identity = [make, model].filter((value) => value?.trim()).join(' ').trim() || query.trim();
@@ -98,7 +99,8 @@ export function extractStateFromAddress(address = '') {
 /**
  * Evaluates transport dimensions & weight against interstate and state legal limits
  */
-export function calculatePermitRequirements({ weight, width, height, pickupAddr, dropoffAddr, companyRates }) {
+/** `tiers` should be the weight classes the server prices this client with, so the fee shown matches the fee charged. */
+export function calculatePermitRequirements({ weight, width, height, pickupAddr, dropoffAddr, companyRates, tiers = companyRates?.client_portal?.weight_tiers }) {
   const pickupState = extractStateFromAddress(pickupAddr);
   const dropoffState = extractStateFromAddress(dropoffAddr);
 
@@ -123,9 +125,7 @@ export function calculatePermitRequirements({ weight, width, height, pickupAddr,
   // Base permit calculation logic
   let permitFee = 0;
   if (needsPermit) {
-    const weightTier = (companyRates?.client_portal?.weight_tiers || []).find((tier) =>
-      numWeight >= Number(tier.minWeight ?? 0) && numWeight <= Number(tier.maxWeight ?? 999999)
-    );
+    const weightTier = findWeightTier(tiers, numWeight);
     const basePermitFee = Number(weightTier?.permitCost ?? companyRates?.pricing?.base_permit_fee ?? 150);
     // Apply state crossing surcharge multiplier if interstate
     const interstateMultiplier = isInterstate ? 1.5 : 1.0;

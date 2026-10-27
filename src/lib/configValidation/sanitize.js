@@ -47,6 +47,8 @@ const sanitizeGeofences = (geofences) => {
   if (!geofences || typeof geofences !== 'object') return {};
 
   return {
+    ...(geofences.builtInZoneMode === 'opt_in' ? { builtInZoneMode: 'opt_in' } : {}),
+    ...(Array.isArray(geofences.enabledZones) ? { enabledZones: geofences.enabledZones.slice(0, LIMITS.MAX_ARRAY_LENGTH) } : {}),
     disabledZones: Array.isArray(geofences.disabledZones) ? geofences.disabledZones.slice(0, LIMITS.MAX_ARRAY_LENGTH) : [],
     customZoneRates: geofences.customZoneRates && typeof geofences.customZoneRates === 'object' ? geofences.customZoneRates : {},
     customZones: Array.isArray(geofences.customZones) ? geofences.customZones.slice(0, LIMITS.MAX_CUSTOM_ZONES) : [],
@@ -66,6 +68,7 @@ const sanitizeClientPortal = (portal) => {
     use_custom_pricing: portal.use_custom_pricing,
     disclosure: portal.disclosure,
     osow_pricing: portal.osow_pricing,
+    escort_pricing: portal.escort_pricing,
     escort_rules: Array.isArray(portal.escort_rules) ? portal.escort_rules.slice(0, 2) : [],
     weight_tiers: Array.isArray(portal.weight_tiers) ? portal.weight_tiers.slice(0, LIMITS.MAX_WEIGHT_TIERS) : [],
     clients: Array.isArray(portal.clients) ? portal.clients.slice(0, LIMITS.MAX_CLIENTS) : [],

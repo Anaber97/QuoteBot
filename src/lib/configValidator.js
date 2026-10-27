@@ -26,7 +26,7 @@ export function validateConfigInput(config) {
 
   validatePricingSection(config.pricing, result);
   validateGeofencesSection(config.geofences, result);
-  validateClientPortalSection(config.client_portal, result);
+  validateClientPortalSection(config.client_portal, result, { pricingMode: config.pricing?.pricing_mode });
 
   if (Array.isArray(config.bases)) {
     if (config.bases.length > LIMITS.MAX_BASES) {
