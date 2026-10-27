@@ -1,19 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as security from '../api/_security.js';
+import { moduleMockOptions } from './helpers/moduleMock.js';
 
 test('report endpoint pins the company recipient, checks ownership and validates the reason', async (t) => {
   const profile = { id: 'user', role: 'client', company_id: 'company', client_id: 'client', email: 'client@example.test' };
   const quote = { id: 'quote', company_id: 'company', client_id: 'client', quote_source: 'client_portal', min_quote: 525 };
   let payload; let sends = 0;
   const query = { select() { return this; }, eq() { return this; }, async single() { return { data: quote }; } };
-  t.mock.module('../api/_security.js', { namedExports: { ...security, requireUser: async () => ({ profile, admin: { from: () => query } }), enforceRateLimit: async () => {} } });
-  t.mock.module('../api/_quoteDocument.js', { namedExports: { buildQuotePdf: async () => { throw new Error('Reports do not require PDFs'); }, loadQuoteDocumentContext: async () => ({ config: { client_portal: { contact_email: 'dispatch@example.test' } } }) } });
-  t.mock.module('../api/_emailDelivery.js', { namedExports: {
+  t.mock.module('../api/_security.js', moduleMockOptions({ exports: { ...security, requireUser: async () => ({ profile, admin: { from: () => query } }), enforceRateLimit: async () => {} } }));
+  t.mock.module('../api/_quoteDocument.js', moduleMockOptions({ exports: { buildQuotePdf: async () => { throw new Error('Reports do not require PDFs'); }, loadQuoteDocumentContext: async () => ({ config: { client_portal: { contact_email: 'dispatch@example.test' } } }) } }));
+  t.mock.module('../api/_emailDelivery.js', moduleMockOptions({ exports: {
     findEmailDelivery: async () => ({}),
     storeEmailDelivery: async (_admin, _profile, _op, _quote, event, mail) => { assert.equal(event, 'email_sent'); payload = mail; return {}; },
     sendEmailDelivery: async () => { sends++; },
-  } });
+  } }));
   const { default: handler } = await import('../api/sendQuoteEmail.js?report-test');
   const call = async (reason) => {
     const res = { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };

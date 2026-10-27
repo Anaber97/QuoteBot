@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFakeAdmin, createMockReqRes } from './helpers/mockSupabase.js';
+import { moduleMockOptions } from './helpers/moduleMock.js';
 
 /**
  * INVITE LIFECYCLE TESTS
@@ -18,9 +19,9 @@ async function freshImport(path) {
 // ===== getInvite.js =====
 
 test('getInvite returns 404 for an unknown token', async (t) => {
-  t.mock.module('../api/_security.js', {
+  t.mock.module('../api/_security.js', moduleMockOptions({
     exports: { createAdminClient: () => createFakeAdmin({ tableResponders: { company_invites: () => ({ data: null, error: null }) } }) },
-  });
+  }));
   const { default: handler } = await freshImport('../api/getInvite.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { token: 'unknown-token' } });
   await handler(req, res);
@@ -28,7 +29,7 @@ test('getInvite returns 404 for an unknown token', async (t) => {
 });
 
 test('getInvite returns 409 when the invite has already been accepted (reuse)', async (t) => {
-  t.mock.module('../api/_security.js', {
+  t.mock.module('../api/_security.js', moduleMockOptions({
     exports: {
       createAdminClient: () => createFakeAdmin({
         tableResponders: {
@@ -39,7 +40,7 @@ test('getInvite returns 409 when the invite has already been accepted (reuse)', 
         },
       }),
     },
-  });
+  }));
   const { default: handler } = await freshImport('../api/getInvite.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { token: 'used-token' } });
   await handler(req, res);
@@ -47,7 +48,7 @@ test('getInvite returns 409 when the invite has already been accepted (reuse)', 
 });
 
 test('getInvite returns 410 when the invite has expired', async (t) => {
-  t.mock.module('../api/_security.js', {
+  t.mock.module('../api/_security.js', moduleMockOptions({
     exports: {
       createAdminClient: () => createFakeAdmin({
         tableResponders: {
@@ -58,7 +59,7 @@ test('getInvite returns 410 when the invite has expired', async (t) => {
         },
       }),
     },
-  });
+  }));
   const { default: handler } = await freshImport('../api/getInvite.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { token: 'expired-token' } });
   await handler(req, res);
@@ -66,7 +67,7 @@ test('getInvite returns 410 when the invite has expired', async (t) => {
 });
 
 test('getInvite returns the invite details for a valid pending token', async (t) => {
-  t.mock.module('../api/_security.js', {
+  t.mock.module('../api/_security.js', moduleMockOptions({
     exports: {
       createAdminClient: () => createFakeAdmin({
         tableResponders: {
@@ -77,7 +78,7 @@ test('getInvite returns the invite details for a valid pending token', async (t)
         },
       }),
     },
-  });
+  }));
   const { default: handler } = await freshImport('../api/getInvite.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { token: 'valid-token' } });
   await handler(req, res);
@@ -100,7 +101,7 @@ function mockAcceptInviteSecurity(rpcResult) {
 }
 
 test('acceptInvite returns 404 for an invalid/unknown token', async (t) => {
-  t.mock.module('../api/_security.js', mockAcceptInviteSecurity({ data: null, error: { message: 'invalid invitation token' } }));
+  t.mock.module('../api/_security.js', moduleMockOptions(mockAcceptInviteSecurity({ data: null, error: { message: 'invalid invitation token' } })));
   const { default: handler } = await freshImport('../api/acceptInvite.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { token: 'bad-token', ...acceptedPolicies } });
   await handler(req, res);
@@ -108,7 +109,7 @@ test('acceptInvite returns 404 for an invalid/unknown token', async (t) => {
 });
 
 test('acceptInvite returns 410 when the invite token has expired', async (t) => {
-  t.mock.module('../api/_security.js', mockAcceptInviteSecurity({ data: null, error: { message: 'invite has expired' } }));
+  t.mock.module('../api/_security.js', moduleMockOptions(mockAcceptInviteSecurity({ data: null, error: { message: 'invite has expired' } })));
   const { default: handler } = await freshImport('../api/acceptInvite.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { token: 'expired-token', ...acceptedPolicies } });
   await handler(req, res);
@@ -116,7 +117,7 @@ test('acceptInvite returns 410 when the invite token has expired', async (t) => 
 });
 
 test('acceptInvite returns 403 when the invite email does not match the authenticated user', async (t) => {
-  t.mock.module('../api/_security.js', mockAcceptInviteSecurity({ data: null, error: { message: 'invite email does not match authenticated user' } }));
+  t.mock.module('../api/_security.js', moduleMockOptions(mockAcceptInviteSecurity({ data: null, error: { message: 'invite email does not match authenticated user' } })));
   const { default: handler } = await freshImport('../api/acceptInvite.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { token: 'mismatch-token', ...acceptedPolicies } });
   await handler(req, res);
@@ -124,7 +125,7 @@ test('acceptInvite returns 403 when the invite email does not match the authenti
 });
 
 test('acceptInvite returns 409-mapped "no longer valid" for an already-accepted (reused) invite', async (t) => {
-  t.mock.module('../api/_security.js', mockAcceptInviteSecurity({ data: null, error: { message: 'invitation is no longer valid' } }));
+  t.mock.module('../api/_security.js', moduleMockOptions(mockAcceptInviteSecurity({ data: null, error: { message: 'invitation is no longer valid' } })));
   const { default: handler } = await freshImport('../api/acceptInvite.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { token: 'reused-token', ...acceptedPolicies } });
   await handler(req, res);
@@ -132,7 +133,7 @@ test('acceptInvite returns 409-mapped "no longer valid" for an already-accepted 
 });
 
 test('acceptInvite succeeds for a valid, matching, unused invite', async (t) => {
-  t.mock.module('../api/_security.js', mockAcceptInviteSecurity({ data: [{ company_id: 'c1', role: 'dispatch' }], error: null }));
+  t.mock.module('../api/_security.js', moduleMockOptions(mockAcceptInviteSecurity({ data: [{ company_id: 'c1', role: 'dispatch' }], error: null })));
   const { default: handler } = await freshImport('../api/acceptInvite.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { token: 'good-token', fullName: 'A B', ...acceptedPolicies } });
   await handler(req, res);
@@ -142,7 +143,7 @@ test('acceptInvite succeeds for a valid, matching, unused invite', async (t) => 
 
 test('acceptInvite blocks acceptance when current policy versions are absent', async (t) => {
   let rpcCalled = false;
-  t.mock.module('../api/_security.js', mockAcceptInviteSecurity({ data: null, error: null }));
+  t.mock.module('../api/_security.js', moduleMockOptions(mockAcceptInviteSecurity({ data: null, error: null })));
   const { default: handler } = await freshImport('../api/acceptInvite.js');
   const { req, res } = createMockReqRes({ method: 'POST', body: { token: 'good-token' } });
   await handler(req, res);

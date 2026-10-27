@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFakeAdmin, createMockReqRes } from './helpers/mockSupabase.js';
 import { canAccessQuote } from '../api/_security.js';
+import { moduleMockOptions } from './helpers/moduleMock.js';
 
 /**
  * QUOTE STATUS TRANSITION TESTS
@@ -54,11 +55,11 @@ test('competing transitions cannot overwrite the first successful change', async
     await bothRead;
     return { data: snapshot, error: null };
   } } });
-  t.mock.module('../api/_security.js', { exports: {
+  t.mock.module('../api/_security.js', moduleMockOptions({ exports: {
     requireUser: async () => ({ admin, profile: managerProfile }), canAccessQuote,
     enforceRateLimit: async () => {},
     sendApiError: (res) => res.status(500).json({ error: 'Unexpected error' }),
-  } });
+  } }));
   const { default: handler } = await import(`../api/updateQuoteStatus.js?race=${Math.random()}`);
   const first = createMockReqRes({ method: 'PATCH', body: { quoteId: stored.id, status: 'cancelled' } });
   const second = createMockReqRes({ method: 'PATCH', body: { quoteId: stored.id, status: 'dispatched' } });
@@ -69,7 +70,7 @@ test('competing transitions cannot overwrite the first successful change', async
 });
 
 async function callUpdateStatus(t, { profile, quote, status, updateResult }) {
-  t.mock.module('../api/_security.js', mockSecurity({ profile, quote, updateResult }));
+  t.mock.module('../api/_security.js', moduleMockOptions(mockSecurity({ profile, quote, updateResult })));
   const { default: handler } = await import(`../api/updateQuoteStatus.js?t=${Math.random()}`);
   const { req, res } = createMockReqRes({ method: 'PATCH', body: { quoteId: quote.id, status } });
   await handler(req, res);

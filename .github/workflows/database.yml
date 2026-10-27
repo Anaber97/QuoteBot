@@ -16,7 +16,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # pgTAP only needs Postgres (and Auth for auth.users), so skip the other
+      # services to pull 2 images instead of 13 and stay under registry limits.
       - name: Replay migrations in disposable Supabase
-        run: npx --no-install supabase start
+        run: npx --no-install supabase start -x realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - name: Verify actual database permissions and search
         run: npx --no-install supabase test db --local
