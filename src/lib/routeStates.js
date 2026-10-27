@@ -1,4 +1,5 @@
 import encodedBoundaries from '../data/stateBoundaries.js';
+import { routeLineMiles } from './pricingEngine.js';
 
 // Delta encoding preserves the Census coordinates to six decimal places while
 // avoiding a multi-megabyte JavaScript syntax tree in the browser bundle.
@@ -51,4 +52,33 @@ export function resolveRouteStates(points = []) {
     if (hit) states.push(state.code);
   }
   return states.sort();
+}
+
+const stateAt = (point, preferred) => preferred && inside(point, preferred.rings) ? preferred
+  : boundaries.find((state) => {
+    const [minX,minY,maxX,maxY] = state.bbox;
+    return point.lng>=minX && point.lng<=maxX && point.lat>=minY && point.lat<=maxY && inside(point, state.rings);
+  });
+
+/**
+ * Miles driven in each state, keyed by state code. Each route segment counts
+ * toward the state holding its midpoint; a segment over water or outside the
+ * boundaries counts toward the state before it (or after it, at the start).
+ * When the road distance is known, the miles are scaled to add up to it.
+ */
+export function routeMilesByState(points = [], roadMiles = 0) {
+  const valid = points.filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lng));
+  const miles = {};
+  let current = null;
+  let unassigned = 0;
+  for (let i = 1; i < valid.length; i++) {
+    const segment = routeLineMiles([valid[i-1], valid[i]]);
+    current = stateAt({ lat: (valid[i-1].lat + valid[i].lat) / 2, lng: (valid[i-1].lng + valid[i].lng) / 2 }, current) || current;
+    if (!current) { unassigned += segment; continue; }
+    miles[current.code] = (miles[current.code] || 0) + segment + unassigned;
+    unassigned = 0;
+  }
+  const lineMiles = Object.values(miles).reduce((sum, value) => sum + value, 0);
+  const scale = roadMiles > 0 && lineMiles > 0 ? roadMiles / lineMiles : 1;
+  return Object.fromEntries(Object.entries(miles).map(([code, value]) => [code, Math.round(value * scale * 10) / 10]));
 }

@@ -113,6 +113,13 @@ export function validateClientPortalSection(portal, result, { pricingMode } = {}
       if (!check.valid) addError(result, check.error, `client_portal.osow_pricing.${field}`);
     }
   }
+  if (portal.escort_pricing) {
+    for (const field of ['perMile', 'minimum']) {
+      if (portal.escort_pricing[field] == null || portal.escort_pricing[field] === '') continue;
+      const check = validateNumber(portal.escort_pricing[field], { min: 0, max: field === 'perMile' ? 1000 : 100000 });
+      if (!check.valid) addError(result, check.error, `client_portal.escort_pricing.${field}`);
+    }
+  }
   if (Array.isArray(portal.escort_rules)) {
     portal.escort_rules.slice(0, 2).forEach((rule, index) => {
       ['minWidth', 'minHeight', 'surcharge'].forEach((field) => {

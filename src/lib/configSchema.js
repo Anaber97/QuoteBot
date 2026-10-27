@@ -310,6 +310,8 @@ export function normalizeConfig(rawConfig = {}) {
     use_custom_pricing: baseConfig.client_portal?.use_custom_pricing === true,
     disclosure: baseConfig.client_portal?.disclosure || DEFAULT_CLIENT_PORTAL.disclosure,
     osow_pricing: { enabled: false, generalPermit: null, oneEscort: null, twoEscort: null, ...(baseConfig.client_portal?.osow_pricing || {}) },
+    // Blank until a company sets it; while perMile is blank the flat escort prices apply.
+    escort_pricing: { perMile: null, minimum: null, ...(baseConfig.client_portal?.escort_pricing || {}) },
     escort_rules: [1, 2].map((vehicleCount) => {
       const saved = asArray(baseConfig.client_portal?.escort_rules).find((rule) => Number(rule.vehicleCount) === vehicleCount) || DEFAULT_CLIENT_PORTAL.escort_rules[vehicleCount - 1];
       return {

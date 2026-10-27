@@ -14,10 +14,11 @@ import {
   calculatePermitRequirements as calculatePermitPure,
   resolveEscortRequirement,
   findWeightTier,
+  routeLineMiles,
 } from '../src/lib/pricingEngine.js';
 
 import { evaluateOsow } from '../src/lib/osow.js';
-import { resolveRouteStates } from '../src/lib/routeStates.js';
+import { resolveRouteStates, routeMilesByState } from '../src/lib/routeStates.js';
 
 const toFinite = (value, fallback = 0) => {
   const number = Number(value);
@@ -194,10 +195,16 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
       ? toFinite(tier?.permitCost, toFinite(config?.pricing?.base_permit_fee, 150))
       : toFinite(config?.pricing?.base_permit_fee, 150),
   });
+  // Escorts run the customer trip only (pickup to dropoff), never the deadhead from and back to the yard.
+  const customerMiles = (route.legs || []).slice(1, -1).reduce((sum, leg) => sum + toFinite(leg.distanceMeters), 0) * 0.000621371
+    || routeLineMiles(customerRoutePoints);
+  const escortPricing = config?.client_portal?.escort_pricing;
   let escort = resolveEscortRequirement({
     width: toFinite(input.equipment?.width),
     height: toFinite(input.equipment?.height),
     rules: config?.client_portal?.escort_rules,
+    miles: customerMiles,
+    pricing: escortPricing,
   });
 
   let osow = null;
@@ -207,7 +214,8 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
       lengthFt: input.equipment?.lengthFt, overhangFt: input.equipment?.overhangFt,
       tier: { ...tier, permitCost: tier?.permitCost ?? pricing.base_permit_fee ?? 150, averageClearanceIn: companyTier?.averageClearanceIn, averageVehicleWeightLbs: companyTier?.averageVehicleWeightLbs },
       states: resolveRouteStates(customerRoutePoints), routeKnown: customerRoutePoints.length > 1,
-      limits: config.state_transport_limits || [], pricing: config.client_portal.osow_pricing });
+      limits: config.state_transport_limits || [], pricing: config.client_portal.osow_pricing,
+      stateMiles: routeMilesByState(customerRoutePoints, customerMiles), escortPricing });
     permit = osow; escort = osow.escort;
   }
 

@@ -280,8 +280,40 @@ export function calculatePermitRequirements({
   return { needsPermit, isInterstate, flags, permitFee };
 }
 
-/** Resolves the highest escort requirement triggered by width or height. */
-export function resolveEscortRequirement({ width = 0, height = 0, rules = [] } = {}) {
+/** Straight-line miles along a route's points (great-circle distance between consecutive points). */
+export function routeLineMiles(points = []) {
+  const radians = (degrees) => degrees * Math.PI / 180;
+  let miles = 0;
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i - 1];
+    const q = points[i];
+    if (![p?.lat, p?.lng, q?.lat, q?.lng].every(Number.isFinite)) continue;
+    const a = Math.sin(radians(q.lat - p.lat) / 2) ** 2
+      + Math.cos(radians(p.lat)) * Math.cos(radians(q.lat)) * Math.sin(radians(q.lng - p.lng) / 2) ** 2;
+    miles += 7917.6 * Math.asin(Math.min(1, Math.sqrt(a)));
+  }
+  return miles;
+}
+
+/**
+ * Per-mile escort pricing: each escort vehicle costs `perMile` for every mile
+ * it is required, and never less than `minimum`. `milesPerVehicle` lists the
+ * required miles for escort 1, escort 2, and so on. Returns null when the
+ * company has no per-mile rate, so its flat escort prices apply instead.
+ */
+export function priceEscortMiles(milesPerVehicle = [], pricing = {}) {
+  if (pricing?.perMile == null || pricing.perMile === '' || !Number.isFinite(Number(pricing.perMile))) return null;
+  const perMile = Math.max(0, Number(pricing.perMile));
+  const minimum = Math.max(0, toFinite(pricing.minimum, 0));
+  const cost = milesPerVehicle.reduce((sum, miles) => sum + Math.max(perMile * Math.max(0, toFinite(miles)), minimum), 0);
+  return Math.round(cost * 100) / 100;
+}
+
+/**
+ * Resolves the highest escort requirement triggered by width or height. With
+ * per-mile escort pricing, every escort runs the whole customer trip (`miles`).
+ */
+export function resolveEscortRequirement({ width = 0, height = 0, rules = [], miles = 0, pricing = {} } = {}) {
   const numericWidth = toFinite(width);
   const numericHeight = toFinite(height);
   const matches = (Array.isArray(rules) ? rules : []).filter((rule) => {
@@ -294,5 +326,9 @@ export function resolveEscortRequirement({ width = 0, height = 0, rules = [] } =
   const triggeredBy = [];
   if (toFinite(rule.minWidth) > 0 && numericWidth >= toFinite(rule.minWidth)) triggeredBy.push('width');
   if (toFinite(rule.minHeight) > 0 && numericHeight >= toFinite(rule.minHeight)) triggeredBy.push('height');
-  return { vehicleCount: toFinite(rule.vehicleCount), surcharge: toFinite(rule.surcharge), triggeredBy };
+  const vehicleCount = toFinite(rule.vehicleCount);
+  const perMileCost = priceEscortMiles(Array(vehicleCount).fill(miles), pricing);
+  return perMileCost == null
+    ? { vehicleCount, surcharge: toFinite(rule.surcharge), triggeredBy }
+    : { vehicleCount, surcharge: perMileCost, triggeredBy, miles: Array(vehicleCount).fill(Math.round(toFinite(miles) * 10) / 10) };
 }
