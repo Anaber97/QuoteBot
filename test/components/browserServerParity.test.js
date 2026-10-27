@@ -171,7 +171,7 @@ describe('browser vs. server quote parity (real public entry points)', () => {
     const { calculateQuoteData, calculateFinalQuotes } = await import('../../src/services/quoteCalculator.js');
     const data = await calculateQuoteData({currentBase:sharedConfig.bases[0],waypoints:[PICKUP_ADDRESS,DROPOFF_ADDRESS],companyRates:config,clientWeight:50001,equipmentWidth:170,equipmentHeight:120,useWeightTierPricing:true});
     const browser = calculateFinalQuotes(data,{},null,config);
-    const server = calculateAuthoritativeQuote({role:'client',config,input:{waypoints:[PICKUP_ADDRESS,DROPOFF_ADDRESS],equipment:{weight:50000,attachmentWeight:1,width:170,height:120}},route:{totalMeters:ROUTE_LEGS.reduce((n,l)=>n+l.distance.value,0),rawDriveMinutes:40,customerRoutePoints:points,legs:[]}});
+    const server = calculateAuthoritativeQuote({role:'client',config,input:{waypoints:[PICKUP_ADDRESS,DROPOFF_ADDRESS],equipment:{weight:50000,attachmentWeight:1,width:170,height:120}},route:{totalMeters:ROUTE_LEGS.reduce((n,l)=>n+l.distance.value,0),rawDriveMinutes:40,customerRoutePoints:points,legs:ROUTE_LEGS.map((leg)=>({durationMinutes:leg.duration.value/60,distanceMeters:leg.distance.value}))}});
     expect(data.osow).toEqual(server.osow);
     expect(browser.currentMinQuote).toBe(server.minQuote);
     expect(browser.currentMaxQuote).toBe(server.maxQuote);
@@ -194,5 +194,26 @@ describe('browser vs. server quote parity (real public entry points)', () => {
     expect(server.escort).toEqual(data.escort);
     // The browser total plus the permit (added by the app from the form) matches the saved quote.
     expect(calculateFinalQuotes(data, {}, null, config).currentMinQuote + server.quoteDetails.permitFee).toBe(server.minQuote);
+  });
+
+  test('overnights for the driver and escorts match on a long trip', async () => {
+    const leg = (seconds, meters) => ({ duration: { value: seconds }, distance: { value: meters }, end_location: fakeLatLng(0, 0), steps: [] });
+    const legs = [leg(3600, 100000), leg(14 * 3600, 1000000), leg(14 * 3600, 900000)];
+    installFakeGoogleMaps({ legs });
+    const config = { ...sharedConfig, client_portal: { escort_rules: [{ vehicleCount: 1, minWidth: 144, surcharge: 400 }],
+      overnight_pricing: { maxDriveHours: 11, maxOnDutyHours: 14, permittedLoadHours: 10, driverCharge: 300, escortCharge: 200 },
+      weight_tiers: [{ minWeight: 0, maxWeight: 999999, rate: 100, rounding_interval: 5 }] } };
+    const { calculateQuoteData, calculateFinalQuotes } = await import('../../src/services/quoteCalculator.js');
+    const data = await calculateQuoteData({ currentBase: sharedConfig.bases[0], waypoints: [PICKUP_ADDRESS, DROPOFF_ADDRESS], companyRates: config,
+      clientWeight: 30000, equipmentWidth: 150, equipmentHeight: 120, useWeightTierPricing: true });
+    const server = calculateAuthoritativeQuote({ role: 'client', config,
+      input: { waypoints: [PICKUP_ADDRESS, DROPOFF_ADDRESS], equipment: { weight: 30000, width: 150, height: 120 } },
+      route: { totalMeters: 2000000, rawDriveMinutes: 29 * 60, customerRoutePoints: [],
+        legs: legs.map((l) => ({ durationMinutes: l.duration.value / 60, distanceMeters: l.distance.value })) } });
+    const browser = calculateFinalQuotes(data, {}, null, config);
+    // 29 h + 10% buffer at 10 permitted hours a day: 4 days for the driver; 15.4 h escorted: 2 days.
+    expect([server.overnights.driver, server.overnights.escorts, server.overnights.charge]).toEqual([3, [1], 1100]);
+    expect(browser.overnights).toEqual(server.overnights);
+    expect(browser.currentMinQuote + server.quoteDetails.permitFee).toBe(server.minQuote);
   });
 });

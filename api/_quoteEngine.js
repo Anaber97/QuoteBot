@@ -15,6 +15,9 @@ import {
   resolveEscortRequirement,
   findWeightTier,
   routeLineMiles,
+  calculateOvernights,
+  escortDriveMinutes,
+  hasOvernights,
 } from '../src/lib/pricingEngine.js';
 
 import { evaluateOsow } from '../src/lib/osow.js';
@@ -227,13 +230,24 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
   });
   const effectivePricingQuantity = standardPricingMode === 'mileage' ? totalMiles : timeMetrics.rawTotalHours;
 
+  // Equipment quotes add overnight stays: the driver's over the whole round trip, each escort's over its escorted miles.
+  const customerDriveMinutes = (route.legs || []).slice(1, -1).reduce((sum, leg) => sum + toFinite(leg.durationMinutes), 0)
+    * (1 + timeMetrics.driveTimeBufferPercent / 100);
+  const overnights = useWeightTierPricing ? calculateOvernights({
+    driveMinutes: timeMetrics.adjustedDriveMinutes,
+    onSiteMinutes: timeMetrics.loadUnloadMinutes,
+    escortDriveMinutes: escortDriveMinutes(osow ? osow.escortMiles : Array(escort.vehicleCount).fill(customerMiles), customerMiles, customerDriveMinutes),
+    permittedLoad: Boolean(permit.needsPermit || escort.vehicleCount > 0),
+    settings: config?.client_portal?.overnight_pricing,
+  }) : null;
+
   const quoteResult = calculateFinalQuotesPure({
     pricingQuantity: effectivePricingQuantity,
     minRate,
     maxRate,
     surchargeMultiplier: multiplier,
     surchargeFlatSum: flatSum,
-    permitFee: permit.permitFee + escort.surcharge,
+    permitFee: permit.permitFee + escort.surcharge + (overnights?.charge || 0),
     rounding: interval,
     customRate: role !== 'client' ? toFinite(input.customRate) : null,
     customQuantity: role !== 'client' ? effectivePricingQuantity : null,
@@ -250,13 +264,16 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     minQuote: quoteResult.minQuote,
     maxQuote: quoteResult.maxQuote,
     customQuote: quoteResult.customQuote,
-    approvalRequired: Boolean(osow?.reviewRequired) || totalWeight >= toFinite(clientConfig?.approval_threshold ?? config?.client_portal?.approval_threshold, 80000),
+    // Multi-day trips come to the company for review, like heavy and permit-review loads.
+    approvalRequired: Boolean(osow?.reviewRequired) || hasOvernights(overnights)
+      || totalWeight >= toFinite(clientConfig?.approval_threshold ?? config?.client_portal?.approval_threshold, 80000),
     permit,
     osow,
     escort,
+    overnights,
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
     appliedSurcharges: { afterHours: false, roadClub: false, metro: activeMetro.length > 0, hazard: activeHazard.length > 0, customZone: Boolean(customMatches.length) },
     routeLegs: route.legs,
-    quoteDetails: { ...(input.equipment || {}), osow, driveTimeBufferPercent: timeMetrics.driveTimeBufferPercent, loadUnloadMinutes: timeMetrics.loadUnloadMinutes, permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
+    quoteDetails: { ...(input.equipment || {}), osow, driveTimeBufferPercent: timeMetrics.driveTimeBufferPercent, loadUnloadMinutes: timeMetrics.loadUnloadMinutes, permitFee: permit.permitFee, permitFlags: permit.flags, escort, overnights, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
   };
 }

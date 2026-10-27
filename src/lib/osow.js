@@ -127,5 +127,6 @@ export function evaluateOsow({ weight, width, height, lengthFt, overhangFt, tier
   return { needsPermit: permitStates.length > 0, isInterstate: results.length > 1, flags,
     permitFee, states: results, loadedHeight, grossWeight,
     escort: { vehicleCount, surcharge: number(escortRate), ...(perMileCost == null ? {} : { miles: milesPerVehicle }) },
+    escortMiles: milesPerVehicle,
     reviewRequired: reviewReasons.length > 0, reviewReasons: [...new Set(reviewReasons)] };
 }

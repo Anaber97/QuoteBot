@@ -224,8 +224,9 @@ test('client-specific pricing overrides company tiers and timing', () => {
     pricing: { use_custom_pricing: true, weight_tiers: [{ minWeight: 0, maxWeight: 999999, rate: 175, drive_time_buffer: 0, load_unload_base_mins: 60, rounding_interval: 25 }] },
   };
   const result = quote({ role: 'client', clientConfig });
-  assert.equal(result.totalHours, 1);
-  assert.equal(result.minQuote, 175);
+  // A 0% buffer keeps the 60-minute drive as is, plus the client's 60 minutes on site.
+  assert.equal(result.totalHours, 2);
+  assert.equal(result.minQuote, 350);
 });
 
 test('mileage mode prices the full routed mileage and preserves surcharge rounding', () => {
@@ -463,4 +464,13 @@ test('a weight class with no rate refuses to quote instead of quoting $0', () =>
   assert.throws(() => clientQuote({ weight: 5000, width: 96, height: 120 }, (cfg) => {
     cfg.client_portal.weight_tiers = [{ label: 'New class', minWeight: 0, maxWeight: 999999, rate: 0, hourlyRate: 0 }];
   }), { status: 400, message: /New class weight class has no rate/ });
+});
+
+test('a 0% drive buffer keeps the drive time; older 1.0-1.5 multipliers still read as multipliers', () => {
+  const withBuffer = (drive_time_buffer) => quote({ role: 'client', config: { ...config, client_portal: { ...config.client_portal,
+    weight_tiers: [{ minWeight: 0, maxWeight: 999999, rate: 100, drive_time_buffer, load_unload_base_mins: 0, rounding_interval: 1 }] } } }).totalHours;
+  assert.equal(withBuffer(0), 1);
+  assert.equal(withBuffer(10), 1.1);
+  assert.equal(withBuffer(1.1), 1.1);
+  assert.equal(withBuffer(0.9), 1.01, 'below 1 is a percent');
 });

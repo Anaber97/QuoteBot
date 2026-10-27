@@ -312,6 +312,9 @@ export function normalizeConfig(rawConfig = {}) {
     osow_pricing: { enabled: false, generalPermit: null, oneEscort: null, twoEscort: null, ...(baseConfig.client_portal?.osow_pricing || {}) },
     // Blank until a company sets it; while perMile is blank the flat escort prices apply.
     escort_pricing: { perMile: null, minimum: null, ...(baseConfig.client_portal?.escort_pricing || {}) },
+    // Hour limits default to the federal hours-of-service rules (49 CFR 395.3); charges stay blank until a company sets them.
+    overnight_pricing: { maxDriveHours: 11, maxOnDutyHours: 14, permittedLoadHours: null, driverCharge: null, escortCharge: null,
+      ...(baseConfig.client_portal?.overnight_pricing || {}) },
     escort_rules: [1, 2].map((vehicleCount) => {
       const saved = asArray(baseConfig.client_portal?.escort_rules).find((rule) => Number(rule.vehicleCount) === vehicleCount) || DEFAULT_CLIENT_PORTAL.escort_rules[vehicleCount - 1];
       return {

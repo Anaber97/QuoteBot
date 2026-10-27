@@ -25,6 +25,14 @@ const Mark = ({ active }) => (
   <span className="text-xs font-black opacity-70">{active ? '✕' : '↻'}</span>
 );
 
+
+/** "2 overnights (driver 1, escorts 1)", or null when the trip needs none. */
+const describeOvernights = (overnights) => {
+  const escortNights = (overnights?.escorts || []).reduce((sum, count) => sum + count, 0);
+  const total = Number(overnights?.driver || 0) + escortNights;
+  if (!total) return null;
+  return `${total} overnight${total === 1 ? '' : 's'} (driver ${overnights.driver}${escortNights ? `, escorts ${escortNights}` : ''})`;
+};
 export default function QuoteResultsCard({
   state,
   dispatch,
@@ -41,7 +49,8 @@ export default function QuoteResultsCard({
 
   if (!quoteData) return null;
 
-  const { total: clientPrice, timeMetrics, effectiveRate, effectiveBaseQuote, permitFee, osow } = quoteTotals(quoteData, state, companyRates, isDispatcherView);
+  const { total: clientPrice, timeMetrics, effectiveRate, effectiveBaseQuote, permitFee, osow, overnights } = quoteTotals(quoteData, state, companyRates, isDispatcherView);
+  const overnightSummary = describeOvernights(overnights);
   // Client estimates do not present OSOW screening. Dispatchers see it only
   // when the regular equipment calculator identifies an actual permit need.
   const shouldShowOsowEstimate = isDispatcherView && osow?.needsPermit === true;
@@ -121,7 +130,7 @@ export default function QuoteResultsCard({
           {'$' + Number(clientPrice || 0).toLocaleString('en-US')}
         </div>
         {isDispatcherView && <p className="m-0 text-sm text-slate-400 tabular-nums">{summary}</p>}
-        {isDispatcherView && (permitSurcharge > 0 || attachmentWeight > 0 || (!osow && Number(escort.vehicleCount) > 0)) && (
+        {isDispatcherView && (permitSurcharge > 0 || attachmentWeight > 0 || overnightSummary || (!osow && Number(escort.vehicleCount) > 0)) && (
           <ul className="m-0 flex list-none flex-wrap gap-2 p-0 text-sm">
             {permitSurcharge > 0 && (
               <li aria-label="Permit surcharge" title="Permit surcharge included" className="rounded-md bg-amber-500/10 px-2 py-1 font-semibold text-amber-300 tabular-nums">
@@ -131,6 +140,11 @@ export default function QuoteResultsCard({
             {!osow && Number(escort.vehicleCount) > 0 && (
               <li className="rounded-md bg-slate-800 px-2 py-1 font-semibold text-slate-200 tabular-nums">
                 {escort.vehicleCount} escort vehicle{Number(escort.vehicleCount) === 1 ? '' : 's'}: +${Number(escort.surcharge || 0).toFixed(2)}
+              </li>
+            )}
+            {overnightSummary && (
+              <li aria-label="Overnight surcharge" title="Overnight stays included; this quote needs manager review" className="rounded-md bg-amber-500/10 px-2 py-1 font-semibold text-amber-300 tabular-nums">
+                {overnightSummary}: +${Number(overnights.charge || 0).toFixed(2)}
               </li>
             )}
             {attachmentWeight > 0 && (
@@ -206,6 +220,7 @@ export default function QuoteResultsCard({
             osow={osow}
             osowFlagSummary={osowFlagSummary}
             escort={escort}
+            overnights={overnights}
           />}
         </div>
       )}
@@ -217,6 +232,7 @@ export default function QuoteResultsCard({
       )}
 
       <QuoteSaveForm state={state} dispatch={dispatch} isDispatcherView={isDispatcherView}
+        approvalRequired={Boolean(quoteData?.approvalRequired || overnightSummary)}
         onLogQuote={onLogQuote} onSaveForLater={onSaveForLater} onAcceptQuote={onAcceptQuote} />
     </section>
   );

@@ -23,7 +23,8 @@ export default function QuoteTripBreakdown({
   permitSurcharge,
   osow,
   osowFlagSummary,
-  escort
+  escort,
+  overnights
 }) {
   const fields = [
     { label: isMileageQuote ? 'Mileage Rate' : 'Hourly Rate', value: effectiveRate, input: state?.customRateInput, action: 'SET_CUSTOM_RATE', prefix: '$', suffix: isMileageQuote ? '/mi' : '/hr', min: 0.01, max: 100000, step: '0.01' },
@@ -81,6 +82,9 @@ export default function QuoteTripBreakdown({
         )}
         {!osow && Number(escort.vehicleCount) > 0 && (
           <Row label={`${escort.vehicleCount} escort vehicle${Number(escort.vehicleCount) === 1 ? '' : 's'}`}>+${Number(escort.surcharge || 0).toFixed(2)}</Row>
+        )}
+        {overnights && (overnights.driver > 0 || overnights.escorts.some(Boolean)) && (
+          <Row tone="text-amber-300" label={`Overnights: driver ${overnights.driver}${overnights.escorts.length ? `, escort${overnights.escorts.length === 1 ? '' : 's'} ${overnights.escorts.join(' + ')}` : ''}`}>+${Number(overnights.charge || 0).toFixed(2)}</Row>
         )}
         <Row label={isMileageQuote ? 'Total billable miles' : 'Total billable hours'} tone="text-white">
           {isMileageQuote ? `${Number(quoteData.totalMiles || 0).toFixed(1)} mi` : `${Number(timeMetrics.rawTotalHours.toFixed(2))} h`}

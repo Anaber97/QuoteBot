@@ -69,6 +69,7 @@ const sanitizeClientPortal = (portal) => {
     disclosure: portal.disclosure,
     osow_pricing: portal.osow_pricing,
     escort_pricing: portal.escort_pricing,
+    overnight_pricing: portal.overnight_pricing,
     escort_rules: Array.isArray(portal.escort_rules) ? portal.escort_rules.slice(0, 2) : [],
     weight_tiers: Array.isArray(portal.weight_tiers) ? portal.weight_tiers.slice(0, LIMITS.MAX_WEIGHT_TIERS) : [],
     clients: Array.isArray(portal.clients) ? portal.clients.slice(0, LIMITS.MAX_CLIENTS) : [],

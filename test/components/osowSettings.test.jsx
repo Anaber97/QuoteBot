@@ -24,3 +24,14 @@ test('escort pricing sets a per-mile rate and minimum per escort, blank by defau
  fireEvent.change(screen.getByLabelText('Rate per escort ($ / mile)'),{target:{value:''}});
  expect(updateClientPortal).toHaveBeenCalledWith('escort_pricing',{perMile:null,minimum:null});
 });
+
+test('overnight settings show the federal hour limits and blank charges',()=>{
+ const updateClientPortal=vi.fn();
+ const overnight={maxDriveHours:11,maxOnDutyHours:14,permittedLoadHours:null,driverCharge:null,escortCharge:null};
+ render(<PricingTab formData={{pricing:{},client_portal:{weight_tiers:[],osow_pricing:{enabled:false},overnight_pricing:overnight}}} customSurchargeSearch="" customSurchargeFilter="all" customSurchargeItems={[]} updateClientPortal={updateClientPortal} updateClientPortalTier={vi.fn()} />);
+ expect(screen.getByLabelText('Max driving hours / day')).toHaveValue(11);
+ expect(screen.getByLabelText('Max on-duty hours / day')).toHaveValue(14);
+ expect(screen.getByLabelText('Permitted-load travel hours / day')).toHaveValue(null);
+ fireEvent.change(screen.getByLabelText('Overnight charge per driver ($ / night)'),{target:{value:'275'}});
+ expect(updateClientPortal).toHaveBeenCalledWith('overnight_pricing',{...overnight,driverCharge:275});
+});

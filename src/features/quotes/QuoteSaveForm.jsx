@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 
 /** Contact details, optional BOL selection, and quote submission controls. */
-export default function QuoteSaveForm({ state, dispatch, isDispatcherView, onLogQuote, onSaveForLater, onAcceptQuote }) {
+export default function QuoteSaveForm({ state, dispatch, isDispatcherView, onLogQuote, onSaveForLater, onAcceptQuote, approvalRequired }) {
   const { quoteData, customerName, customerPhone, isSaving, saveStatus } = state;
+  const needsApproval = approvalRequired ?? quoteData?.approvalRequired;
   const [showAttachmentPrompt, setShowAttachmentPrompt] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState(null);
   const [attachmentError, setAttachmentError] = useState('');
@@ -84,7 +85,7 @@ export default function QuoteSaveForm({ state, dispatch, isDispatcherView, onLog
         </div>}
         <textarea placeholder="Quote notes" value={state?.quoteNotes ?? ''} onChange={(e) => dispatch?.({ type: 'SET_QUOTE_META_FIELDS', payload: { quoteNotes: e.target.value } })} rows={3} className="w-full resize-y bg-canvas border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500" />
 
-        {quoteData?.approvalRequired && (
+        {needsApproval && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
             This quote requires manager review before dispatch.
           </div>
