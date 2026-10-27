@@ -19,9 +19,11 @@ export const roundToNearest = (value, interval = 25) => {
   return Math.round(value / normInterval) * normInterval;
 };
 
+// Buffers are percents (10 = +10%). Older configs stored a multiplier from
+// 1 to 1.5 (1.10 = +10%); below 1 can only be a percent, so 0 means no buffer.
 const normalizeBuffer = (value) => {
-  const number = toFinite(value, 10);
-  return number > 1.5 ? 1 + number / 100 : number;
+  const number = Math.max(0, toFinite(value, 10));
+  return number >= 1 && number <= 1.5 ? number : 1 + number / 100;
 };
 
 /**
@@ -278,6 +280,49 @@ export function calculatePermitRequirements({
   const permitFee = needsPermit ? toFinite(baseFee, 150) * (isInterstate ? 1.5 : 1) : 0;
 
   return { needsPermit, isInterstate, flags, permitFee };
+}
+
+/**
+ * Overnight stays forced by federal hours-of-service limits (49 CFR 395.3):
+ * at most 11 hours of driving and a 14-hour on-duty window per day, with a
+ * 30-minute break after 8 hours of driving. A permitted load can be held to
+ * fewer travel hours a day (for example, daylight-only moves).
+ *
+ * The driver's days cover the whole round trip, yard to yard, including
+ * load/unload time. Each escort counts only its own escorted driving
+ * (`escortDriveMinutes`, one entry per escort vehicle). Charges are the
+ * company's flat amounts per overnight; blank charges price at $0.
+ */
+export function calculateOvernights({ driveMinutes = 0, onSiteMinutes = 0, escortDriveMinutes = [], permittedLoad = false, settings = {} } = {}) {
+  const hoursSetting = (value, fallback) => value != null && value !== '' && Number(value) > 0 ? Number(value) : fallback;
+  const maxDrive = hoursSetting(settings?.maxDriveHours, 11);
+  const maxOnDuty = hoursSetting(settings?.maxOnDutyHours, 14);
+  const permittedHours = hoursSetting(settings?.permittedLoadHours, null);
+  const permittedDay = permittedHours ? Math.min(maxDrive, permittedHours) : maxDrive;
+  // Rounded before ceil so 11.0000001 hours stays one day.
+  const days = (hours, perDay) => hours > 0 ? Math.ceil(Number((hours / perDay).toFixed(4))) : 0;
+  const nights = (dayCount) => Math.max(0, dayCount - 1);
+
+  const driveHours = Math.max(0, toFinite(driveMinutes)) / 60;
+  const onDutyHours = driveHours + Math.max(0, toFinite(onSiteMinutes)) / 60 + Math.floor(driveHours / 8) * 0.5;
+  const driver = nights(Math.max(days(driveHours, permittedLoad ? permittedDay : maxDrive), days(onDutyHours, maxOnDuty)));
+  const escorts = escortDriveMinutes.map((minutes) => nights(days(Math.max(0, toFinite(minutes)) / 60, permittedDay)));
+  const escortNights = escorts.reduce((sum, count) => sum + count, 0);
+  const charge = driver * Math.max(0, toFinite(settings?.driverCharge)) + escortNights * Math.max(0, toFinite(settings?.escortCharge));
+  return {
+    driver,
+    escorts,
+    charge: Math.round(charge * 100) / 100,
+    driveHours: Math.round(driveHours * 100) / 100,
+    onDutyHours: Math.round(onDutyHours * 100) / 100,
+  };
+}
+
+/** Escorted driving minutes for each escort: the customer trip's minutes, prorated by the miles that escort is required. */
+export function escortDriveMinutes(escortMiles = [], customerMiles = 0, customerDriveMinutes = 0) {
+  return escortMiles.map((miles) => customerMiles > 0
+    ? customerDriveMinutes * Math.min(1, Math.max(0, toFinite(miles)) / customerMiles)
+    : customerDriveMinutes);
 }
 
 /** Straight-line miles along a route's points (great-circle distance between consecutive points). */

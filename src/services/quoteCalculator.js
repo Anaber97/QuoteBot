@@ -16,6 +16,9 @@ import {
   resolveEscortRequirement,
   findWeightTier,
   routeLineMiles,
+  calculateOvernights,
+  escortDriveMinutes,
+  calculatePermitRequirements as calculatePermitPure,
 } from '../lib/pricingEngine';
 
 import { evaluateOsow } from '../lib/osow.js';
@@ -296,6 +299,11 @@ export async function calculateQuoteData({
     driveTimeBufferPercent,
     escort,
     osow,
+    // Overnight inputs, priced in calculateFinalQuotes so per-quote time overrides apply.
+    customerDriveMinutes: routeLegs.slice(1, cleanWaypoints.length).reduce((total, leg) => total + Number(leg.duration?.value || 0) / 60, 0),
+    customerMiles,
+    escortMiles: osow ? osow.escortMiles : Array(escort.vehicleCount).fill(customerMiles),
+    permittedLoad: Boolean((osow ? osow.needsPermit : calculatePermitPure({ weight: clientWeight, width: equipmentWidth, height: equipmentHeight }).needsPermit) || escort.vehicleCount > 0),
   };
 }
 
@@ -353,6 +361,14 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     customDriveTimeBufferPercent,
   });
   const effectivePricingQuantity = isMileageMode ? Number(quoteData.totalMiles || 0) : timeMetrics.rawTotalHours;
+  const overnights = quoteData.pricingMode === 'equipment-weight-tier' ? calculateOvernights({
+    driveMinutes: timeMetrics.adjustedDriveMinutes,
+    onSiteMinutes: timeMetrics.loadUnloadMinutes,
+    escortDriveMinutes: escortDriveMinutes(quoteData.escortMiles || [], Number(quoteData.customerMiles || 0),
+      Number(quoteData.customerDriveMinutes || 0) * (1 + timeMetrics.driveTimeBufferPercent / 100)),
+    permittedLoad: Boolean(quoteData.permittedLoad),
+    settings: companyRates?.client_portal?.overnight_pricing,
+  }) : null;
 
   // Use shared final quote calculation
   const result = calculateFinalQuotesPure({
@@ -361,7 +377,7 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     maxRate,
     surchargeMultiplier: multiplier,
     surchargeFlatSum: flatSum,
-    permitFee: (quoteData.osow ? Number(quoteData.osow.permitFee || 0) : 0) + Number(quoteData.escort?.surcharge || 0),
+    permitFee: (quoteData.osow ? Number(quoteData.osow.permitFee || 0) : 0) + Number(quoteData.escort?.surcharge || 0) + (overnights?.charge || 0),
     // Weight-class quotes round to the class's interval, as the saved quote does.
     rounding: quoteData.pricingMode === 'equipment-weight-tier' || quoteData.osow ? Number(quoteData.roundingInterval || roundingInterval) : roundingInterval,
     customRate: customRate != null ? customRate : null,
@@ -377,6 +393,7 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     customCalculatedQuote: result.customQuote,
     effectiveMultiplier: multiplier,
     timeMetrics,
+    overnights,
     effectiveRate: Number(customRate) > 0 ? Number(customRate) : minRate,
     effectiveBaseQuote: Math.round(effectivePricingQuantity * (Number(customRate) > 0 ? Number(customRate) : minRate)),
   };

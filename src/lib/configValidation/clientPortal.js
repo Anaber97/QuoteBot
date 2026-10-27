@@ -120,6 +120,13 @@ export function validateClientPortalSection(portal, result, { pricingMode } = {}
       if (!check.valid) addError(result, check.error, `client_portal.escort_pricing.${field}`);
     }
   }
+  if (portal.overnight_pricing) {
+    for (const [field, min, max] of [['maxDriveHours', 1, 24], ['maxOnDutyHours', 1, 24], ['permittedLoadHours', 1, 24], ['driverCharge', 0, 100000], ['escortCharge', 0, 100000]]) {
+      if (portal.overnight_pricing[field] == null || portal.overnight_pricing[field] === '') continue;
+      const check = validateNumber(portal.overnight_pricing[field], { min, max });
+      if (!check.valid) addError(result, check.error, `client_portal.overnight_pricing.${field}`);
+    }
+  }
   if (Array.isArray(portal.escort_rules)) {
     portal.escort_rules.slice(0, 2).forEach((rule, index) => {
       ['minWidth', 'minHeight', 'surcharge'].forEach((field) => {
