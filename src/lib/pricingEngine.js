@@ -133,18 +133,21 @@ export function calculateSurcharges({
     }
   };
 
-  if (allowRouteSurcharges && metroMatches.length > 0 && overrides.metro !== false) {
-    add(metroMatches[0].charge?.feeType || 'percent', metroMatches[0].charge?.value);
+  // Flat-rate, maximum and minimum zone rules are applied in calculateFinalQuotes.
+  const surchargeZones = (zones) => zones.filter((zone) => zoneRuleMode(zone) === 'surcharge');
+  const metroSurcharge = surchargeZones(metroMatches)[0];
+  if (allowRouteSurcharges && metroSurcharge && overrides.metro !== false) {
+    add(metroSurcharge.charge?.feeType || 'percent', metroSurcharge.charge?.value);
   }
 
-  if (allowRouteSurcharges && hazardMatches.length > 0 && overrides.hazard !== false) {
-    hazardMatches.forEach((zone) => {
+  if (allowRouteSurcharges && overrides.hazard !== false) {
+    surchargeZones(hazardMatches).forEach((zone) => {
       add(zone.charge?.feeType || 'percent', zone.charge?.value);
     });
   }
 
   // Custom geofence surcharges (always applied if matched)
-  customMatches.filter((zone) => zone.pricingMode !== 'max_rate').forEach((zone) => {
+  surchargeZones(customMatches).forEach((zone) => {
     add(zone.charge?.feeType || 'percent', zone.charge?.value);
   });
 
@@ -159,21 +162,34 @@ export function calculateSurcharges({
 }
 
 /**
- * Determines if flat custom geofence zones override the calculated quote.
- * @returns {number} Maximum flat rate from custom zones, or 0
+ * How a matched zone prices: 'surcharge', 'flat_rate', 'max_rate' or 'min_rate'.
+ * Matches from older quotes may lack charge.pricingMode; a flat custom zone
+ * (one with a drawn shape) was a flat rate then, and a built-in zone a surcharge.
  */
-export function getFlatOverride(customMatches = []) {
-  return customMatches
-    .filter((zone) => zone.pricingMode === 'flat_rate' || (!zone.pricingMode && zone.charge?.feeType === 'flat'))
-    .reduce((max, zone) => Math.max(max, toFinite(zone.charge?.value, 0)), 0);
+export function zoneRuleMode(zone = {}) {
+  return zone.charge?.pricingMode ?? zone.pricingMode
+    ?? (zone.charge?.feeType === 'max' ? 'max_rate' : zone.charge?.feeType === 'flat' && Array.isArray(zone.shape) ? 'flat_rate' : 'surcharge');
 }
 
-export function getMaxOverride(customMatches = []) {
-  const limits = customMatches
-    .filter((zone) => zone.pricingMode === 'max_rate')
-    .map((zone) => toFinite(zone.charge?.value ?? zone.price, 0))
-    .filter((value) => value > 0);
+const ruleValues = (zones, mode) => zones
+  .filter((zone) => zoneRuleMode(zone) === mode)
+  .map((zone) => toFinite(zone.charge?.value ?? zone.price, 0))
+  .filter((value) => value > 0);
+
+/** The highest flat rate among matched zones, or 0. */
+export function getFlatOverride(zoneMatches = []) {
+  return Math.max(0, ...ruleValues(zoneMatches, 'flat_rate'));
+}
+
+/** The lowest maximum among matched zones, or 0. */
+export function getMaxOverride(zoneMatches = []) {
+  const limits = ruleValues(zoneMatches, 'max_rate');
   return limits.length ? Math.min(...limits) : 0;
+}
+
+/** The highest minimum among matched zones, or 0. */
+export function getMinOverride(zoneMatches = []) {
+  return Math.max(0, ...ruleValues(zoneMatches, 'min_rate'));
 }
 
 /**
@@ -204,10 +220,13 @@ export function calculateFinalQuotes({
   customQuantity = null,
   flatOverride = 0,
   maxOverride = 0,
+  minOverride = 0,
 }) {
-  // permitFee carries pass-through costs (permits, escorts). Flat-rate and
-  // capped zones price the haul only; those costs are always added on top.
-  const total = (haul) => roundToNearest((maxOverride > 0 ? Math.min(haul, maxOverride) : haul) + permitFee, rounding);
+  // permitFee carries pass-through costs (permits, escorts). Flat-rate,
+  // maximum and minimum zones price the haul only; those costs are always
+  // added on top. A minimum wins over a maximum when both match.
+  const limit = (haul) => Math.max(maxOverride > 0 ? Math.min(haul, maxOverride) : haul, minOverride);
+  const total = (haul) => roundToNearest(limit(haul) + permitFee, rounding);
   if (flatOverride > 0) {
     const overriddenQuote = total(roundToNearest(flatOverride, rounding));
     return { minQuote: overriddenQuote, maxQuote: overriddenQuote, customQuote: overriddenQuote };

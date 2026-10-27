@@ -423,8 +423,8 @@ test('calculateAuthoritativeQuote enforces client restrictions', () => {
     selectedTruckClassId: '',
     equipment: { weight: 10000, width: 90, height: 120, attachmentWeight: 0 },
     activeOverrides: {
-      metro: true, // Should be ignored
-      hazard: true, // Should be ignored
+      metro: false, // Should be ignored: clients cannot switch a metro rule off
+      hazard: false, // Should be ignored
       roadClub: true, // Should be ignored
       customSurcharges: { attacker: true }, // Should be ignored
     },
@@ -451,9 +451,9 @@ test('calculateAuthoritativeQuote enforces client restrictions', () => {
     role: 'client',
   });
 
-  // Client should only get weight-tier rates, no overrides
+  // Client gets weight-tier rates and the company's metro rule, with no overrides
   assert.equal(result.pricingMode, 'equipment-weight-tier');
-  assert.equal(result.appliedSurcharges.metro, false);
+  assert.equal(result.appliedSurcharges.metro, true);
   assert.equal(result.appliedSurcharges.hazard, false);
   assert.equal(result.customQuote, null); // Custom quotes not allowed for clients
 });

@@ -11,6 +11,7 @@ import {
   calculateSurcharges,
   getFlatOverride,
   getMaxOverride,
+  getMinOverride,
   calculateFinalQuotes as calculateFinalQuotesPure,
   resolveEscortRequirement,
   findWeightTier,
@@ -296,7 +297,7 @@ export async function calculateQuoteData({
  * Calculates effective multiplier and final min/max/custom pricing.
  * Uses shared pricingEngine to ensure parity with server calculations.
  */
-export function calculateFinalQuotes(quoteData, activeOverrides, customRate, companyRates = {}, customLoadUnloadMins = null, allowEquipmentRouteSurcharges = false, customDriveTimeBufferPercent = null) {
+export function calculateFinalQuotes(quoteData, activeOverrides, customRate, companyRates = {}, customLoadUnloadMins = null, _isDispatcherView = false, customDriveTimeBufferPercent = null) {
   if (!quoteData) {
     return { currentMinQuote: 0, currentMaxQuote: 0, customCalculatedQuote: null, effectiveMultiplier: 1.0 };
   }
@@ -317,21 +318,26 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
   });
 
   const customMatches = activeOverrides?.custom === false ? [] : quoteData.customMatches || [];
+  // Metro and hazard rules apply to every quote, client and staff alike, as on the server.
+  const metroMatches = quoteData.hasMetroZone && activeOverrides?.metro !== false ? quoteData.metroMatches || [] : [];
+  const hazardMatches = quoteData.hasHazardZone && activeOverrides?.hazard !== false ? quoteData.hazardMatches || [] : [];
+  const ruleZones = [...customMatches, ...metroMatches, ...hazardMatches];
 
   // Calculate surcharges using shared logic
   const { multiplier, flatSum } = calculateSurcharges({
-    metroMatches: quoteData.hasMetroZone ? quoteData.metroMatches : [],
-    hazardMatches: quoteData.hasHazardZone ? quoteData.hazardMatches : [],
+    metroMatches,
+    hazardMatches,
     customMatches,
     customSurcharges: pricing.custom_surcharges || [],
     useWeightTierPricing: quoteData.pricingMode === 'equipment-weight-tier',
-    allowRouteSurcharges: quoteData.pricingMode !== 'equipment-weight-tier' || allowEquipmentRouteSurcharges,
+    allowRouteSurcharges: true,
     overrides: activeOverrides,
   });
 
-  // Check for flat override
-  const flatOverride = getFlatOverride(customMatches);
-  const maxOverride = getMaxOverride(customMatches);
+  // Flat-rate, maximum and minimum zone rules
+  const flatOverride = getFlatOverride(ruleZones);
+  const maxOverride = getMaxOverride(ruleZones);
+  const minOverride = getMinOverride(ruleZones);
 
   const timeMetrics = applyQuoteTimeOverrides({
     rawTotalHours: quoteData.rawTotalHours,
@@ -355,6 +361,7 @@ export function calculateFinalQuotes(quoteData, activeOverrides, customRate, com
     customQuantity: effectivePricingQuantity,
     flatOverride,
     maxOverride,
+    minOverride,
   });
 
   return {

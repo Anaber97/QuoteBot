@@ -2,45 +2,47 @@ import { useState, useMemo } from 'react';
 import { GEOFENCES, HAZARD_ZONES, METRO_CODE_BY_ZONE_ID } from '../../config/geofences';
 import { US_STATE_NAMES } from '../../config/usStates';
 
+// Built-in zones are switched on through enabledZones; custom zones are switched off through disabledZones.
+const BUILT_IN_ZONE_IDS = new Set(Object.keys({ ...GEOFENCES, ...HAZARD_ZONES }));
+const toggledIds = (list = [], ids = [], include) => include
+  ? [...new Set([...list, ...ids])]
+  : list.filter((id) => !ids.includes(id));
+
 export function useGeofenceSettings({ formData, setFormData, setSaveStatus }) {
   const [geofenceSearch, setGeofenceSearch] = useState('');
   const [geofenceFilter, setGeofenceFilter] = useState('all');
   const [geofenceStateFilter, setGeofenceStateFilter] = useState('all');
   const [selectedGeofenceId, setSelectedGeofenceId] = useState(null);
   const [draftCustomGeofence, setDraftCustomGeofence] = useState(null);
-  const toggleGeofence = (id) => {
-    const currentDisabled = formData.geofences?.disabledZones || [];
-    const updatedDisabled = currentDisabled.includes(id)
-      ? currentDisabled.filter(zId => zId !== id)
-      : [...currentDisabled, id];
-
-    setFormData(prev => ({
+  const setZonesActive = (ids, active) => {
+    const builtIn = ids.filter((id) => BUILT_IN_ZONE_IDS.has(String(id)));
+    const custom = ids.filter((id) => !BUILT_IN_ZONE_IDS.has(String(id)));
+    setFormData((prev) => ({
       ...prev,
-      geofences: { ...prev.geofences, disabledZones: updatedDisabled }
+      geofences: {
+        ...prev.geofences,
+        enabledZones: toggledIds(prev.geofences?.enabledZones, builtIn, active),
+        disabledZones: toggledIds(prev.geofences?.disabledZones, custom, !active),
+      },
     }));
   };
+
+  const toggleGeofence = (id) => setZonesActive([id], disabledSet.has(id));
 
   const toggleFilteredGeofences = () => {
     const matchedIds = filteredGeofences.map((zone) => zone.id);
     if (!matchedIds.length) return;
-
-    const currentDisabled = formData.geofences?.disabledZones || [];
-    const hasAnyEnabled = matchedIds.some((id) => !currentDisabled.includes(id));
-    const updatedDisabled = hasAnyEnabled
-      ? [...new Set([...currentDisabled, ...matchedIds])]
-      : currentDisabled.filter((id) => !matchedIds.includes(id));
-
-    setFormData(prev => ({
-      ...prev,
-      geofences: { ...prev.geofences, disabledZones: updatedDisabled },
-    }));
+    setZonesActive(matchedIds, !matchedIds.some((id) => !disabledSet.has(id)));
   };
 
   const updateGeofenceOverride = (zoneId, fieldOrValue, maybeValue) => {
     const hasField = maybeValue !== undefined;
     const field = hasField ? fieldOrValue : 'value';
     const rawValue = hasField ? maybeValue : fieldOrValue;
-    const nextValue = field === 'value' ? Number(rawValue) || 0 : rawValue;
+    // A field of 'rule' sets pricingMode and feeType together from one picker value.
+    const changes = field === 'rule'
+      ? { pricingMode: ['percent', 'flat'].includes(rawValue) ? 'surcharge' : rawValue, feeType: rawValue === 'percent' ? 'percent' : 'flat' }
+      : { [field]: field === 'value' ? Number(rawValue) || 0 : rawValue };
     setFormData((prev) => ({
       ...prev,
       geofences: {
@@ -49,7 +51,7 @@ export function useGeofenceSettings({ formData, setFormData, setSaveStatus }) {
           ...(prev.geofences?.customZoneRates || {}),
           [zoneId]: {
             ...(prev.geofences?.customZoneRates?.[zoneId] || {}),
-            [field]: nextValue,
+            ...changes,
           },
         },
       },
@@ -205,7 +207,11 @@ export function useGeofenceSettings({ formData, setFormData, setSaveStatus }) {
     });
   }, [allGeofences, geofenceFilter, geofenceStateFilter, geofenceSearch]);
 
-  const disabledSet = new Set(formData.geofences?.disabledZones || []);
+  const enabledBuiltIns = new Set((formData.geofences?.enabledZones || []).map(String));
+  const disabledSet = new Set([
+    ...[...BUILT_IN_ZONE_IDS].filter((id) => !enabledBuiltIns.has(id)),
+    ...(formData.geofences?.disabledZones || []).filter((id) => !BUILT_IN_ZONE_IDS.has(String(id))),
+  ]);
   const selectedGeofence = allGeofences.find((zone) => zone.id === selectedGeofenceId) || null;
   const selectGeofence = (zoneId) => {
     setSelectedGeofenceId(zoneId);

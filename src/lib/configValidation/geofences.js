@@ -4,6 +4,7 @@
  * zones (coordinate bounds, point counts, fee type).
  */
 import { LIMITS, VALID_FEE_TYPES, addError, validateNumber, validateLatitude, validateLongitude } from './shared.js';
+import { ZONE_RULE_MODES } from '../../../shared/pricing/zoneCharge.js';
 
 const validateGeofenceShape = (shape, zoneId) => {
   const path = `geofences.customZones[${zoneId}].shape`;
@@ -73,6 +74,10 @@ const validateCustomZone = (zone, index) => {
     }
   }
 
+  if (zone.pricingMode && !ZONE_RULE_MODES.includes(zone.pricingMode)) {
+    errors.push({ message: `Invalid pricingMode. Must be one of: ${ZONE_RULE_MODES.join(', ')}`, path: `${path}.pricingMode` });
+  }
+
   if (zone.feeType && !VALID_FEE_TYPES.includes(zone.feeType)) {
     errors.push({ message: `Invalid feeType. Must be one of: ${VALID_FEE_TYPES.join(', ')}`, path: `${path}.feeType` });
   }
@@ -84,9 +89,22 @@ const validateCustomZone = (zone, index) => {
 export function validateGeofencesSection(geofences, result) {
   if (!geofences || typeof geofences !== 'object') return;
 
-  if (Array.isArray(geofences.disabledZones) && geofences.disabledZones.length > LIMITS.MAX_ARRAY_LENGTH) {
-    addError(result, `Too many disabled zones (max ${LIMITS.MAX_ARRAY_LENGTH})`, 'geofences.disabledZones');
+  for (const field of ['disabledZones', 'enabledZones']) {
+    if (Array.isArray(geofences[field]) && geofences[field].length > LIMITS.MAX_ARRAY_LENGTH) {
+      addError(result, `Too many ${field === 'enabledZones' ? 'enabled' : 'disabled'} zones (max ${LIMITS.MAX_ARRAY_LENGTH})`, `geofences.${field}`);
+    }
   }
+
+  Object.entries(geofences.customZoneRates && typeof geofences.customZoneRates === 'object' ? geofences.customZoneRates : {}).forEach(([zoneId, rule]) => {
+    const path = `geofences.customZoneRates.${zoneId}`;
+    if (rule?.pricingMode != null && !ZONE_RULE_MODES.includes(rule.pricingMode)) {
+      addError(result, `Invalid pricingMode. Must be one of: ${ZONE_RULE_MODES.join(', ')}`, `${path}.pricingMode`);
+    }
+    if (rule?.value != null && rule.value !== '') {
+      const check = validateNumber(rule.value, { min: 0, max: 100000 });
+      if (!check.valid) addError(result, check.error, `${path}.value`);
+    }
+  });
 
   if (Array.isArray(geofences.customZones)) {
     if (geofences.customZones.length > LIMITS.MAX_CUSTOM_ZONES) {

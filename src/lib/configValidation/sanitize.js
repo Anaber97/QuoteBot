@@ -47,6 +47,8 @@ const sanitizeGeofences = (geofences) => {
   if (!geofences || typeof geofences !== 'object') return {};
 
   return {
+    ...(geofences.builtInZoneMode === 'opt_in' ? { builtInZoneMode: 'opt_in' } : {}),
+    ...(Array.isArray(geofences.enabledZones) ? { enabledZones: geofences.enabledZones.slice(0, LIMITS.MAX_ARRAY_LENGTH) } : {}),
     disabledZones: Array.isArray(geofences.disabledZones) ? geofences.disabledZones.slice(0, LIMITS.MAX_ARRAY_LENGTH) : [],
     customZoneRates: geofences.customZoneRates && typeof geofences.customZoneRates === 'object' ? geofences.customZoneRates : {},
     customZones: Array.isArray(geofences.customZones) ? geofences.customZones.slice(0, LIMITS.MAX_CUSTOM_ZONES) : [],

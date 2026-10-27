@@ -1,4 +1,4 @@
-import { resolveZoneCharge } from '../../shared/pricing/zoneCharge.js';
+import { resolveZoneCharge, isBuiltInZoneActive, zoneRuleApplies } from '../../shared/pricing/zoneCharge.js';
 import { addressNamesZoneCity } from '../../shared/geo/addressMatch.js';
 // src/utils/geofenceEngine.js
 // @ts-check
@@ -21,9 +21,11 @@ function isPointInPolygon(point, polygon) {
 }
 
 function getActiveZones(baseZones, companyRates = {}) {
-  const disabledZoneIds = new Set((companyRates?.geofences?.disabledZones || []).map((id) => String(id)));
-  return Object.values(baseZones).filter((zone) => !disabledZoneIds.has(String(zone.id)));
+  return Object.values(baseZones).filter((zone) => isBuiltInZoneActive(zone.id, companyRates?.geofences));
 }
+
+const isInBox = (point, box) => Boolean(point && box
+  && point.lat >= box.minLat && point.lat <= box.maxLat && point.lng >= box.minLng && point.lng <= box.maxLng);
 
 export async function checkGeofenceZone(zoneConfig, addresses = [], coordsList = [], routePoints = []) {
   const cleanAddresses = (addresses || []).filter((addr) => typeof addr === 'string' && addr.trim().length > 0);
@@ -56,15 +58,13 @@ async function evaluateZoneMatches(baseZones, cleanWaypoints, coordsList, compan
       const matched = await checkGeofenceZone(zone, cleanWaypoints, coordsList, routePoints);
       const customZone = companyRates?.geofences?.customZones?.find((item) => item.id === zone.id);
       const customShape = customZone?.shape;
+      const inShape = customShape?.length >= 3 && coordsList.some((point) => point && isPointInPolygon(point, customShape));
+      if (!matched && !inShape) return null;
 
-      if (!matched && customShape?.length >= 3) {
-        const hit = coordsList.some((point) => point && isPointInPolygon(point, customShape));
-        if (hit) {
-          return { ...zone, charge: resolveZoneCharge(zone, companyRates, field), customZone };
-        }
-      }
-
-      return matched ? { ...zone, charge: resolveZoneCharge(zone, companyRates, field), customZone } : null;
+      const charge = resolveZoneCharge(zone, companyRates, field);
+      const containsPickup = addressNamesZoneCity(cleanWaypoints[0], zone) || isInBox(coordsList[0], zone.box);
+      const containsDropoff = addressNamesZoneCity(cleanWaypoints.at(-1), zone) || isInBox(coordsList.at(-1), zone.box);
+      return zoneRuleApplies(charge, { containsPickup, containsDropoff }) ? { ...zone, charge, customZone } : null;
     })
   );
   return results.filter(Boolean);
@@ -96,7 +96,7 @@ export async function evaluateCustomGeofences(_cleanWaypoints, coordsList, compa
         if (!containsPickup || !containsDropoff) return null;
         return {
           ...zone,
-          charge: { feeType: 'flat', value: Number(zone.price ?? zone.value ?? 0) || 0 },
+          charge: { pricingMode, feeType: 'flat', value: Number(zone.price ?? zone.value ?? 0) || 0 },
           containsPickup,
           containsDropoff,
         };
@@ -106,16 +106,19 @@ export async function evaluateCustomGeofences(_cleanWaypoints, coordsList, compa
         if (!containsPickup || !containsDropoff) return null;
         return {
           ...zone,
-          charge: { feeType: 'max', value: Number(zone.price ?? zone.value ?? 0) || 0 },
+          charge: { pricingMode, feeType: 'max', value: Number(zone.price ?? zone.value ?? 0) || 0 },
           containsPickup,
           containsDropoff,
         };
       }
 
       if (!anyRoutePointInside) return null;
+      if (pricingMode === 'min_rate') {
+        return { ...zone, charge: { pricingMode, feeType: 'min', value: Number(zone.price ?? zone.value ?? 0) || 0 }, containsPickup, containsDropoff };
+      }
       return {
         ...zone,
-        charge: { feeType: zone.surchargeFeeType === 'flat' ? 'flat' : 'percent', value: Number(zone.price ?? zone.value ?? 0) || 0 },
+        charge: { pricingMode: 'surcharge', feeType: zone.surchargeFeeType === 'flat' ? 'flat' : 'percent', value: Number(zone.price ?? zone.value ?? 0) || 0 },
         containsPickup,
         containsDropoff,
       };

@@ -1,4 +1,4 @@
-import { resolveZoneCharge } from '../shared/pricing/zoneCharge.js';
+import { resolveZoneCharge, isBuiltInZoneActive, zoneRuleApplies } from '../shared/pricing/zoneCharge.js';
 import { addressNamesZoneCity } from '../shared/geo/addressMatch.js';
 import { GEOFENCES, HAZARD_ZONES, METRO_CODE_BY_ZONE_ID } from '../src/config/geofences.js';
 import { selectHighestPriorityZones } from '../src/utils/geofencePriority.js';
@@ -9,6 +9,7 @@ import {
   calculateSurcharges,
   getFlatOverride,
   getMaxOverride,
+  getMinOverride,
   calculateFinalQuotes as calculateFinalQuotesPure,
   calculatePermitRequirements as calculatePermitPure,
   resolveEscortRequirement,
@@ -68,12 +69,14 @@ const pointInPolygon = (point, polygon) => {
 };
 
 function findConfiguredZones(zones, addresses, routePoints, config, field) {
-  const disabled = new Set((config?.geofences?.disabledZones || []).map(String));
-  return Object.values(zones).filter((zone) => {
-    if (disabled.has(String(zone.id))) return false;
+  return Object.values(zones).filter((zone) => isBuiltInZoneActive(zone.id, config?.geofences)).map((zone) => {
     const keywordHit = addresses.some((address) => addressNamesZoneCity(address, zone));
-    return keywordHit || routePoints.some((point) => pointInBox(point, zone.box));
-  }).map((zone) => ({ ...zone, charge: resolveZoneCharge(zone, config, field) }));
+    if (!keywordHit && !routePoints.some((point) => pointInBox(point, zone.box))) return null;
+    const charge = resolveZoneCharge(zone, config, field);
+    const containsPickup = addressNamesZoneCity(addresses[0], zone) || pointInBox(routePoints[0], zone.box);
+    const containsDropoff = addressNamesZoneCity(addresses.at(-1), zone) || pointInBox(routePoints.at(-1), zone.box);
+    return zoneRuleApplies(charge, { containsPickup, containsDropoff }) ? { ...zone, charge } : null;
+  }).filter(Boolean);
 }
 
 function findCustomZones(_localities, routePoints, config) {
@@ -86,14 +89,13 @@ function findCustomZones(_localities, routePoints, config) {
     const pickupHit = routePoints[0] && pointInPolygon(routePoints[0], zone.shape);
     const dropoffHit = routePoints.at(-1) && pointInPolygon(routePoints.at(-1), zone.shape);
     return pickupHit && dropoffHit;
-  }).map((zone) => ({
-    ...zone,
-    charge: (zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge')) === 'flat_rate'
-      ? { feeType: 'flat', value: toFinite(zone.price ?? zone.value) }
-      : (zone.pricingMode === 'max_rate'
-        ? { feeType: 'max', value: toFinite(zone.price ?? zone.value) }
-        : { feeType: zone.surchargeFeeType === 'flat' ? 'flat' : 'percent', value: toFinite(zone.price ?? zone.value) }),
-  }));
+  }).map((zone) => {
+    const pricingMode = zone.pricingMode || (zone.feeType === 'flat' ? 'flat_rate' : 'surcharge');
+    const value = toFinite(zone.price ?? zone.value);
+    return { ...zone, charge: pricingMode === 'surcharge'
+      ? { pricingMode, feeType: zone.surchargeFeeType === 'flat' ? 'flat' : 'percent', value }
+      : { pricingMode, feeType: pricingMode === 'max_rate' ? 'max' : pricingMode === 'min_rate' ? 'min' : 'flat', value } };
+  });
   return selectHighestPriorityZones(matches);
 }
 
@@ -160,20 +162,25 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
 
   // Set up overrides appropriately
   const overrides = role === 'client' ? { afterHours: false, roadClub: false, metro: true, hazard: true, customSurcharges: {} } : input.activeOverrides || {};
+  // Metro and hazard rules price client and staff quotes alike; only staff can switch them off per quote.
+  const activeMetro = overrides.metro === false ? [] : metroMatches;
+  const activeHazard = overrides.hazard === false ? [] : hazardMatches;
+  const ruleZones = [...customMatches, ...activeMetro, ...activeHazard];
 
   // Use shared surcharge calculation
   const { multiplier, flatSum } = calculateSurcharges({
-    metroMatches,
-    hazardMatches,
+    metroMatches: activeMetro,
+    hazardMatches: activeHazard,
     customMatches,
     customSurcharges: pricing.custom_surcharges || [],
     useWeightTierPricing,
-    allowRouteSurcharges: role !== 'client',
+    allowRouteSurcharges: true,
     overrides,
   });
 
-  const flatOverride = getFlatOverride(customMatches);
-  const maxOverride = getMaxOverride(customMatches);
+  const flatOverride = getFlatOverride(ruleZones);
+  const maxOverride = getMaxOverride(ruleZones);
+  const minOverride = getMinOverride(ruleZones);
   const interval = toFinite(useWeightTierPricing ? tier?.rounding_interval ?? clientPricing.rounding_interval : pricing.rounding_interval, 25);
 
   // Calculate permit fee
@@ -224,6 +231,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     customQuantity: role !== 'client' ? effectivePricingQuantity : null,
     flatOverride,
     maxOverride,
+    minOverride,
   });
 
   return {
@@ -239,7 +247,7 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     osow,
     escort,
     metroCodes: [...new Set(metroMatches.map((zone) => METRO_CODE_BY_ZONE_ID[zone.id]).filter(Boolean))],
-    appliedSurcharges: { afterHours: false, roadClub: false, metro: Boolean(role !== 'client' && metroMatches.length && overrides.metro !== false), hazard: Boolean(role !== 'client' && hazardMatches.length && overrides.hazard !== false), customZone: Boolean(customMatches.length) },
+    appliedSurcharges: { afterHours: false, roadClub: false, metro: activeMetro.length > 0, hazard: activeHazard.length > 0, customZone: Boolean(customMatches.length) },
     routeLegs: route.legs,
     quoteDetails: { ...(input.equipment || {}), osow, driveTimeBufferPercent: timeMetrics.driveTimeBufferPercent, loadUnloadMinutes: timeMetrics.loadUnloadMinutes, permitFee: permit.permitFee, permitFlags: permit.flags, escort, customZoneNames: customMatches.map((zone) => zone.name).filter(Boolean) },
   };

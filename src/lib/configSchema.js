@@ -14,6 +14,7 @@ import { readStoredConfig } from '../../shared/config/storage.js';
  */
 
 import { RATES } from '../config/rates.js';
+import { GEOFENCES, HAZARD_ZONES } from '../config/geofences.js';
 
 // ===== NORMALIZATION UTILITIES =====
 
@@ -89,7 +90,10 @@ export const DEFAULT_SURCHARGES = {
   custom_surcharges: DEFAULT_PRICING.custom_surcharges,
 };
 
+// Built-in metro and hazard zones start off; each company switches on the ones it prices.
 export const DEFAULT_GEOFENCES = {
+  builtInZoneMode: 'opt_in',
+  enabledZones: [],
   disabledZones: [],
   customZoneRates: {},
   customZones: [],
@@ -283,6 +287,11 @@ export function normalizeConfig(rawConfig = {}) {
   const normalizedGeofences = {
     ...DEFAULT_GEOFENCES,
     ...(baseConfig.geofences || {}),
+    // Configs saved before built-in zones were opt-in list only the zones switched off; keep the rest on.
+    builtInZoneMode: 'opt_in',
+    enabledZones: baseConfig.geofences?.builtInZoneMode !== 'opt_in' && Array.isArray(baseConfig.geofences?.disabledZones)
+      ? Object.keys({ ...GEOFENCES, ...HAZARD_ZONES }).filter((id) => !baseConfig.geofences.disabledZones.map(String).includes(id))
+      : asArray(baseConfig.geofences?.enabledZones),
     disabledZones: asArray(baseConfig.geofences?.disabledZones),
     customZoneRates: baseConfig.geofences?.customZoneRates || {},
     customZones: asArray(baseConfig.geofences?.customZones),
