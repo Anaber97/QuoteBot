@@ -17,6 +17,7 @@ import {
   routeLineMiles,
   calculateOvernights,
   escortDriveMinutes,
+  hasOvernights,
 } from '../src/lib/pricingEngine.js';
 
 import { evaluateOsow } from '../src/lib/osow.js';
@@ -263,7 +264,9 @@ export function calculateAuthoritativeQuote({ input, config, clientConfig, route
     minQuote: quoteResult.minQuote,
     maxQuote: quoteResult.maxQuote,
     customQuote: quoteResult.customQuote,
-    approvalRequired: Boolean(osow?.reviewRequired) || totalWeight >= toFinite(clientConfig?.approval_threshold ?? config?.client_portal?.approval_threshold, 80000),
+    // Multi-day trips come to the company for review, like heavy and permit-review loads.
+    approvalRequired: Boolean(osow?.reviewRequired) || hasOvernights(overnights)
+      || totalWeight >= toFinite(clientConfig?.approval_threshold ?? config?.client_portal?.approval_threshold, 80000),
     permit,
     osow,
     escort,

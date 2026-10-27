@@ -143,7 +143,7 @@ export default function QuoteResultsCard({
               </li>
             )}
             {overnightSummary && (
-              <li className="rounded-md bg-slate-800 px-2 py-1 font-semibold text-slate-200 tabular-nums">
+              <li aria-label="Overnight surcharge" title="Overnight stays included; this quote needs manager review" className="rounded-md bg-amber-500/10 px-2 py-1 font-semibold text-amber-300 tabular-nums">
                 {overnightSummary}: +${Number(overnights.charge || 0).toFixed(2)}
               </li>
             )}
@@ -232,6 +232,7 @@ export default function QuoteResultsCard({
       )}
 
       <QuoteSaveForm state={state} dispatch={dispatch} isDispatcherView={isDispatcherView}
+        approvalRequired={Boolean(quoteData?.approvalRequired || overnightSummary)}
         onLogQuote={onLogQuote} onSaveForLater={onSaveForLater} onAcceptQuote={onAcceptQuote} />
     </section>
   );

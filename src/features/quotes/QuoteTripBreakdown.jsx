@@ -84,7 +84,7 @@ export default function QuoteTripBreakdown({
           <Row label={`${escort.vehicleCount} escort vehicle${Number(escort.vehicleCount) === 1 ? '' : 's'}`}>+${Number(escort.surcharge || 0).toFixed(2)}</Row>
         )}
         {overnights && (overnights.driver > 0 || overnights.escorts.some(Boolean)) && (
-          <Row label={`Overnights: driver ${overnights.driver}${overnights.escorts.length ? `, escort${overnights.escorts.length === 1 ? '' : 's'} ${overnights.escorts.join(' + ')}` : ''}`}>+${Number(overnights.charge || 0).toFixed(2)}</Row>
+          <Row tone="text-amber-300" label={`Overnights: driver ${overnights.driver}${overnights.escorts.length ? `, escort${overnights.escorts.length === 1 ? '' : 's'} ${overnights.escorts.join(' + ')}` : ''}`}>+${Number(overnights.charge || 0).toFixed(2)}</Row>
         )}
         <Row label={isMileageQuote ? 'Total billable miles' : 'Total billable hours'} tone="text-white">
           {isMileageQuote ? `${Number(quoteData.totalMiles || 0).toFixed(1)} mi` : `${Number(timeMetrics.rawTotalHours.toFixed(2))} h`}

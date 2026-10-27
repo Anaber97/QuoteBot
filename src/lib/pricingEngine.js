@@ -318,6 +318,9 @@ export function calculateOvernights({ driveMinutes = 0, onSiteMinutes = 0, escor
   };
 }
 
+/** True when the driver or any escort needs at least one night. */
+export const hasOvernights = (overnights) => Boolean(overnights && (overnights.driver > 0 || (overnights.escorts || []).some((count) => count > 0)));
+
 /** Escorted driving minutes for each escort: the customer trip's minutes, prorated by the miles that escort is required. */
 export function escortDriveMinutes(escortMiles = [], customerMiles = 0, customerDriveMinutes = 0) {
   return escortMiles.map((miles) => customerMiles > 0

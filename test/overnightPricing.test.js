@@ -64,3 +64,18 @@ test('hour limits default to the federal rules and charges start blank', () => {
   assert.deepEqual(errors({ maxDriveHours: 11, permittedLoadHours: '', driverCharge: 250 }), []);
   assert.deepEqual(errors({ maxDriveHours: 30, escortCharge: -1 }), ['client_portal.overnight_pricing.maxDriveHours', 'client_portal.overnight_pricing.escortCharge']);
 });
+
+test('trips with any overnight stay come to the company for approval', async () => {
+  const { hasOvernights } = await import('../src/lib/pricingEngine.js');
+  assert.equal(hasOvernights({ driver: 0, escorts: [0, 1] }), true);
+  assert.equal(hasOvernights({ driver: 0, escorts: [] }), false);
+  assert.equal(hasOvernights(null), false);
+
+  const config = { pricing: {}, geofences: { builtInZoneMode: 'opt_in', enabledZones: [], customZones: [] },
+    client_portal: { approval_threshold: 80000, weight_tiers: [{ minWeight: 0, maxWeight: 999999, rate: 100, drive_time_buffer: 0, load_unload_base_mins: 30 }] } };
+  const quote = (driveHours) => calculateAuthoritativeQuote({ role: 'client', config, clientConfig: null,
+    input: { waypoints: ['A, TX', 'B, TX'], equipment: { weight: 30000, width: 96, height: 120 } },
+    route: { totalMeters: 100000, rawDriveMinutes: hours(driveHours), customerRoutePoints: [], legs: [] } });
+  assert.equal(quote(6).approvalRequired, false);
+  assert.equal(quote(16).approvalRequired, true, 'one driver night, even with no overnight charge set');
+});

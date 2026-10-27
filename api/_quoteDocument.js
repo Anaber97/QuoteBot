@@ -5,6 +5,13 @@ const safeText = (value, fallback = 'N/A') => String(value ?? '').trim() || fall
 const money = (value) => `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const cleanReference = (quote) => safeText(quote.quote_reference, `Q-${String(quote.id || '').slice(0, 8).toUpperCase()}`).replace(/[^A-Za-z0-9_-]/g, '-');
 const humanize = (value) => String(value || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+/** "Driver: 2 nights; escorts: 1 night", or '' when the trip needs no overnight stay. */
+const describeOvernightNights = (overnights) => {
+  const driver = Number(overnights?.driver || 0);
+  const escorts = (Array.isArray(overnights?.escorts) ? overnights.escorts : []).reduce((sum, count) => sum + Number(count || 0), 0);
+  return [driver ? `Driver: ${plural(driver, 'night')}` : '', escorts ? `Escorts: ${plural(escorts, 'night')}` : ''].filter(Boolean).join('; ');
+};
 const formatDate = (value) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -152,6 +159,8 @@ export async function buildQuotePdf({ quote, company, config, logoBytes = null, 
     if (details.serialNumber || (Array.isArray(details.permitFlags) && details.permitFlags.length)) {
       fieldRow([{ label: 'Serial number', value: details.serialNumber }, { label: 'Permit flags', value: Array.isArray(details.permitFlags) ? details.permitFlags.join(', ') || 'None' : details.permitFlags || 'None' }]);
     }
+    const overnightText = describeOvernightNights(details.overnights);
+    if (overnightText) fieldRow([{ label: 'Overnights', value: overnightText }]);
   } else {
     section('Service');
     fieldRow([{ label: 'Service / truck class', value: quote.truck_class }, { label: 'Dispatch base', value: quote.base_yard_id }]);
