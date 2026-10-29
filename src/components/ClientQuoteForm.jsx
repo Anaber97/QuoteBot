@@ -374,7 +374,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         </div>
 
         {/* Equipment Identity Inputs */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 *:flex *:flex-col *:justify-end">
           <div>
             <label htmlFor="equipment-make" className="block text-xs text-slate-400 mb-1">Make</label>
             <input
@@ -411,7 +411,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
         </div>
 
         {/* Equipment Dimension Inputs */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 *:flex *:flex-col *:justify-end">
           <div>
             <label htmlFor="equipment-weight" className="block text-xs text-slate-400 mb-1">Operating Weight (lbs)</label>
             <input
@@ -463,7 +463,7 @@ export default function ClientQuoteForm({ companyRates, onCalculate, isCalculati
           {equipmentSaveStatus && <p role="status" className="text-xs text-slate-300">{equipmentSaveStatus}</p>}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 *:flex *:flex-col *:justify-end">
           <div>
             <label htmlFor="attachment-type" className="block text-xs text-slate-400 mb-1">Attachment Type</label>
             <input
